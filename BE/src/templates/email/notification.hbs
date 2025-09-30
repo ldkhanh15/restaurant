@@ -1,0 +1,16 @@
+{{#> base}}
+  <h2>{{title}}</h2>
+  <p>{{message}}</p>
+  
+  {{#if actionUrl}}
+  <a href="{{actionUrl}}" class="button">{{actionText}}</a>
+  {{/if}}
+  
+  {{#if additionalDetails}}
+  <div class="details">
+    {{#each additionalDetails}}
+    <p><strong>{{@key}}:</strong> {{this}}</p>
+    {{/each}}
+  </div>
+  {{/if}}
+{{/base}}

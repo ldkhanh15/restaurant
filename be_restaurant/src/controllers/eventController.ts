@@ -1,0 +1,66 @@
+import type { Request, Response, NextFunction } from "express"
+import eventService from "../services/eventService"
+import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
+
+export const getAllEvents = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const offset = (page - 1) * limit
+
+    const { rows, count } = await eventService.findAll({
+      limit,
+      offset,
+      order: [[sortBy, sortOrder]],
+    })
+
+    const result = buildPaginationResult(rows, count, page, limit)
+    res.json({ status: "success", data: result })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getUpcomingEvents = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const events = await eventService.findUpcomingEvents()
+    res.json({ status: "success", data: events })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getEventById = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const event = await eventService.findById(Number(req.params.id))
+    res.json({ status: "success", data: event })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const createEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const event = await eventService.create(req.body)
+    res.status(201).json({ status: "success", data: event })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const updateEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const event = await eventService.update(Number(req.params.id), req.body)
+    res.json({ status: "success", data: event })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const deleteEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await eventService.delete(Number(req.params.id))
+    res.json({ status: "success", message: "Event deleted successfully" })
+  } catch (error) {
+    next(error)
+  }
+}

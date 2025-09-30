@@ -1,0 +1,5 @@
+2025-09-27 21:39:52,052 - ERROR - GOOGLE_API_KEY not set in environment variables
+2025-09-27 21:40:46,227 - ERROR - GOOGLE_API_KEY not set in environment variables
+2025-09-27 21:41:13,675 - INFO - HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+2025-09-27 21:41:15,603 - INFO - HTTP Request: GET http://localhost:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-09-27 21:41:17,947 - INFO - HTTP Request: HEAD http://localhost:7860/ "HTTP/1.1 200 OK"
