@@ -13,7 +13,7 @@ export class BaseService<T extends Model> {
     return { rows, count }
   }
 
-  async findById(id: number, options?: FindOptions): Promise<T> {
+  async findById(id: string, options?: FindOptions): Promise<T> {
     const record = await this.model.findByPk(id, options)
     if (!record) {
       throw new AppError(`${this.model.name} not found`, 404)
@@ -29,18 +29,18 @@ export class BaseService<T extends Model> {
     return await this.model.create(data)
   }
 
-  async update(id: number, data: any): Promise<T> {
+  async update(id: string, data: any): Promise<T> {
     const record = await this.findById(id)
     await record.update(data)
     return record
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     const record = await this.findById(id)
     await record.destroy()
   }
 
-  async softDelete(id: number): Promise<T> {
+  async softDelete(id: string): Promise<T> {
     const record = await this.findById(id)
     await record.update({ deletedAt: new Date() })
     return record

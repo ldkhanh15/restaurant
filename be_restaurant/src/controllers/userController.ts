@@ -5,7 +5,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { count, rows } = await User.findAndCountAll({

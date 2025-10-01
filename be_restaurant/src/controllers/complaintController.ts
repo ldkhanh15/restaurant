@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllComplaints = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await complaintService.findAllWithUser({
@@ -22,7 +22,7 @@ export const getAllComplaints = async (req: Request, res: Response, next: NextFu
 
 export const getComplaintById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const complaint = await complaintService.findById(Number(req.params.id))
+    const complaint = await complaintService.findById(req.params.id)
     res.json({ status: "success", data: complaint })
   } catch (error) {
     next(error)
@@ -40,7 +40,7 @@ export const createComplaint = async (req: Request, res: Response, next: NextFun
 
 export const updateComplaint = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const complaint = await complaintService.update(Number(req.params.id), req.body)
+    const complaint = await complaintService.update(req.params.id, req.body)
     res.json({ status: "success", data: complaint })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const updateComplaint = async (req: Request, res: Response, next: NextFun
 
 export const deleteComplaint = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await complaintService.delete(Number(req.params.id))
+    await complaintService.delete(req.params.id)
     res.json({ status: "success", message: "Complaint deleted successfully" })
   } catch (error) {
     next(error)

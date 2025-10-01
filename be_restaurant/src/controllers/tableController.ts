@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await tableService.findAll({
@@ -22,7 +22,7 @@ export const getAllTables = async (req: Request, res: Response, next: NextFuncti
 
 export const getTableById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const table = await tableService.findById(Number(req.params.id))
+    const table = await tableService.findById(req.params.id)
     res.json({ status: "success", data: table })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const createTable = async (req: Request, res: Response, next: NextFunctio
 
 export const updateTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const table = await tableService.update(Number(req.params.id), req.body)
+    const table = await tableService.update(req.params.id, req.body)
     res.json({ status: "success", data: table })
   } catch (error) {
     next(error)
@@ -58,7 +58,7 @@ export const updateTable = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await tableService.delete(Number(req.params.id))
+    await tableService.delete(req.params.id)
     res.json({ status: "success", message: "Table deleted successfully" })
   } catch (error) {
     next(error)

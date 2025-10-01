@@ -8,7 +8,7 @@ class ChatMessageService extends BaseService<ChatMessage> {
 
   async findBySession(sessionId: number) {
     return await this.model.findAll({
-      where: { sessionId },
+      where: { session_id: sessionId },
       order: [["createdAt", "ASC"]],
     })
   }

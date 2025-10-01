@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllAttendanceLogs = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await attendanceLogService.findAllWithEmployee({
@@ -22,7 +22,7 @@ export const getAllAttendanceLogs = async (req: Request, res: Response, next: Ne
 
 export const getAttendanceLogById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const log = await attendanceLogService.findById(Number(req.params.id))
+    const log = await attendanceLogService.findById(req.params.id)
     res.json({ status: "success", data: log })
   } catch (error) {
     next(error)
@@ -40,7 +40,7 @@ export const createAttendanceLog = async (req: Request, res: Response, next: Nex
 
 export const updateAttendanceLog = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const log = await attendanceLogService.update(Number(req.params.id), req.body)
+    const log = await attendanceLogService.update(req.params.id, req.body)
     res.json({ status: "success", data: log })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const updateAttendanceLog = async (req: Request, res: Response, next: Nex
 
 export const deleteAttendanceLog = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await attendanceLogService.delete(Number(req.params.id))
+    await attendanceLogService.delete(req.params.id)
     res.json({ status: "success", message: "Attendance log deleted successfully" })
   } catch (error) {
     next(error)
