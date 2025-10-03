@@ -7,6 +7,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 export const getAllDishes = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'ASC' } = getPaginationParams(req.query)
+
     const offset = (page - 1) * limit
 
     const { count, rows } = await Dish.findAndCountAll({

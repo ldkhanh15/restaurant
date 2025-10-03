@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllEmployees = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await employeeService.findAllWithUser({
@@ -22,7 +22,7 @@ export const getAllEmployees = async (req: Request, res: Response, next: NextFun
 
 export const getEmployeeById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const employee = await employeeService.findByIdWithUser(Number(req.params.id))
+    const employee = await employeeService.findByIdWithUser(req.params.id)
     res.json({ status: "success", data: employee })
   } catch (error) {
     next(error)
@@ -40,7 +40,7 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
 
 export const updateEmployee = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const employee = await employeeService.update(Number(req.params.id), req.body)
+    const employee = await employeeService.update(req.params.id, req.body)
     res.json({ status: "success", data: employee })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const updateEmployee = async (req: Request, res: Response, next: NextFunc
 
 export const deleteEmployee = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await employeeService.delete(Number(req.params.id))
+    await employeeService.delete(req.params.id)
     res.json({ status: "success", message: "Employee deleted successfully" })
   } catch (error) {
     next(error)

@@ -22,7 +22,7 @@ export const getAllIngredients = async (req: Request, res: Response, next: NextF
 
 export const getIngredientById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ingredient = await ingredientService.findById(Number(req.params.id))
+    const ingredient = await ingredientService.findById((req.params.id))
     res.json({ status: "success", data: ingredient })
   } catch (error) {
     next(error)
@@ -40,7 +40,7 @@ export const createIngredient = async (req: Request, res: Response, next: NextFu
 
 export const updateIngredient = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ingredient = await ingredientService.update(Number(req.params.id), req.body)
+    const ingredient = await ingredientService.update(req.params.id, req.body)
     res.json({ status: "success", data: ingredient })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const updateIngredient = async (req: Request, res: Response, next: NextFu
 
 export const deleteIngredient = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await ingredientService.delete(Number(req.params.id))
+    await ingredientService.delete(req.params.id)
     res.json({ status: "success", message: "Ingredient deleted successfully" })
   } catch (error) {
     next(error)

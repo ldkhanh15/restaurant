@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllBlogPosts = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await blogPostService.findAll({
@@ -31,7 +31,7 @@ export const getPublishedBlogPosts = async (req: Request, res: Response, next: N
 
 export const getBlogPostById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const post = await blogPostService.findById(Number(req.params.id))
+    const post = await blogPostService.findById(req.params.id)
     res.json({ status: "success", data: post })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const createBlogPost = async (req: Request, res: Response, next: NextFunc
 
 export const updateBlogPost = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const post = await blogPostService.update(Number(req.params.id), req.body)
+    const post = await blogPostService.update(req.params.id, req.body)
     res.json({ status: "success", data: post })
   } catch (error) {
     next(error)
@@ -58,7 +58,7 @@ export const updateBlogPost = async (req: Request, res: Response, next: NextFunc
 
 export const deleteBlogPost = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await blogPostService.delete(Number(req.params.id))
+    await blogPostService.delete(req.params.id)
     res.json({ status: "success", message: "Blog post deleted successfully" })
   } catch (error) {
     next(error)

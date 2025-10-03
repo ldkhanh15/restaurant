@@ -24,7 +24,7 @@ export const getAllCategories = async (req: Request, res: Response, next: NextFu
 
 export const getCategoryById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const category = await categoryDishService.findById(Number(req.params.id))
+    const category = await categoryDishService.findById((req.params.id))
     res.json({ status: "success", data: category })
   } catch (error) {
     next(error)
@@ -42,7 +42,7 @@ export const createCategory = async (req: Request, res: Response, next: NextFunc
 
 export const updateCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const category = await categoryDishService.update(Number(req.params.id), req.body)
+    const category = await categoryDishService.update(req.params.id, req.body)
     res.json({ status: "success", data: category })
   } catch (error) {
     next(error)
@@ -51,7 +51,7 @@ export const updateCategory = async (req: Request, res: Response, next: NextFunc
 
 export const deleteCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await categoryDishService.delete(Number(req.params.id))
+    await categoryDishService.delete(req.params.id)
     res.json({ status: "success", message: "Category deleted successfully" })
   } catch (error) {
     next(error)

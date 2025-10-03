@@ -4,9 +4,8 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllReviews = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
-
     const { rows, count } = await reviewService.findAllWithUser({
       limit,
       offset,
@@ -22,7 +21,7 @@ export const getAllReviews = async (req: Request, res: Response, next: NextFunct
 
 export const getReviewById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const review = await reviewService.findById(Number(req.params.id))
+    const review = await reviewService.findById(req.params.id)
     res.json({ status: "success", data: review })
   } catch (error) {
     next(error)
@@ -40,7 +39,7 @@ export const createReview = async (req: Request, res: Response, next: NextFuncti
 
 export const updateReview = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const review = await reviewService.update(Number(req.params.id), req.body)
+    const review = await reviewService.update(req.params.id, req.body)
     res.json({ status: "success", data: review })
   } catch (error) {
     next(error)
@@ -49,7 +48,7 @@ export const updateReview = async (req: Request, res: Response, next: NextFuncti
 
 export const deleteReview = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await reviewService.delete(Number(req.params.id))
+    await reviewService.delete(req.params.id)
     res.json({ status: "success", message: "Review deleted successfully" })
   } catch (error) {
     next(error)

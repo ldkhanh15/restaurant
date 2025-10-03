@@ -8,11 +8,15 @@ export const signup = async (req: Request, res: Response, next: NextFunction) =>
   try {
     const { username, email, password, phone, full_name, role } = req.body
 
-    const existingUser = await User.findOne({ where: { email } })
+    let existingUser = await User.findOne({ where: { email } })
     if (existingUser) {
       throw new AppError("Email already registered", 400)
     }
 
+    existingUser = await User.findOne({ where: { username } })
+    if (existingUser) {
+      throw new AppError("Username already registered", 400)
+    }
     const password_hash = await hashPassword(password)
 
     const user = await User.create({

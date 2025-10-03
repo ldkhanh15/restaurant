@@ -12,7 +12,7 @@ export const getMessagesBySession = async (req: Request, res: Response, next: Ne
 
 export const getChatMessageById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const message = await chatMessageService.findById(Number(req.params.id))
+    const message = await chatMessageService.findById(req.params.id)
     res.json({ status: "success", data: message })
   } catch (error) {
     next(error)
@@ -30,7 +30,7 @@ export const createChatMessage = async (req: Request, res: Response, next: NextF
 
 export const updateChatMessage = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const message = await chatMessageService.update(Number(req.params.id), req.body)
+    const message = await chatMessageService.update(req.params.id, req.body)
     res.json({ status: "success", data: message })
   } catch (error) {
     next(error)
@@ -39,7 +39,7 @@ export const updateChatMessage = async (req: Request, res: Response, next: NextF
 
 export const deleteChatMessage = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await chatMessageService.delete(Number(req.params.id))
+    await chatMessageService.delete(req.params.id)
     res.json({ status: "success", message: "Chat message deleted successfully" })
   } catch (error) {
     next(error)

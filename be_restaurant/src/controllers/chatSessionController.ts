@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllChatSessions = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await chatSessionService.findAllWithUser({
@@ -22,7 +22,7 @@ export const getAllChatSessions = async (req: Request, res: Response, next: Next
 
 export const getChatSessionById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await chatSessionService.findById(Number(req.params.id))
+    const session = await chatSessionService.findById(req.params.id)
     res.json({ status: "success", data: session })
   } catch (error) {
     next(error)
@@ -40,7 +40,7 @@ export const createChatSession = async (req: Request, res: Response, next: NextF
 
 export const updateChatSession = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await chatSessionService.update(Number(req.params.id), req.body)
+    const session = await chatSessionService.update(req.params.id, req.body)
     res.json({ status: "success", data: session })
   } catch (error) {
     next(error)
@@ -49,7 +49,7 @@ export const updateChatSession = async (req: Request, res: Response, next: NextF
 
 export const deleteChatSession = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await chatSessionService.delete(Number(req.params.id))
+    await chatSessionService.delete(req.params.id)
     res.json({ status: "success", message: "Chat session deleted successfully" })
   } catch (error) {
     next(error)
