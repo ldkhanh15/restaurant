@@ -14,7 +14,7 @@ class DishService extends BaseService<Dish> {
     })
   }
 
-  async findByIdWithCategory(id: number) {
+  async findByIdWithCategory(id: string) {
     return await this.findById(id, {
       include: [{ model: CategoryDish, as: "category" }],
     })

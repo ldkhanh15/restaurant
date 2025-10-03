@@ -1,10 +1,12 @@
 import type { Request, Response, NextFunction } from "express"
 import categoryDishService from "../services/categoryDishService"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
+import logger from "../config/logger"
+
 
 export const getAllCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'ASC' } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await categoryDishService.findAll({
