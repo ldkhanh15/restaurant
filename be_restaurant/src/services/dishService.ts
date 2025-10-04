@@ -7,14 +7,18 @@ class DishService extends BaseService<Dish> {
     super(Dish)
   }
 
-  async findAllWithCategory(options?: any) {
+  async findDishesByCategoryId(id: string, options?: any) {
     return await this.findAll({
       ...options,
+      where: {
+        category_id: id,
+        deleted_at: null,
+      },
       include: [{ model: CategoryDish, as: "category" }],
-    })
-  }
+  })
+}
 
-  async findByIdWithCategory(id: string) {
+  async findCategoryByDishId(id: string) {
     return await this.findById(id, {
       include: [{ model: CategoryDish, as: "category" }],
     })

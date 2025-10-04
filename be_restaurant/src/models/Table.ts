@@ -28,7 +28,7 @@ class Table extends Model<TableAttributes, TableCreationAttributes> implements T
   public book_minutes!: number
   public deposit!: number
   public cancel_minutes!: number
-  public location?: string
+  public location?: any
   public status!: "available" | "occupied" | "cleaning" | "reserved"
   public panorama_urls?: any
   public amenities?: any
@@ -48,7 +48,7 @@ Table.init(
     table_number: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      unique: true,
+      unique: 'table_number_unique',
     },
     capacity: {
       type: DataTypes.INTEGER,
@@ -67,7 +67,7 @@ Table.init(
       defaultValue: 0,
     },
     location: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.JSON,
       allowNull: true,
     },
     status: {

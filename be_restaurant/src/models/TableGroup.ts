@@ -42,7 +42,7 @@ TableGroup.init(
     group_name: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      unique: true,
+      unique: 'group_name_unique',
     },
     table_ids: {
       type: DataTypes.JSON,
