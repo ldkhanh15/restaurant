@@ -7,12 +7,20 @@ interface BlogPostAttributes {
   content: string
   images?: any
   author_id?: string
-  status: "draft" | "published"
+  slug?: string
+  thumbnail_url?: string
+  cover_image_url?: string
+  tags?: any
+  category?: string
+  status: "draft" | "published" | "deleted"
   published_at?: Date
+  meta_title?: string
+  meta_description?: string
+  keywords?: any
   created_at?: Date
 }
 
-interface BlogPostCreationAttributes extends Optional<BlogPostAttributes, "id" | "status"> {}
+interface BlogPostCreationAttributes extends Optional<BlogPostAttributes, "id" | "status"> { }
 
 class BlogPost extends Model<BlogPostAttributes, BlogPostCreationAttributes> implements BlogPostAttributes {
   public id!: string
@@ -20,8 +28,16 @@ class BlogPost extends Model<BlogPostAttributes, BlogPostCreationAttributes> imp
   public content!: string
   public images?: any
   public author_id?: string
-  public status!: "draft" | "published"
+  public slug?: string
+  public thumbnail_url?: string
+  public cover_image_url?: string
+  public tags?: any
+  public category?: string
+  public status!: "draft" | "published" | "deleted"
   public published_at?: Date
+  public meta_title?: string
+  public meta_description?: string
+  public keywords?: any
   public created_at?: Date
 }
 
@@ -44,6 +60,27 @@ BlogPost.init(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    slug: {
+      type: DataTypes.STRING(220),
+      allowNull: true,
+      unique: true,
+    },
+    thumbnail_url: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
+    cover_image_url: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
+    tags: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+    category: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     author_id: {
       type: DataTypes.UUID,
       allowNull: true,
@@ -54,11 +91,23 @@ BlogPost.init(
       onDelete: "SET NULL",
     },
     status: {
-      type: DataTypes.ENUM("draft", "published"),
+      type: DataTypes.ENUM("draft", "published", "deleted"),
       defaultValue: "draft",
     },
     published_at: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    meta_title: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+    },
+    meta_description: {
+      type: DataTypes.STRING(300),
+      allowNull: true,
+    },
+    keywords: {
+      type: DataTypes.JSON,
       allowNull: true,
     },
     created_at: {

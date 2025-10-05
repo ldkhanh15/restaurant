@@ -24,6 +24,7 @@ import payrollRoutes from "./routes/payrollRoutes"
 import complaintRoutes from "./routes/complaintRoutes"
 import notificationRoutes from "./routes/notificationRoutes"
 import blogPostRoutes from "./routes/blogPostRoutes"
+import paymentRoutes from "./routes/paymentRoutes"
 import chatSessionRoutes from "./routes/chatSessionRoutes"
 import chatMessageRoutes from "./routes/chatMessageRoutes"
 
@@ -70,6 +71,7 @@ app.use("/api/payroll", payrollRoutes)
 app.use("/api/complaints", complaintRoutes)
 app.use("/api/notifications", notificationRoutes)
 app.use("/api/blog", blogPostRoutes)
+app.use("/api/payments", paymentRoutes)
 app.use("/api/chat/sessions", chatSessionRoutes)
 app.use("/api/chat/messages", chatMessageRoutes)
 

@@ -14,4 +14,11 @@ router.post("/", authorize("admin"), tableController.createTable)
 router.put("/:id", authorize("admin", "employee"), tableController.updateTable)
 router.delete("/:id", authorize("admin"), tableController.deleteTable)
 
+// QR check-in to create dining order directly for table
+router.post(
+    "/:id/checkin",
+    authorize("customer", "employee", "admin"),
+    tableController.checkinTableCreateOrder,
+)
+
 export default router
