@@ -5,7 +5,6 @@ interface TableAttributes {
   id: string
   table_number: string
   capacity: number
-  book_minutes: number
   deposit: number
   cancel_minutes: number
   location?: string
@@ -19,13 +18,12 @@ interface TableAttributes {
 }
 
 interface TableCreationAttributes
-  extends Optional<TableAttributes, "id" | "book_minutes" | "deposit" | "cancel_minutes" | "status"> {}
+  extends Optional<TableAttributes, "id" | "deposit" | "cancel_minutes" | "status"> {}
 
 class Table extends Model<TableAttributes, TableCreationAttributes> implements TableAttributes {
   public id!: string
   public table_number!: string
   public capacity!: number
-  public book_minutes!: number
   public deposit!: number
   public cancel_minutes!: number
   public location?: any
@@ -53,10 +51,6 @@ Table.init(
     capacity: {
       type: DataTypes.INTEGER,
       allowNull: false,
-    },
-    book_minutes: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
     },
     deposit: {
       type: DataTypes.INTEGER,
