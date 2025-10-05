@@ -26,6 +26,9 @@ import notificationRoutes from "./routes/notificationRoutes"
 import blogPostRoutes from "./routes/blogPostRoutes"
 import chatSessionRoutes from "./routes/chatSessionRoutes"
 import chatMessageRoutes from "./routes/chatMessageRoutes"
+import menuAppUserRoutes from "./routes/menu_app_userRoutes"
+import tableAppUserRoutes from "./routes/table_app_userRoutes"
+import reservationAppUserRoutes from "./routes/reservation_app_userRoutes"
 
 // Import models to initialize associations
 import "./models/index"
@@ -72,6 +75,11 @@ app.use("/api/notifications", notificationRoutes)
 app.use("/api/blog", blogPostRoutes)
 app.use("/api/chat/sessions", chatSessionRoutes)
 app.use("/api/chat/messages", chatMessageRoutes)
+
+// App user lightweight endpoints (mobile app)
+app.use("/api/app_user/menu", menuAppUserRoutes)
+app.use("/api/app_user/tables", tableAppUserRoutes)
+app.use("/api/app_user/reservations", reservationAppUserRoutes)
 
 // Error handling
 app.use(notFoundHandler)
