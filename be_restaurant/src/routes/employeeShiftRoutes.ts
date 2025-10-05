@@ -4,12 +4,12 @@ import { authenticate, authorize } from "../middlewares/auth"
 
 const router = Router()
 
-router.use(authenticate)
+// router.use(authenticate)
 
-router.get("/", authorize("admin", "employee"), employeeShiftController.getAllShifts)
-router.get("/:id", authorize("admin", "employee"), employeeShiftController.getShiftById)
-router.post("/", authorize("admin"), employeeShiftController.createShift)
-router.put("/:id", authorize("admin"), employeeShiftController.updateShift)
-router.delete("/:id", authorize("admin"), employeeShiftController.deleteShift)
+router.get("/",  employeeShiftController.getAllShifts)
+router.get("/:id", employeeShiftController.getShiftById)
+router.post("/", employeeShiftController.createShift)
+router.put("/:id", employeeShiftController.updateShift)
+router.delete("/:id", employeeShiftController.deleteShift)
 
 export default router

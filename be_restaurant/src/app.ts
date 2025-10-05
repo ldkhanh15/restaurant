@@ -26,6 +26,7 @@ import notificationRoutes from "./routes/notificationRoutes"
 import blogPostRoutes from "./routes/blogPostRoutes"
 import chatSessionRoutes from "./routes/chatSessionRoutes"
 import chatMessageRoutes from "./routes/chatMessageRoutes"
+import userBehaviorRoutes from "./routes/userBehaviorRoutes"
 
 // Import models to initialize associations
 import "./models/index"
@@ -72,6 +73,7 @@ app.use("/api/notifications", notificationRoutes)
 app.use("/api/blog", blogPostRoutes)
 app.use("/api/chat/sessions", chatSessionRoutes)
 app.use("/api/chat/messages", chatMessageRoutes)
+app.use("/api/recommendations", userBehaviorRoutes)
 
 // Error handling
 app.use(notFoundHandler)

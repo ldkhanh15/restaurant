@@ -6,7 +6,7 @@ const router = Router()
 
 router.get("/", getAllDishes)
 router.get("/:id", getDishById)
-router.post("/", authenticate, authorize("admin", "employee"), createDish)
+router.post("/", createDish)
 router.put("/:id", authenticate, authorize("admin", "employee"), updateDish)
 router.delete("/:id", authenticate, authorize("admin"), deleteDish)
 
