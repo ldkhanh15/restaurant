@@ -29,6 +29,7 @@ import chatMessageRoutes from "./routes/chatMessageRoutes"
 
 // Import models to initialize associations
 import "./models/index"
+import inventoryRoutes from "./routes/inventoryRoutes"
 
 dotenv.config()
 
@@ -58,6 +59,7 @@ app.use("/api/orders", orderRoutes)
 app.use("/api/employees", employeeRoutes)
 app.use("/api/categories", categoryDishRoutes)
 app.use("/api/ingredients", ingredientRoutes)
+app.use("/api/inventories", inventoryRoutes)
 app.use("/api/suppliers", supplierRoutes)
 app.use("/api/tables", tableRoutes)
 app.use("/api/reservations", reservationRoutes)

@@ -44,8 +44,6 @@ class DishIngredientService extends BaseService<DishIngredient> {
     return { success: true };
   }
 
-
-
   async findAllWithDetails(id:string, options?: any) {
     return await this.findAll({
       ...options,

@@ -6,7 +6,6 @@ interface TableGroupAttributes {
   group_name: string
   table_ids: any
   total_capacity: number
-  book_minutes: number
   deposit: number
   cancel_minutes: number
   status: "available" | "occupied" | "cleaning" | "reserved"
@@ -16,14 +15,13 @@ interface TableGroupAttributes {
 }
 
 interface TableGroupCreationAttributes
-  extends Optional<TableGroupAttributes, "id" | "book_minutes" | "deposit" | "cancel_minutes" | "status"> {}
+  extends Optional<TableGroupAttributes, "id" | "deposit" | "cancel_minutes" | "status"> {}
 
 class TableGroup extends Model<TableGroupAttributes, TableGroupCreationAttributes> implements TableGroupAttributes {
   public id!: string
   public group_name!: string
   public table_ids!: any
   public total_capacity!: number
-  public book_minutes!: number
   public deposit!: number
   public cancel_minutes!: number
   public status!: "available" | "occupied" | "cleaning" | "reserved"
@@ -51,10 +49,6 @@ TableGroup.init(
     total_capacity: {
       type: DataTypes.INTEGER,
       allowNull: false,
-    },
-    book_minutes: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
     },
     deposit: {
       type: DataTypes.INTEGER,

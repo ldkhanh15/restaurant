@@ -11,6 +11,9 @@ router.post("/", tableController.createTable)
 router.put("/:id", tableController.updateTable)
 router.delete("/:id", tableController.deleteTable)
 
+router.post("/table-group", tableController.doGroupTables)
+router.put("/table-group/:id", tableController.doUpdateTableGroup)
+router.delete("/table-group/:id", tableController.ungroupTables)
 
 // router.use(authenticate)
 

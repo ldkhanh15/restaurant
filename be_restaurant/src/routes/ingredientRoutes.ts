@@ -11,6 +11,9 @@ router.get("/:id", ingredientController.getIngredientById)
 router.post("/", ingredientController.createIngredient)
 router.put("/:id",  ingredientController.updateIngredient)
 router.delete("/:id", ingredientController.deleteIngredient)
+
+
+
 // router.get("/", authorize("admin", "employee"), ingredientController.getAllIngredients)
 // router.get("/:id", authorize("admin", "employee"), ingredientController.getIngredientById)
 // router.post("/", authorize("admin"), ingredientController.createIngredient)

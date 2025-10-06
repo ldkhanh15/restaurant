@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from "express"
 import tableService from "../services/tableService"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
+import tableGroupService from "../services/tableGroupService"
+import { check } from "express-validator"
 
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -68,6 +70,45 @@ export const deleteTable = async (req: Request, res: Response, next: NextFunctio
   try {
     await tableService.delete(req.params.id)
     res.json({ status: "success", message: "Table deleted successfully" })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const doGroupTables = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if(!req.body.table_ids || req.body.table_ids.length < 2) {
+      return res.status(400).json({ status: "error", message: "At least two tables are required to form a group" })
+    }
+    if(await tableGroupService.checkExistedTablesInGroup(req.body.table_ids as [], req.body.id)) {
+      return res.status(400).json({ status: "error", message: "One or more tables are already in a group" })
+    }
+    const tableGroup = await tableGroupService.create(req.body)
+    res.status(201).json({ status: "success", data: tableGroup })
+  } catch (error) {
+    next(error)
+  } 
+}
+
+export const doUpdateTableGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if(!req.body.table_ids || req.body.table_ids.length < 2) {
+      return res.status(400).json({ status: "error", message: "At least two tables are required to form a group" })
+    }
+    if(await tableGroupService.checkExistedTablesInGroup(req.body.table_ids as [], req.params.id)) {
+      return res.status(400).json({ status: "error", message: "One or more tables are already in another group" })
+    }
+    const tableGroup = await tableGroupService.update(req.params.id, req.body)
+    res.json({ status: "success", data: tableGroup })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const ungroupTables = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await tableGroupService.delete(req.params.id)
+    res.json({ status: "success", message: "Table group deleted successfully" })
   } catch (error) {
     next(error)
   }
