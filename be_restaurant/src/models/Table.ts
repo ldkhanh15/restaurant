@@ -5,7 +5,6 @@ interface TableAttributes {
   id: string
   table_number: string
   capacity: number
-  book_minutes: number
   deposit: number
   cancel_minutes: number
   location?: string
@@ -19,16 +18,15 @@ interface TableAttributes {
 }
 
 interface TableCreationAttributes
-  extends Optional<TableAttributes, "id" | "book_minutes" | "deposit" | "cancel_minutes" | "status"> {}
+  extends Optional<TableAttributes, "id" | "deposit" | "cancel_minutes" | "status"> {}
 
 class Table extends Model<TableAttributes, TableCreationAttributes> implements TableAttributes {
   public id!: string
   public table_number!: string
   public capacity!: number
-  public book_minutes!: number
   public deposit!: number
   public cancel_minutes!: number
-  public location?: string
+  public location?: any
   public status!: "available" | "occupied" | "cleaning" | "reserved"
   public panorama_urls?: any
   public amenities?: any
@@ -48,15 +46,11 @@ Table.init(
     table_number: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      unique: true,
+      unique: 'table_number_unique',
     },
     capacity: {
       type: DataTypes.INTEGER,
       allowNull: false,
-    },
-    book_minutes: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
     },
     deposit: {
       type: DataTypes.INTEGER,
@@ -67,7 +61,7 @@ Table.init(
       defaultValue: 0,
     },
     location: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.JSON,
       allowNull: true,
     },
     status: {

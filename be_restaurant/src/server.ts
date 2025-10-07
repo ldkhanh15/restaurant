@@ -13,6 +13,7 @@ const startServer = async () => {
 
     // Sync database (use { force: true } to drop and recreate tables in development)
     // await sequelize.sync({ alter: true })
+    await sequelize.sync({ alter: true, logging: false })
     logger.info("Database synchronized")
 
     // Start server with Socket.IO
