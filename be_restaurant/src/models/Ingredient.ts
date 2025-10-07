@@ -48,12 +48,12 @@ Ingredient.init(
     barcode: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      unique: true,
+      unique: 'barcode_unique',
     },
     rfid: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      unique: true,
+      unique: 'rfid_unique',
     },
     min_stock_level: {
       type: DataTypes.DECIMAL(10, 2),

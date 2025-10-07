@@ -45,12 +45,12 @@ User.init(
     username: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      unique: true,
+      unique: 'unique_username',
     },
     email: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true,
+      unique: 'unique_email',
       validate: {
         isEmail: true,
       },

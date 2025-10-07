@@ -42,7 +42,7 @@ Voucher.init(
     code: {
       type: DataTypes.STRING(50),
       allowNull: false,
-      unique: true,
+      unique: 'code_unique',
     },
     discount_type: {
       type: DataTypes.ENUM("percentage", "fixed"),

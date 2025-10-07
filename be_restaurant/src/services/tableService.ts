@@ -1,14 +1,19 @@
 import { BaseService } from "./baseService"
 import Table from "../models/Table"
+import { stat } from "fs"
 
 class TableService extends BaseService<Table> {
   constructor() {
     super(Table)
   }
 
-  async findAvailableTables() {
-    return await this.model.findAll({
-      where: { status: "available" },
+  async findTablesByStatus(status:string, options?: any) {
+    return await this.findAll({
+      ...options,
+      where: { 
+        status: status,
+        deleted_at: null 
+      },
     })
   }
 }

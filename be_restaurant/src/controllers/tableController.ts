@@ -4,6 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 import Order from "../models/Order"
 import sequelize from "../config/database"
 
+
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
@@ -31,10 +32,18 @@ export const getTableById = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
-export const getAvailableTables = async (req: Request, res: Response, next: NextFunction) => {
+export const getTablesByStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const tables = await tableService.findAvailableTables()
-    res.json({ status: "success", data: tables })
+    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
+    const offset = (page - 1) * limit
+    const { rows, count } = await tableService.findTablesByStatus(req.params.status, {
+      limit,
+      offset,
+      order: [[sortBy, sortOrder]],
+    })
+
+    const result = buildPaginationResult(rows, count, page, limit)
+    res.json({ status: "success", data: result })
   } catch (error) {
     next(error)
   }
@@ -93,3 +102,4 @@ export const checkinTableCreateOrder = async (req: Request, res: Response, next:
     next(error)
   }
 }
+
