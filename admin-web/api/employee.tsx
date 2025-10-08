@@ -25,25 +25,12 @@ const employeeApi = {
     let url = `/employees?page=${page}&limit=${limit}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    interface EmployeeData {
-      items?: any[];
-      pagination?: {
-        totalPages: number;
-        totalItems: number;
-        page: number;
-        limit: number;
-      };
-      count?: number;
-    }
+    const response = await apiClient.get<ApiResponse<any>>(url);
 
-    const response = await apiClient.get<ApiResponse<EmployeeData | any[]>>(
-      url
-    );
-    console.log("Employee API Response:", response.data);
     return response.data;
   },
 
-  getEmployeeByI: async (id: string) => {
+  getEmployeeById: async (id: string) => {
     const response = await apiClient.get<ApiResponse<any>>(`/employees/${id}`);
     return response.data;
   },
@@ -70,36 +57,6 @@ const employeeApi = {
     );
     return response.data;
   },
-
-  // Employee Shifts
-  getEmployeeShifts: async (page: number = 1, limit: number = 10) => {
-    const response = await apiClient.get<ApiResponse<any[]>>(
-      `/shifts?page=${page}&limit=${limit}`
-    );
-    return response.data;
-  },
-
-  getEmployeeShift: async (id: string) => {
-    const response = await apiClient.get<ApiResponse<any>>(`/shifts/${id}`);
-    return response.data;
-  },
-
-  createEmployeeShift: async (shiftData: any) => {
-    const response = await apiClient.post<ApiResponse<any>>(
-      "/shifts",
-      shiftData
-    );
-    return response.data;
-  },
-
-  updateEmployeeShift: async (id: string, shiftData: any) => {
-    const response = await apiClient.put<ApiResponse<any>>(
-      `/shifts/${id}`,
-      shiftData
-    );
-    return response.data;
-  },
-
   deleteEmployeeShift: async (id: string) => {
     const response = await apiClient.delete<ApiResponse<any>>(`/shifts/${id}`);
     return response.data;
@@ -172,6 +129,14 @@ const employeeApi = {
 
   deletePayroll: async (id: string) => {
     const response = await apiClient.delete<ApiResponse<any>>(`/payroll/${id}`);
+    return response.data;
+  },
+
+  //get all users with role employee and not assigned to any employee
+  getAllUserUnassigned: async () => {
+    const response = await apiClient.get<ApiResponse<any[]>>(
+      `/users?role=employee&limit=1000&unassigned=true`
+    );
     return response.data;
   },
 };

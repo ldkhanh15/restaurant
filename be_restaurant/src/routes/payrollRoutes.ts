@@ -10,6 +10,6 @@ router.get("/", payrollController.getAllPayrolls)
 router.get("/:id", payrollController.getPayrollById)
 router.post("/", payrollController.createPayroll)
 router.put("/:id", payrollController.updatePayroll)
-router.delete("/:id", authorize("admin"), payrollController.deletePayroll)
+router.delete("/:id", payrollController.deletePayroll)
 
 export default router
