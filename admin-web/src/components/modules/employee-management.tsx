@@ -1,10 +1,10 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import employeeApi from "../../api/employee";
-import employeeShiftApi from "../../api/employee-shifts";
-import attendanceApi from "../../api/attendance";
+import employeeApi from "../../services/employeeService";
+import employeeShiftApi from "../../services/employeeShiftsService";
+import attendanceApi from "../../services/attendanceService";
+import payrollApi from "../../services/payrollService";
 import {
   Card,
   CardContent,
@@ -59,10 +59,6 @@ import {
 
 import { EMPLOYEE_POSITIONS } from "@/lib/constants";
 import { formatDateTimeVN } from "@/lib/utils";
-import attendance from "../../api/attendance";
-import { set } from "date-fns";
-import payrollApi from "@/api/payroll";
-import { is } from "date-fns/locale";
 
 interface User {
   id: number;
@@ -132,7 +128,6 @@ export function EmployeeManagement() {
 
   const [unassignedUsers, setUnassignedUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null
@@ -172,6 +167,18 @@ export function EmployeeManagement() {
   useEffect(() => {
     fetchEmployees();
   }, [currentPage]);
+
+  // useEffect(() => {
+  //   if (payrolls.length === 0) {
+  //     fetchPayrollRecords();
+  //   }
+  // }, [payrolls]);
+
+  // useEffect(() => {
+  //   if (shifts.length === 0) {
+  //     fetchEmployeeShifts();
+  //   }
+  // }, [shifts]);
 
   // CRUD employees
   const fetchEmployees = async () => {
@@ -516,6 +523,7 @@ export function EmployeeManagement() {
     try {
       const response = await attendanceApi.getAllAttendanceLogs();
       if (response && response.data) {
+        console.log("attendance call:", response.data.data);
         setAttendance(response.data.data);
       } else {
         setAttendance([]);
@@ -599,11 +607,14 @@ export function EmployeeManagement() {
     }
   };
 
+  console.log("payroll:", payrolls);
+
   //CRUD payroll
   const fetchPayrollRecords = async () => {
     try {
       const response = await payrollApi.getAllPayrollRecords();
       if (response && response.data) {
+        console.log("payroll call:", response.data.data);
         setPayrolls(response.data.data);
       } else {
         setPayrolls([]);
@@ -2053,7 +2064,7 @@ export function EmployeeManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payrolls.map((payroll) => (
+                  {payrolls?.map((payroll) => (
                     <TableRow key={payroll.id}>
                       <TableCell className="font-medium">
                         {payroll.id.slice(-4)}

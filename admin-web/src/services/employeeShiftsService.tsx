@@ -1,5 +1,4 @@
-import apiClient from "./client/api-client";
-import employeeApi from "./employee";
+import apiClient from "./apiClient";
 
 // Định nghĩa interface cho response
 interface ApiResponse<T> {

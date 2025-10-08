@@ -1,4 +1,4 @@
-import apiClient from "./client/api-client";
+import apiClient from "./apiClient";
 
 // Định nghĩa interface cho response
 interface ApiResponse<T> {
