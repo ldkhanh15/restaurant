@@ -7,19 +7,24 @@ interface OrderAttributes {
   reservation_id?: string
   table_id?: string
   table_group_id?: string
+  event_id?: string
   voucher_id?: string
-  status: "pending" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
+  status: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
   total_amount: number
+  voucher_discount_amount?: number
+  final_amount: number
+  event_fee?: number
+  deposit_amount?: number
   customizations?: any
   notes?: string
   payment_status: "pending" | "paid" | "failed"
-  payment_method?: "zalopay" | "momo" | "cash"
+  payment_method?: "zalopay" | "momo" | "cash" | "vnpay"
   created_at?: Date
   updated_at?: Date
   deleted_at?: Date | null
 }
 
-interface OrderCreationAttributes extends Optional<OrderAttributes, "id" | "status" | "payment_status"> {}
+interface OrderCreationAttributes extends Optional<OrderAttributes, "id" | "status" | "payment_status"> { }
 
 class Order extends Model<OrderAttributes, OrderCreationAttributes> implements OrderAttributes {
   public id!: string
@@ -27,13 +32,18 @@ class Order extends Model<OrderAttributes, OrderCreationAttributes> implements O
   public reservation_id?: string
   public table_id?: string
   public table_group_id?: string
+  public event_id?: string
   public voucher_id?: string
-  public status!: "pending" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
+  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
   public total_amount!: number
+  public voucher_discount_amount?: number
+  public final_amount!: number
+  public event_fee?: number
+  public deposit_amount?: number
   public customizations?: any
   public notes?: string
   public payment_status!: "pending" | "paid" | "failed"
-  public payment_method?: "zalopay" | "momo" | "cash"
+  public payment_method?: "zalopay" | "momo" | "cash" | "vnpay"
   public created_at?: Date
   public updated_at?: Date
   public deleted_at?: Date | null
@@ -82,6 +92,15 @@ Order.init(
       },
       onDelete: "SET NULL",
     },
+    event_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "events",
+        key: "id",
+      },
+      onDelete: "SET NULL",
+    },
     voucher_id: {
       type: DataTypes.UUID,
       allowNull: true,
@@ -92,12 +111,31 @@ Order.init(
       onDelete: "SET NULL",
     },
     status: {
-      type: DataTypes.ENUM("pending", "preparing", "ready", "delivered", "paid", "cancelled"),
+      type: DataTypes.ENUM("pending", "dining", "waiting_payment", "preparing", "ready", "delivered", "paid", "cancelled"),
       defaultValue: "pending",
     },
     total_amount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+    },
+    voucher_discount_amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    final_amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+    },
+    event_fee: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+    deposit_amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
     },
     customizations: {
       type: DataTypes.JSON,
@@ -112,7 +150,7 @@ Order.init(
       defaultValue: "pending",
     },
     payment_method: {
-      type: DataTypes.ENUM("zalopay", "momo", "cash"),
+      type: DataTypes.ENUM("zalopay", "momo", "cash", "vnpay"),
       allowNull: true,
     },
     created_at: {

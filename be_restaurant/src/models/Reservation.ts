@@ -10,9 +10,12 @@ interface ReservationAttributes {
   duration_minutes: number
   num_people: number
   preferences?: any
+  event_id?: string
+  event_fee?: number
   status: "pending" | "confirmed" | "cancelled" | "no_show"
   timeout_minutes: number
   confirmation_sent: boolean
+  deposit_amount?: number
   created_at?: Date
   updated_at?: Date
   deleted_at?: Date | null
@@ -22,7 +25,7 @@ interface ReservationCreationAttributes
   extends Optional<
     ReservationAttributes,
     "id" | "duration_minutes" | "status" | "timeout_minutes" | "confirmation_sent"
-  > {}
+  > { }
 
 class Reservation extends Model<ReservationAttributes, ReservationCreationAttributes> implements ReservationAttributes {
   public id!: string
@@ -33,9 +36,12 @@ class Reservation extends Model<ReservationAttributes, ReservationCreationAttrib
   public duration_minutes!: number
   public num_people!: number
   public preferences?: any
+  public event_id?: string
+  public event_fee?: number
   public status!: "pending" | "confirmed" | "cancelled" | "no_show"
   public timeout_minutes!: number
   public confirmation_sent!: boolean
+  public deposit_amount?: number
   public created_at?: Date
   public updated_at?: Date
   public deleted_at?: Date | null
@@ -91,6 +97,17 @@ Reservation.init(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    event_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: "events", key: "id" },
+      onDelete: "SET NULL",
+    },
+    event_fee: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
     status: {
       type: DataTypes.ENUM("pending", "confirmed", "cancelled", "no_show"),
       defaultValue: "pending",
@@ -102,6 +119,11 @@ Reservation.init(
     confirmation_sent: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+    deposit_amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
     },
     created_at: {
       type: DataTypes.DATE,

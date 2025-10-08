@@ -24,12 +24,14 @@ import payrollRoutes from "./routes/payrollRoutes"
 import complaintRoutes from "./routes/complaintRoutes"
 import notificationRoutes from "./routes/notificationRoutes"
 import blogPostRoutes from "./routes/blogPostRoutes"
+import paymentRoutes from "./routes/paymentRoutes"
 import chatSessionRoutes from "./routes/chatSessionRoutes"
 import chatMessageRoutes from "./routes/chatMessageRoutes"
 import userBehaviorRoutes from "./routes/userBehaviorRoutes"
 
 // Import models to initialize associations
 import "./models/index"
+import inventoryRoutes from "./routes/inventoryRoutes"
 
 dotenv.config()
 
@@ -59,6 +61,7 @@ app.use("/api/orders", orderRoutes)
 app.use("/api/employees", employeeRoutes)
 app.use("/api/categories", categoryDishRoutes)
 app.use("/api/ingredients", ingredientRoutes)
+app.use("/api/inventories", inventoryRoutes)
 app.use("/api/suppliers", supplierRoutes)
 app.use("/api/tables", tableRoutes)
 app.use("/api/reservations", reservationRoutes)
@@ -71,6 +74,7 @@ app.use("/api/payroll", payrollRoutes)
 app.use("/api/complaints", complaintRoutes)
 app.use("/api/notifications", notificationRoutes)
 app.use("/api/blog", blogPostRoutes)
+app.use("/api/payments", paymentRoutes)
 app.use("/api/chat/sessions", chatSessionRoutes)
 app.use("/api/chat/messages", chatMessageRoutes)
 app.use("/api/recommendations", userBehaviorRoutes)

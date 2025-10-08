@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express"
 import eventService from "../services/eventService"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
+import { AppConstants } from "../constants/AppConstants"
 
 export const getAllEvents = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -20,14 +21,6 @@ export const getAllEvents = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
-export const getUpcomingEvents = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const events = await eventService.findUpcomingEvents()
-    res.json({ status: "success", data: events })
-  } catch (error) {
-    next(error)
-  }
-}
 
 export const getEventById = async (req: Request, res: Response, next: NextFunction) => {
   try {

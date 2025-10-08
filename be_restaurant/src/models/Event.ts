@@ -8,12 +8,11 @@ interface EventAttributes {
   price?: number
   inclusions?: any
   decorations?: any
-  status: "planned" | "ongoing" | "completed"
   created_at?: Date
   deleted_at?: Date | null
 }
 
-interface EventCreationAttributes extends Optional<EventAttributes, "id" | "status"> {}
+interface EventCreationAttributes extends Optional<EventAttributes, "id"> {}
 
 class Event extends Model<EventAttributes, EventCreationAttributes> implements EventAttributes {
   public id!: string
@@ -22,7 +21,6 @@ class Event extends Model<EventAttributes, EventCreationAttributes> implements E
   public price?: number
   public inclusions?: any
   public decorations?: any
-  public status!: "planned" | "ongoing" | "completed"
   public created_at?: Date
   public deleted_at?: Date | null
 }
@@ -53,10 +51,6 @@ Event.init(
     decorations: {
       type: DataTypes.JSON,
       allowNull: true,
-    },
-    status: {
-      type: DataTypes.ENUM("planned", "ongoing", "completed"),
-      defaultValue: "planned",
     },
     created_at: {
       type: DataTypes.DATE,

@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllIngredients = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
+    const { page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'ASC' } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
     const { rows, count } = await ingredientService.findAll({
@@ -22,7 +22,7 @@ export const getAllIngredients = async (req: Request, res: Response, next: NextF
 
 export const getIngredientById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const ingredient = await ingredientService.findById(req.params.id)
+    const ingredient = await ingredientService.findById((req.params.id))
     res.json({ status: "success", data: ingredient })
   } catch (error) {
     next(error)

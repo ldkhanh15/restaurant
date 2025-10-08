@@ -6,10 +6,10 @@ class ChatMessageService extends BaseService<ChatMessage> {
     super(ChatMessage)
   }
 
-  async findBySession(sessionId: number) {
+  async findBySession(sessionId: string) {
     return await this.model.findAll({
       where: { session_id: sessionId },
-      order: [["createdAt", "ASC"]],
+      order: [["timestamp", "ASC"]],
     })
   }
 }

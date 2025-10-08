@@ -106,8 +106,20 @@ Review.belongsTo(Order, { foreignKey: "order_id", as: "order" })
 Dish.hasMany(Review, { foreignKey: "dish_id", as: "reviews" })
 Review.belongsTo(Dish, { foreignKey: "dish_id", as: "dish" })
 
+OrderItem.hasMany(Review, { foreignKey: "order_item_id", as: "itemReviews" })
+Review.belongsTo(OrderItem, { foreignKey: "order_item_id", as: "orderItem" })
+
+Table.hasMany(Review, { foreignKey: "table_id", as: "reviews" })
+Review.belongsTo(Table, { foreignKey: "table_id", as: "table" })
+
 User.hasMany(Complaint, { foreignKey: "user_id", as: "complaints" })
 Complaint.belongsTo(User, { foreignKey: "user_id", as: "user" })
+
+Order.hasMany(Complaint, { foreignKey: "order_id", as: "complaints" })
+Complaint.belongsTo(Order, { foreignKey: "order_id", as: "order" })
+
+OrderItem.hasMany(Complaint, { foreignKey: "order_item_id", as: "complaints" })
+Complaint.belongsTo(OrderItem, { foreignKey: "order_item_id", as: "orderItem" })
 
 Event.hasMany(EventBooking, { foreignKey: "event_id", as: "bookings" })
 EventBooking.belongsTo(Event, { foreignKey: "event_id", as: "event" })
