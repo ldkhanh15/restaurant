@@ -17,7 +17,10 @@ import {
     Star,
     Ticket,
     BarChart3,
+    CalendarCheck,
+    CircleUserRound,
     Instagram as Restaurant,
+    UtensilsCrossed,
 } from "lucide-react"
 
 const modules = [
@@ -28,11 +31,13 @@ const modules = [
     { id: "reservations", label: "Đặt bàn", icon: Calendar },
     { id: "inventory", label: "Kho hàng", icon: Package },
     { id: "employees", label: "Nhân viên", icon: UserCheck },
+    { id: "event", label: "Sự kiện", icon: CalendarCheck },
     { id: "blog", label: "Blog", icon: FileText },
     { id: "chat", label: "Chat", icon: MessageCircle },
     { id: "notifications", label: "Thông báo", icon: Bell },
     { id: "reviews", label: "Đánh giá", icon: Star },
     { id: "voucher-management", label: "Voucher", icon: Ticket },
+    { id: "supplier", label: "Nhà cung cấp", icon: CircleUserRound },
 ]
 
 export function Sidebar() {
@@ -42,7 +47,7 @@ export function Sidebar() {
         <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
             <div className="p-6 border-b border-sidebar-border">
                 <div className="flex items-center gap-2">
-                    <Restaurant className="h-8 w-8 text-primary" />
+                    <UtensilsCrossed className="h-8 w-8 text-primary" />
                     <div>
                         <h1 className="text-xl font-bold text-sidebar-foreground">HIWELL</h1>
                         <p className="text-sm text-muted-foreground">Quản lý nhà hàng</p>

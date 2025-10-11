@@ -51,13 +51,15 @@ interface Category {
   name: string
   description: string
   active: boolean
+  created_at:string
+  updated_at:string
 }
 
 const mockCategories: Category[] = [
-  { id: 1, name: "Khai vị", description: "Các món khai vị truyền thống", active: true },
-  { id: 2, name: "Món chính", description: "Các món ăn chính", active: true },
-  { id: 3, name: "Tráng miệng", description: "Các món tráng miệng", active: true },
-  { id: 4, name: "Đồ uống", description: "Nước uống và cocktail", active: true },
+  { id: 1, name: "Khai vị", description: "Các món khai vị truyền thống", active: true ,created_at: "2024-01-01", updated_at: "2024-01-01"},
+  { id: 2, name: "Món chính", description: "Các món ăn chính", active: false ,created_at: "2024-01-01", updated_at: "2024-01-01"},
+  { id: 3, name: "Tráng miệng", description: "Các món tráng miệng", active: true , created_at: "2024-01-01", updated_at: "2024-01-01"},
+  { id: 4, name: "Đồ uống", description: "Nước uống và cocktail", active: true, created_at: "2024-01-01", updated_at: "2024-01-01" },
 ]
 
 const mockDishes: Dish[] = [
@@ -140,9 +142,29 @@ export function MenuManagement() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [showInactive, setShowInactive] = useState(false)
   const [selectedDish, setSelectedDish] = useState<Dish | null>(null)
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+
+  const [categorySearchTerm, setCategorySearchTerm] = useState("")
+  const [showInactiveCategories, setShowInactiveCategories] = useState(false)
+  const [isCreateCategoryDialogOpen, setIsCreateCategoryDialogOpen] = useState(false)
+
+  const filteredCategories = categories.filter((cat) => {
+    const matchSearch = cat.name.toLowerCase().includes(categorySearchTerm.toLowerCase())
+    const matchStatus = showInactiveCategories ? true : cat.active
+    return matchSearch && matchStatus
+  })
+
+  const handleEditCategory = (cat:any) => {
+    console.log("Edit", cat)
+  }
+
+  const handleDeleteCategory = (id:string) => {
+    console.log("Delete", id)
+  }
+
 
   const filteredDishes = dishes.filter((dish) => {
     const matchesSearch =
@@ -180,7 +202,6 @@ export function MenuManagement() {
         </TabsList>
 
         <TabsContent value="dishes" className="space-y-6">
-          {/* Header Actions */}
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
               <div className="relative flex-1 max-w-sm">
@@ -388,48 +409,119 @@ export function MenuManagement() {
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-medium">Danh mục món ăn</h3>
-              <p className="text-sm text-muted-foreground">Quản lý các danh mục trong thực đơn</p>
-            </div>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Thêm danh mục
-            </Button>
-          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-4 justify-between">
+            <div className="flex flex-col sm:flex-row gap-4 flex-1">
+              {/* Search input */}
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Tìm kiếm danh mục..."
+                  value={categorySearchTerm}
+                  onChange={(e) => setCategorySearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categories.map((category) => (
-              <Card key={category.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg">{category.name}</CardTitle>
-                    <Badge variant={category.active ? "secondary" : "outline"}>
-                      {category.active ? "Hoạt động" : "Tạm dừng"}
-                    </Badge>
-                  </div>
-                  <CardDescription>{category.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-muted-foreground">
-                      {dishes.filter((d) => d.category_id === category.id && d.active).length} món ăn
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              <Button
+                variant={showInactiveCategories ? "default" : "outline"}
+                onClick={() => setShowInactiveCategories(!showInactiveCategories)}
+              >
+                {showInactiveCategories ? "Ẩn không hoạt động" : "Hiện không hoạt động"}
+              </Button>
+            </div>
+
+            <Dialog open={isCreateCategoryDialogOpen} onOpenChange={setIsCreateCategoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Thêm danh mục
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Thêm danh mục món ăn mới</DialogTitle>
+                  <DialogDescription>Tạo danh mục mới cho thực đơn</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="category-name">Tên danh mục</Label>
+                      <Input id="category-name" placeholder="Nhập tên danh mục" />
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <div className="grid gap-2">
+                    <Label htmlFor="category-description">Mô tả</Label>
+                    <Textarea id="category-description" placeholder="Mô tả danh mục" />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="active-category" defaultChecked />
+                    <Label htmlFor="active-category">Hoạt động</Label>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit">Tạo danh mục</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
+
+          {/* Categories Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Danh sách danh mục</CardTitle>
+              <CardDescription>
+                Quản lý danh mục món ăn ({filteredCategories.length} danh mục)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tên danh mục</TableHead>
+                    <TableHead>Mô tả</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead>Số món ăn</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCategories.map((category) => (
+                    <TableRow key={category.id} className={!category.active ? "opacity-50" : ""}>
+                      <TableCell>
+                        <p className="font-medium">{category.name}</p>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground line-clamp-1">
+                        {category.description}
+                      </TableCell>
+                      <TableCell>
+                        {category.active ? (
+                          <Badge variant="secondary">Hoạt động</Badge>
+                        ) : (
+                          <Badge variant="outline">Tạm dừng</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {dishes.filter((d) => d.category_id === category.id && d.active).length} món ăn
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteCategory(category.id.toString())}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
+
       </Tabs>
 
       {/* View Dish Dialog */}
