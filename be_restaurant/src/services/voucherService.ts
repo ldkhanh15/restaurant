@@ -10,11 +10,10 @@ class VoucherService extends BaseService<Voucher> {
     const now = new Date()
     return await this.model.findAll({
       where: {
-        isActive: true,
-        startDate: { $lte: now },
-        endDate: { $gte: now },
+        active: true,
+        expiry_date: { $gte: now }
       },
-    })
+    });
   }
 }
 

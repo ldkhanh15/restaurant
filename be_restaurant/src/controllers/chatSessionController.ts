@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express"
 import chatSessionService from "../services/chatSessionService"
+import { AppError } from "../middlewares/errorHandler"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllChatSessions = async (req: Request, res: Response, next: NextFunction) => {
@@ -31,7 +32,15 @@ export const getChatSessionById = async (req: Request, res: Response, next: Next
 
 export const createChatSession = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await chatSessionService.create(req.body)
+    const payload: any = { ...req.body }
+    if (req.user) {
+      payload.user_id = req.user.id
+      payload.is_authenticated = true
+    }
+    if (!payload.name && req.headers["x-device-id"]) {
+      payload.name = String(req.headers["x-device-id"]) || undefined
+    }
+    const session = await chatSessionService.create(payload)
     res.status(201).json({ status: "success", data: session })
   } catch (error) {
     next(error)

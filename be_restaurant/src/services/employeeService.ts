@@ -14,7 +14,7 @@ class EmployeeService extends BaseService<Employee> {
     })
   }
 
-  async findByIdWithUser(id: number) {
+  async findByIdWithUser(id: string) {
     return await this.findById(id, {
       include: [{ model: User, as: "user" }],
     })

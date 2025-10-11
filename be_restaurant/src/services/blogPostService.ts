@@ -9,7 +9,7 @@ class BlogPostService extends BaseService<BlogPost> {
   async findPublishedPosts() {
     return await this.model.findAll({
       where: { status: "published" },
-      order: [["publishedAt", "DESC"]],
+      order: [["published_at", "DESC"]],
     })
   }
 }

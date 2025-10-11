@@ -1,5 +1,16 @@
 import type { Request, Response, NextFunction } from "express"
 import blogPostService from "../services/blogPostService"
+// local slugify to avoid external dep
+const localSlugify = (input: string) =>
+  String(input)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}+/gu, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+import { AppError } from "../middlewares/errorHandler"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllBlogPosts = async (req: Request, res: Response, next: NextFunction) => {
@@ -40,7 +51,12 @@ export const getBlogPostById = async (req: Request, res: Response, next: NextFun
 
 export const createBlogPost = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const post = await blogPostService.create(req.body)
+    const body = { ...req.body }
+    if (!body.slug && body.title) {
+      body.slug = localSlugify(String(body.title))
+    }
+    body.author_id = req.user?.id
+    const post = await blogPostService.create(body)
     res.status(201).json({ status: "success", data: post })
   } catch (error) {
     next(error)
@@ -49,7 +65,11 @@ export const createBlogPost = async (req: Request, res: Response, next: NextFunc
 
 export const updateBlogPost = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const post = await blogPostService.update(req.params.id, req.body)
+    const body = { ...req.body }
+    if (body.title && !body.slug) {
+      body.slug = localSlugify(String(body.title))
+    }
+    const post = await blogPostService.update(req.params.id, body)
     res.json({ status: "success", data: post })
   } catch (error) {
     next(error)

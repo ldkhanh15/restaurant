@@ -4,8 +4,9 @@ import sequelize from "../config/database"
 interface UserBehaviorLogAttributes {
   id: string
   user_id?: string
+  item_id?: string
   action_type?: string
-  details?: any
+  search_query?: string
   timestamp?: Date
 }
 
@@ -17,8 +18,9 @@ class UserBehaviorLog
 {
   public id!: string
   public user_id?: string
+  public item_id?: string
   public action_type?: string
-  public details?: any
+  public search_query?: string
   public timestamp?: Date
 }
 
@@ -38,12 +40,16 @@ UserBehaviorLog.init(
       },
       onDelete: "CASCADE",
     },
+    item_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     action_type: {
       type: DataTypes.STRING(50),
       allowNull: true,
     },
-    details: {
-      type: DataTypes.JSON,
+    search_query: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
     timestamp: {

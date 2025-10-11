@@ -1,80 +1,114 @@
-import type { Request, Response, NextFunction } from "express"
-import userService from "../services/user_app_userService"
-import { AppError } from "../middlewares/errorHandler"
-import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
+import type { Request, Response, NextFunction } from "express";
+import User from "../models/User";
+import { AppError } from "../middlewares/errorHandler";
+import {
+  getPaginationParams,
+  buildPaginationResult,
+} from "../utils/pagination";
+import { Op, Sequelize } from "sequelize";
 
-export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
+export const getAllUsers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+   try {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "created_at",
+      sortOrder = "DESC",
+    } = getPaginationParams(req.query);
 
+    const { role } = req.query as { role?: string };
+    const { unassigned } = req.query as { unassigned?: string };
     const offset = (page - 1) * limit;
 
-    const { count, rows } = await userService.findAllUsers({
+    // Xây dựng điều kiện where
+    const whereClause: any = {};
+    if (role) {
+      whereClause.role = role;
+    }
+
+    // Nếu có unassigned=true → lấy user chưa có trong bảng employees
+    if (unassigned === "true") {
+      whereClause.id = {
+        [Op.notIn]: Sequelize.literal("(SELECT user_id FROM employees WHERE user_id IS NOT NULL)"),
+      };
+    }
+
+    const { count, rows } = await User.findAndCountAll({
+      where: whereClause,
       limit,
       offset,
       order: [[sortBy, sortOrder]],
-    })
+      // attributes: { exclude: ["password_hash"] },
+    });
 
-    const result = buildPaginationResult(rows, count, page, limit)
-    res.json({ status: "success", data: result })
+    const result = buildPaginationResult(rows, count, page, limit);
+    res.json({ status: "success", data: result });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
-export const getUserById = async (req: Request, res: Response, next: NextFunction) => {
+export const getUserById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     // Sử dụng findById, phương thức này cũng hỗ trợ options
     const user = await userService.findById(req.params.id, {
       attributes: { exclude: ["password_hash"] },
-    })
+    });
 
     if (!user) {
-      throw new AppError("User not found", 404)
+      throw new AppError("User not found", 404);
     }
 
-    res.json({ status: "success", data: user })
+    res.json({ status: "success", data: user });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
-export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
+export const updateUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const user = await userService.findById(req.params.id)
+    const user = await User.findByPk(req.params.id);
 
     if (!user) {
-      throw new AppError("User not found", 404)
+      throw new AppError("User not found", 404);
     }
 
-    // Security check: only admin or the user themselves can update
-    if (req.user?.role !== "admin" && String(user.id) !== String(req.user?.id)) {
-      throw new AppError("Forbidden: You can only update your own profile.", 403)
-    }
+    await user.update(req.body);
 
-    const updatedUser = await userService.update(req.params.id, req.body)
-
-    // Exclude password hash from the response
-    if (updatedUser) (updatedUser as any).password_hash = undefined
-
-    res.json({ status: "success", data: updatedUser })
+    res.json({ status: "success", data: user });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
-export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const user = await userService.findById(req.params.id)
+    const user = await User.findByPk(req.params.id);
 
     if (!user) {
-      throw new AppError("User not found", 404)
+      throw new AppError("User not found", 404);
     }
 
-    await userService.delete(req.params.id)
+    await user.destroy();
 
-    res.json({ status: "success", message: "User deleted successfully" })
+    res.json({ status: "success", message: "User deleted successfully" });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};

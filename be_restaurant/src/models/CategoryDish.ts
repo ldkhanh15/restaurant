@@ -4,6 +4,8 @@ import sequelize from "../config/database"
 interface CategoryDishAttributes {
   id: string
   name: string
+  description:string
+  is_active?: boolean
   created_at?: Date
   updated_at?: Date
 }
@@ -16,6 +18,8 @@ class CategoryDish
 {
   public id!: string
   public name!: string
+  public description!: string
+  public is_active?: boolean
   public created_at?: Date
   public updated_at?: Date
 }
@@ -30,6 +34,14 @@ CategoryDish.init(
     name: {
       type: DataTypes.STRING(100),
       allowNull: false,
+    },
+    description: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
     },
     created_at: {
       type: DataTypes.DATE,

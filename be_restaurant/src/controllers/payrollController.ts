@@ -10,7 +10,7 @@ export const getAllPayrolls = async (req: Request, res: Response, next: NextFunc
     const { rows, count } = await payrollService.findAllWithEmployee({
       limit,
       offset,
-      order: [[sortBy, sortOrder]],
+      // order: [[sortBy, sortOrder]],
     })
 
     const result = buildPaginationResult(rows, count, page, limit)
