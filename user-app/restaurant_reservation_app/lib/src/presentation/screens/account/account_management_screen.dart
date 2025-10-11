@@ -43,6 +43,8 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
         return 'Đã tạo';
       case OrderStatus.sentToKitchen:
         return 'Đã gửi bếp';
+      case OrderStatus.paid:
+        return 'Đã thanh toán';
       case OrderStatus.completed:
         return 'Hoàn thành';
       case OrderStatus.cancelled:
@@ -56,6 +58,8 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
         return Colors.blue;
       case OrderStatus.sentToKitchen:
         return Colors.orange;
+      case OrderStatus.paid:
+        return Colors.purple;
       case OrderStatus.completed:
         return Colors.green;
       case OrderStatus.cancelled:

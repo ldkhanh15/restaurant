@@ -25,7 +25,7 @@ class MenuCategory {
 }
 
 class MenuItem {
-  final int id;
+  final String id;
   final String name;
   final String description;
   final double price;
@@ -46,7 +46,7 @@ class MenuItem {
   });
 
   factory MenuItem.fromJson(Map<String, dynamic> json) => MenuItem(
-        id: json['id'] as int,
+        id: json['id'].toString(),
         name: json['name'] as String,
         description: json['description'] as String,
         price: (json['price'] as num).toDouble(),
@@ -68,7 +68,7 @@ class MenuItem {
       };
 
   MenuItem copyWith({
-    int? id,
+    String? id,
     String? name,
     String? description,
     double? price,
@@ -91,7 +91,7 @@ class MenuItem {
 }
 
 class CartItem {
-  final int id;
+  final String id;
   final String name;
   final double price;
   final int quantity;
@@ -110,7 +110,7 @@ class CartItem {
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) => CartItem(
-        id: json['id'] as int,
+        id: json['id'].toString(),
         name: json['name'] as String,
         price: (json['price'] as num).toDouble(),
         quantity: json['quantity'] as int,
@@ -133,7 +133,7 @@ class CartItem {
       };
 
   CartItem copyWith({
-    int? id,
+    String? id,
     String? name,
     double? price,
     int? quantity,
@@ -154,5 +154,3 @@ class CartItem {
 
   double get totalPrice => price * quantity;
 }
-
-

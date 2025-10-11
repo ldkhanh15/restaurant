@@ -12,81 +12,85 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   String selectedTab = 'all';
-
-
-  String _getNotificationTypeName(NotificationType type) {
-    switch (type) {
-      case NotificationType.booking:
-        return 'Đặt bàn';
-      case NotificationType.reminder:
-        return 'Nhắc nhở';
-      case NotificationType.voucher:
-        return 'Voucher';
-      case NotificationType.event:
-        return 'Sự kiện';
-      case NotificationType.general:
-        return 'Chung';
-    }
+  
+  @override
+  void initState() {
+    super.initState();
+    // Fetch latest notifications when the screen is first displayed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshNotifications();
+    });
   }
+
+
+
 
   IconData _getNotificationTypeIcon(NotificationType type) {
     switch (type) {
-      case NotificationType.booking:
+      case NotificationType.low_stock:
+        return Icons.inventory;
+      case NotificationType.reservation_confirm:
         return Icons.table_restaurant;
-      case NotificationType.reminder:
-        return Icons.schedule;
-      case NotificationType.voucher:
+      case NotificationType.promotion:
         return Icons.local_offer;
-      case NotificationType.event:
-        return Icons.event;
-      case NotificationType.general:
+      case NotificationType.other:
         return Icons.notifications;
     }
   }
 
   Color _getNotificationTypeColor(NotificationType type) {
     switch (type) {
-      case NotificationType.booking:
+      case NotificationType.low_stock:
+        return Colors.brown;
+      case NotificationType.reservation_confirm:
         return Colors.blue;
-      case NotificationType.reminder:
-        return Colors.orange;
-      case NotificationType.voucher:
+      case NotificationType.promotion:
         return Colors.green;
-      case NotificationType.event:
-        return Colors.purple;
-      case NotificationType.general:
+      case NotificationType.other:
         return Colors.grey;
     }
   }
 
-  String _getPriorityText(NotificationPriority priority) {
-    switch (priority) {
-      case NotificationPriority.high:
-        return 'Cao';
-      case NotificationPriority.medium:
-        return 'Trung bình';
-      case NotificationPriority.low:
-        return 'Thấp';
-    }
-  }
-
-  Color _getPriorityColor(NotificationPriority priority) {
-    switch (priority) {
-      case NotificationPriority.high:
-        return Colors.red;
-      case NotificationPriority.medium:
-        return Colors.orange;
-      case NotificationPriority.low:
-        return Colors.green;
+  String _getTypeLabel(NotificationType type) {
+    switch (type) {
+      case NotificationType.low_stock:
+        return 'Hàng sắp hết';
+      case NotificationType.reservation_confirm:
+        return 'Đặt bàn';
+      case NotificationType.promotion:
+        return 'Khuyến mãi';
+      case NotificationType.other:
+        return 'Thông báo';
     }
   }
 
   void _markAsRead(String notificationId) {
-    ref.read(notificationsProvider.notifier).markAsRead(notificationId);
+    // Attempt remote mark-as-read, but always update local UI state optimistically.
+    () async {
+      try {
+        final repo = ref.read(notificationRepositoryProvider);
+        await repo.markAsRead(notificationId);
+      } catch (_) {
+        // ignore remote failure; we still mark locally for UX
+      }
+      ref.read(notificationsProvider.notifier).markAsRead(notificationId);
+    }();
   }
 
   void _markAllAsRead() {
+    // Mark all locally (backend currently may not support bulk markAll)
     ref.read(notificationsProvider.notifier).markAllAsRead();
+  }
+
+  Future<void> _refreshNotifications() async {
+    try {
+      final repo = ref.read(notificationRepositoryProvider);
+      final raw = await repo.getNotifications();
+      ref.read(notificationsProvider.notifier).setNotifications(raw);
+    } catch (e) {
+      // ignore: avoid_print
+      print('Failed to refresh notifications: $e');
+    }
   }
 
   void _deleteNotification(String notificationId) {
@@ -108,13 +112,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         case 'unread':
           return !notification.isRead;
         case 'booking':
-          return notification.type == NotificationType.booking;
+          return notification.type == NotificationType.reservation_confirm;
         case 'reminder':
-          return notification.type == NotificationType.reminder;
+          return notification.type == NotificationType.reservation_confirm;
         case 'voucher':
-          return notification.type == NotificationType.voucher;
+          return notification.type == NotificationType.promotion;
         case 'event':
-          return notification.type == NotificationType.event;
+          return notification.type == NotificationType.other;
         default:
           return true;
       }
@@ -262,13 +266,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredNotifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = filteredNotifications[index];
-                      return _buildNotificationCard(notification);
-                    },
+                : RefreshIndicator(
+                    onRefresh: _refreshNotifications,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredNotifications.length,
+                      itemBuilder: (context, index) {
+                        final notification = filteredNotifications[index];
+                        return _buildNotificationCard(notification);
+                      },
+                    ),
                   ),
           ),
           ],
@@ -298,11 +305,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           children: [
             Expanded(
               child: Text(
-                notification.title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
+                  _getTypeLabel(notification.type),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
+                  ),
                 ),
-              ),
             ),
             if (!notification.isRead)
               Container(
@@ -320,14 +327,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           children: [
             const SizedBox(height: 4),
             Text(
-              notification.message,
+              notification.content,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Text(
-                  '${notification.timestamp.day}/${notification.timestamp.month}/${notification.timestamp.year} ${notification.timestamp.hour}:${notification.timestamp.minute.toString().padLeft(2, '0')}',
+                  notification.sentAt != null
+                      ? '${notification.sentAt!.day}/${notification.sentAt!.month}/${notification.sentAt!.year} ${notification.sentAt!.hour}:${notification.sentAt!.minute.toString().padLeft(2, '0')}'
+                      : '-',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -336,17 +345,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: _getPriorityColor(notification.priority).withOpacity(0.1),
+                    color: _getNotificationTypeColor(notification.type).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _getPriorityColor(notification.priority),
+                      color: _getNotificationTypeColor(notification.type),
                       width: 1,
                     ),
                   ),
                   child: Text(
-                    _getPriorityText(notification.priority),
+                    _getTypeLabel(notification.type),
                     style: TextStyle(
-                      color: _getPriorityColor(notification.priority),
+                      color: _getNotificationTypeColor(notification.type),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),

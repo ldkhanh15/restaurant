@@ -41,7 +41,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (ApiConfig.baseUrl.isEmpty) {
         // Mock: create a local AppUser from inputs (id mocked)
         final mockUser = AppUser(
-          id: DateTime.now().millisecondsSinceEpoch,
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: _fullName.text.isEmpty ? _username.text : _fullName.text,
           email: _email.text.trim(),
           loyaltyPoints: 0,

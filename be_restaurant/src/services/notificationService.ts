@@ -14,7 +14,7 @@ class NotificationService extends BaseService<Notification> {
     })
   }
 
-  async findUnreadByUser(userId: number) {
+  async findUnreadByUser(userId: string) {
     return await this.model.findAll({
       where: { userId, isRead: false },
       order: [["createdAt", "DESC"]],

@@ -5,7 +5,6 @@ import '../screens/home/home_screen.dart';
 import '../screens/table_booking_screen.dart';
 import '../screens/menu/menu_screen.dart';
 import '../screens/account/account_management_screen.dart';
-import '../screens/notifications/notifications_screen.dart';
 import '../screens/loyalty/loyalty_program_screen.dart';
 import '../widgets/ai_chat_widget.dart';
 

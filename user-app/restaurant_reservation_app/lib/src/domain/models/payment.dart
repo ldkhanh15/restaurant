@@ -35,7 +35,7 @@ class PaymentMethod {
 
 class Payment {
   final String id;
-  final int orderId;
+  final String orderId;
   final PaymentMethodType method;
   final double amount;
   final double serviceCharge;
@@ -62,7 +62,7 @@ class Payment {
 
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
         id: json['id'] as String,
-        orderId: json['orderId'] as int,
+        orderId: json['orderId'].toString(),
         method: PaymentMethodType.values.firstWhere((e) => e.name == json['method']),
         amount: (json['amount'] as num).toDouble(),
         serviceCharge: (json['serviceCharge'] as num).toDouble(),

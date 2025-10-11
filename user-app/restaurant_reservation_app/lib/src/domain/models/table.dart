@@ -2,7 +2,7 @@ enum TableStatus { available, reserved, occupied }
 enum TableType { regular, vip, couple, group }
 
 class DiningTable {
-  final int id;
+  final String id; // Should be String for UUIDs
   final String name;
   final int capacity;
   final String location;
@@ -31,7 +31,7 @@ class DiningTable {
   });
 
   factory DiningTable.fromJson(Map<String, dynamic> json) => DiningTable(
-        id: json['id'] as int,
+        id: json['id']?.toString() ?? '',
         name: json['name'] as String,
         capacity: json['capacity'] as int,
         location: json['location'] as String,
@@ -61,7 +61,7 @@ class DiningTable {
       };
 
   DiningTable copyWith({
-    int? id,
+    String? id,
     String? name,
     int? capacity,
     String? location,
@@ -90,5 +90,3 @@ class DiningTable {
     );
   }
 }
-
-

@@ -136,7 +136,7 @@ class CartBottomSheet extends ConsumerWidget {
                             icon: const Icon(Icons.add),
                           ),
                           IconButton(
-                            onPressed: () => ref.read(cartItemsProvider.notifier).removeItem(item.id),
+                            onPressed: () => ref.read(cartItemsProvider.notifier).removeItem(int.parse(item.id)),
                             icon: const Icon(Icons.delete, color: Colors.red),
                           ),
                         ],

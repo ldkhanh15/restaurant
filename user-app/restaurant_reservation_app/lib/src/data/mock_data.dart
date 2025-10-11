@@ -14,7 +14,7 @@ class MockData {
   // Mock Tables
   static final List<DiningTable> tables = [
     DiningTable(
-      id: 1,
+      id: '1',
       name: "Bàn VIP 1",
       capacity: 8,
       location: "Tầng 2 - Khu VIP",
@@ -28,7 +28,7 @@ class MockData {
       height: 60,
     ),
     DiningTable(
-      id: 2,
+      id: '2',
       name: "Bàn tròn T1",
       capacity: 6,
       location: "Tầng 1 - Khu chính",
@@ -42,7 +42,7 @@ class MockData {
       height: 60,
     ),
     DiningTable(
-      id: 3,
+      id: '3',
       name: "Bàn đôi D2",
       capacity: 2,
       location: "Tầng 1 - Khu lãng mạn",
@@ -56,7 +56,7 @@ class MockData {
       height: 50,
     ),
     DiningTable(
-      id: 4,
+      id: '4',
       name: "Bàn gia đình F1",
       capacity: 10,
       location: "Tầng 2 - Khu gia đình",
@@ -78,7 +78,7 @@ class MockData {
       name: "Khai vị",
       items: [
         MenuItem(
-          id: 1,
+          id: '1',
           name: "Gỏi cuốn tôm",
           description: "Bánh tráng cuốn tôm tươi, rau thơm, ăn kèm nước chấm đặc biệt",
           price: 45000,
@@ -88,7 +88,7 @@ class MockData {
           categoryId: "appetizers",
         ),
         MenuItem(
-          id: 2,
+          id: '2',
           name: "Nem nướng",
           description: "Nem nướng thơm ngon, ăn kèm bánh tráng và rau sống",
           price: 55000,
@@ -104,7 +104,7 @@ class MockData {
       name: "Món chính",
       items: [
         MenuItem(
-          id: 3,
+          id: '3',
           name: "Phở bò",
           description: "Phở bò truyền thống với nước dầm trong, thịt bò tươi",
           price: 80000,
@@ -114,7 +114,7 @@ class MockData {
           categoryId: "main",
         ),
         MenuItem(
-          id: 4,
+          id: '4',
           name: "Bún chả",
           description: "Bún chả Hà Nội với thịt nướng thơm lừng",
           price: 65000,
@@ -124,7 +124,7 @@ class MockData {
           categoryId: "main",
         ),
         MenuItem(
-          id: 5,
+          id: '5',
           name: "Cơm tấm",
           description: "Cơm tấm sườn nướng, chả trứng, bì",
           price: 70000,
@@ -140,7 +140,7 @@ class MockData {
       name: "Đồ uống",
       items: [
         MenuItem(
-          id: 6,
+          id: '6',
           name: "Cà phê sữa đá",
           description: "Cà phê Việt Nam truyền thống với sữa đặc",
           price: 25000,
@@ -150,7 +150,7 @@ class MockData {
           categoryId: "drinks",
         ),
         MenuItem(
-          id: 7,
+          id: '7',
           name: "Nước chanh",
           description: "Nước chanh tươi mát, giải khát tuyệt vời",
           price: 20000,
@@ -165,7 +165,7 @@ class MockData {
 
   // Mock User
   static final AppUser mockUser = AppUser(
-    id: 1,
+    id: '1',
     name: "Nguyễn Văn A",
     email: "nguyenvana@email.com",
     phone: "0123456789",
@@ -182,8 +182,8 @@ class MockData {
   // Mock Bookings
   static final List<Booking> mockBookings = [
     Booking(
-      id: 1,
-      tableId: 1,
+      id: '1',
+      tableId: '1',
       tableName: "Bàn VIP 1",
       date: DateTime(2024, 1, 20),
       time: "19:00",
@@ -195,8 +195,8 @@ class MockData {
       createdAt: DateTime.now().subtract(const Duration(days: 5)),
     ),
     Booking(
-      id: 2,
-      tableId: 3,
+      id: '2',
+      tableId: '3',
       tableName: "Bàn đôi D2",
       date: DateTime(2024, 1, 25),
       time: "20:30",
@@ -212,7 +212,7 @@ class MockData {
   // Mock Events
   static final List<Event> mockEvents = [
     Event(
-      id: 1,
+      id: '1',
       title: "Đêm nhạc acoustic",
       description: "Thưởng thức âm nhạc nhẹ nhàng cùng các món ăn đặc sản",
       date: DateTime(2024, 1, 25),
@@ -226,7 +226,7 @@ class MockData {
       image: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsaXZlJTIwbXVzaWMlMjByZXN0YXVyYW50fGVufDF8fHx8MTc1NzcyNDA4OXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
     ),
     Event(
-      id: 2,
+      id: '2',
       title: "Lễ hội ẩm thực Việt",
       description: "Khám phá hương vị truyền thống từ Bắc đến Nam",
       date: DateTime(2024, 2, 1),
@@ -245,30 +245,27 @@ class MockData {
   static final List<AppNotification> mockNotifications = [
     AppNotification(
       id: "1",
-      type: NotificationType.booking,
-      title: "Xác nhận đặt bàn",
-      message: "Đặt bàn cho 4 người lúc 19:00 ngày 25/09/2025 đã được xác nhận. Bàn số 12 tầng 2.",
-      timestamp: DateTime.now().subtract(const Duration(minutes: 2)),
+      type: NotificationType.reservation_confirm,
+      content: "Đặt bàn cho 4 người lúc 19:00 ngày 25/09/2025 đã được xác nhận. Bàn số 12 tầng 2.",
+      sentAt: DateTime.now().subtract(const Duration(minutes: 2)),
+      status: NotificationStatus.sent,
       isRead: false,
-      priority: NotificationPriority.high,
     ),
     AppNotification(
       id: "2",
-      type: NotificationType.reminder,
-      title: "Nhắc nhở đặt bàn",
-      message: "Còn 30 phút nữa đến giờ đặt bàn của bạn. Vui lòng có mặt đúng giờ.",
-      timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
+      type: NotificationType.reservation_confirm,
+      content: "Còn 30 phút nữa đến giờ đặt bàn của bạn. Vui lòng có mặt đúng giờ.",
+      sentAt: DateTime.now().subtract(const Duration(minutes: 30)),
+      status: NotificationStatus.sent,
       isRead: false,
-      priority: NotificationPriority.high,
     ),
     AppNotification(
       id: "3",
-      type: NotificationType.voucher,
-      title: "Voucher mới",
-      message: "Chúc mừng! Bạn nhận được voucher giảm giá 15% cho lần đặt bàn tiếp theo.",
-      timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+      type: NotificationType.promotion,
+      content: "Chúc mừng! Bạn nhận được voucher giảm giá 15% cho lần đặt bàn tiếp theo.",
+      sentAt: DateTime.now().subtract(const Duration(hours: 1)),
+      status: NotificationStatus.sent,
       isRead: true,
-      priority: NotificationPriority.medium,
     ),
   ];
 
@@ -313,7 +310,7 @@ class MockData {
 
   // Mock Data for User Profile
   static final AppUser mockUserProfile = AppUser(
-    id: 1,
+    id: '1',
     name: "Nguyễn Văn A",
     email: "nguyenvana@email.com",
     phone: "0123456789",
@@ -330,11 +327,11 @@ class MockData {
   // Mock Data for Orders
   static final List<Order> mockOrderHistory = [
     Order(
-      id: 1,
-      bookingId: 1,
+      id: '1',
+      bookingId: '1',
       items: [
         OrderItem(
-          id: 3,
+          id: '3',
           name: "Phở bò",
           price: 80000,
           quantity: 1,
@@ -343,7 +340,7 @@ class MockData {
           image: "https://images.unsplash.com/photo-1590420882553-4f9150b71f92?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2aWV0bmFtZXNlJTIwcGhvJTIwZm9vZHxlbnwxfHx8fDE3NTc2ODA2OTd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
         ),
         OrderItem(
-          id: 6,
+          id: '6',
           name: "Cà phê sữa đá",
           price: 25000,
           quantity: 1,
@@ -364,8 +361,8 @@ class MockData {
   // Mock Data for Event Bookings
   static final List<EventBooking> mockEventBookings = [
     EventBooking(
-      id: 1,
-      eventId: 1,
+      id: '1',
+      eventId: '1',
       eventTitle: "Đêm nhạc acoustic",
       date: DateTime.parse("2024-01-25"),
       time: "19:00 - 22:00",
@@ -375,8 +372,8 @@ class MockData {
       notes: "Bàn gần sân khấu",
     ),
     EventBooking(
-      id: 2,
-      eventId: 4,
+      id: '2',
+      eventId: '4',
       eventTitle: "Workshop nấu ăn",
       date: DateTime.parse("2024-02-05"),
       time: "14:00 - 17:00",
@@ -426,8 +423,8 @@ class MockData {
       customerId: "user1",
       customerName: "Nguyễn Văn A",
       customerAvatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
-      rating: 5,
-      content: "Món ăn rất ngon, phục vụ nhiệt tình. Nhà hàng có không gian đẹp và sạch sẽ. Sẽ quay lại lần sau!",
+  rating: 5,
+  comment: "Món ăn rất ngon, phục vụ nhiệt tình. Nhà hàng có không gian đẹp và sạch sẽ. Sẽ quay lại lần sau!",
       type: ReviewType.review,
       status: ReviewStatus.approved,
       createdAt: DateTime.parse("2024-01-15T14:30:00"),
@@ -441,8 +438,8 @@ class MockData {
       customerId: "user2",
       customerName: "Trần Thị B",
       customerAvatar: "https://images.unsplash.com/photo-1494790108755-2616b612b5e5?w=150&h=150&fit=crop&crop=face",
-      rating: 4,
-      content: "Đồ ăn ngon nhưng thời gian chờ hơi lâu. Nhân viên thân thiện.",
+  rating: 4,
+  comment: "Đồ ăn ngon nhưng thời gian chờ hơi lâu. Nhân viên thân thiện.",
       type: ReviewType.review,
       status: ReviewStatus.approved,
       createdAt: DateTime.parse("2024-01-12T19:20:00"),
@@ -454,8 +451,8 @@ class MockData {
       customerId: "user3",
       customerName: "Lê Văn C",
       customerAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-      rating: 2,
-      content: "Món ăn không đúng vị như mong đợi, giá cả hơi cao so với chất lượng.",
+  rating: 2,
+  comment: "Món ăn không đúng vị như mong đợi, giá cả hơi cao so với chất lượng.",
       type: ReviewType.complaint,
       status: ReviewStatus.approved,
       createdAt: DateTime.parse("2024-01-10T20:15:00"),
@@ -469,8 +466,8 @@ class MockData {
       customerId: "user4",
       customerName: "Phạm Thị D",
       customerAvatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face",
-      rating: 5,
-      content: "Không gian tuyệt vời cho buổi hẹn hò. Món ăn ngon, phục vụ chu đáo. Đặc biệt thích món tôm nướng!",
+  rating: 5,
+  comment: "Không gian tuyệt vời cho buổi hẹn hò. Món ăn ngon, phục vụ chu đáo. Đặc biệt thích món tôm nướng!",
       type: ReviewType.review,
       status: ReviewStatus.approved,
       createdAt: DateTime.parse("2024-01-08T18:45:00"),

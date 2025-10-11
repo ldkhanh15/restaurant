@@ -86,7 +86,7 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
   void _handleConfirmBooking(int guests, String notes) {
     if (selectedEvent != null) {
       final booking = EventBooking(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
         eventId: selectedEvent!.id,
         eventTitle: selectedEvent!.title,
         date: selectedEvent!.date,

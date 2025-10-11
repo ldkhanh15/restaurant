@@ -58,6 +58,50 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
+  String _getPaymentMethodString(PaymentMethodType type) {
+    switch (type) {
+      case PaymentMethodType.cash:
+        return 'cash';
+      case PaymentMethodType.momo:
+        return 'momo';
+      // Backend hiện chưa hỗ trợ các phương thức này trong API payment mới
+      case PaymentMethodType.card:
+        return 'other';
+      case PaymentMethodType.banking:
+        return 'other';
+    }
+  }
+
+  PaymentMethodType _parsePaymentMethodType(String method) {
+    switch (method.toLowerCase()) {
+      case 'cash':
+        return PaymentMethodType.cash;
+      case 'card':
+        return PaymentMethodType.card;
+      case 'momo':
+        return PaymentMethodType.momo;
+      case 'banking':
+        return PaymentMethodType.banking;
+      default:
+        return PaymentMethodType.cash;
+    }
+  }
+
+  PaymentStatus _parsePaymentStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'paid':
+        return PaymentStatus.completed;
+      case 'pending':
+        return PaymentStatus.pending;
+      case 'processing':
+        return PaymentStatus.processing;
+      case 'failed':
+        return PaymentStatus.failed;
+      default:
+        return PaymentStatus.pending;
+    }
+  }
+
   void _handlePayment() async {
     if (selectedMethod == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -76,20 +120,25 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final currentOrder = ref.read(currentOrderProvider);
     if (currentOrder != null) {
       try {
-        // Update order payment status on backend
-        await OrderAppUserService.updateOrder(currentOrder.id.toString(), {
+        // Gọi API mới để xử lý thanh toán
+        final updatedOrderData = await OrderAppUserService.processOrderPayment(currentOrder.id.toString(), {
           'payment_status': 'paid',
-          'payment_method': selectedMethod == PaymentMethodType.cash ? 'cash' : selectedMethod == PaymentMethodType.momo ? 'momo' : 'other',
+          'payment_method': _getPaymentMethodString(selectedMethod!),
         });
 
-        // Update local order status
-        ref.read(currentOrderProvider.notifier).setOrder(
-          currentOrder.copyWith(status: OrderStatus.sentToKitchen),
+        // Cập nhật đối tượng Order hiện tại với dữ liệu mới từ server
+        final updatedOrder = currentOrder.copyWith(
+          status: OrderStatus.paid,
+          paymentMethod: _parsePaymentMethodType(updatedOrderData['payment_method']),
+          paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status']),
         );
+        ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+
       } catch (e) {
-        // Fallback to local update on error
+        // Nếu API lỗi, chỉ cập nhật trạng thái local để user tiếp tục
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi thanh toán: $e. Cập nhật tạm thời.')));
         ref.read(currentOrderProvider.notifier).setOrder(
-          currentOrder.copyWith(status: OrderStatus.sentToKitchen),
+          currentOrder.copyWith(status: OrderStatus.paid), // Cập nhật trạng thái là đã thanh toán
         );
       }
 

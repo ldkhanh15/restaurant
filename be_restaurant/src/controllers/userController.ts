@@ -1,18 +1,18 @@
 import type { Request, Response, NextFunction } from "express"
-import User from "../models/User"
+import userService from "../services/user_app_userService"
 import { AppError } from "../middlewares/errorHandler"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
-    const offset = (page - 1) * limit
 
-    const { count, rows } = await User.findAndCountAll({
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await userService.findAllUsers({
       limit,
       offset,
       order: [[sortBy, sortOrder]],
-      attributes: { exclude: ["password_hash"] },
     })
 
     const result = buildPaginationResult(rows, count, page, limit)
@@ -24,7 +24,8 @@ export const getAllUsers = async (req: Request, res: Response, next: NextFunctio
 
 export const getUserById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const user = await User.findByPk(req.params.id, {
+    // Sử dụng findById, phương thức này cũng hỗ trợ options
+    const user = await userService.findById(req.params.id, {
       attributes: { exclude: ["password_hash"] },
     })
 
@@ -40,15 +41,23 @@ export const getUserById = async (req: Request, res: Response, next: NextFunctio
 
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const user = await User.findByPk(req.params.id)
+    const user = await userService.findById(req.params.id)
 
     if (!user) {
       throw new AppError("User not found", 404)
     }
 
-    await user.update(req.body)
+    // Security check: only admin or the user themselves can update
+    if (req.user?.role !== "admin" && String(user.id) !== String(req.user?.id)) {
+      throw new AppError("Forbidden: You can only update your own profile.", 403)
+    }
 
-    res.json({ status: "success", data: user })
+    const updatedUser = await userService.update(req.params.id, req.body)
+
+    // Exclude password hash from the response
+    if (updatedUser) (updatedUser as any).password_hash = undefined
+
+    res.json({ status: "success", data: updatedUser })
   } catch (error) {
     next(error)
   }
@@ -56,13 +65,13 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
 
 export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const user = await User.findByPk(req.params.id)
+    const user = await userService.findById(req.params.id)
 
     if (!user) {
       throw new AppError("User not found", 404)
     }
 
-    await user.destroy()
+    await userService.delete(req.params.id)
 
     res.json({ status: "success", message: "User deleted successfully" })
   } catch (error) {

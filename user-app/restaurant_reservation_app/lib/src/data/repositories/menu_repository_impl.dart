@@ -1,5 +1,5 @@
 
-import 'package:restaurant_reservation_app/src/data/datasources/data_source_adapter_app_user.dart';
+import 'package:restaurant_reservation_app/src/data/datasources/data_source_adapter.dart';
 import 'package:restaurant_reservation_app/src/domain/entities/menu_item.dart';
 import 'package:restaurant_reservation_app/src/domain/repositories/menu_repository.dart';
 
@@ -8,7 +8,7 @@ class MenuRepositoryImpl implements MenuRepository {
 
   @override
   Future<List<MenuItem>> getMenuItems() async {
-    final raw = await DataSourceAdapterAppUser.getMenuItems_app_user();
+    final raw = await DataSourceAdapter.getMenuItems();
     return raw.map<MenuItem>((item) {
       if (item is MenuItem) return item;
       final map = item as Map<String, dynamic>;

@@ -7,29 +7,36 @@ class ReviewsComplaintsScreen extends ConsumerStatefulWidget {
   const ReviewsComplaintsScreen({super.key});
 
   @override
-  ConsumerState<ReviewsComplaintsScreen> createState() => _ReviewsComplaintsScreenState();
+  ConsumerState<ReviewsComplaintsScreen> createState() =>
+      _ReviewsComplaintsScreenState();
 }
 
-class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScreen> {
-  ReviewType? filterType;
+class _ReviewsComplaintsScreenState
+    extends ConsumerState<ReviewsComplaintsScreen> {
   String sortBy = 'newest';
-  
+  bool _isLoading = false;
+
   @override
   Widget build(BuildContext context) {
     final reviews = ref.watch(reviewsProvider);
-    
-    // Filter and sort reviews
-    var filteredReviews = reviews.where((review) {
-      if (filterType == null) return true;
-      return review.type == filterType;
-    }).toList();
-    
-    filteredReviews.sort((a, b) {
+
+    // show loading indicator when fetching
+    if (_isLoading && reviews.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Sort reviews
+    final sortedReviews = [...reviews];
+    sortedReviews.sort((a, b) {
       switch (sortBy) {
         case 'newest':
-          return b.createdAt.compareTo(a.createdAt);
+          return (b.createdAt ?? DateTime(0))
+              .compareTo(a.createdAt ?? DateTime(0));
         case 'oldest':
-          return a.createdAt.compareTo(b.createdAt);
+          return (a.createdAt ?? DateTime(0))
+              .compareTo(b.createdAt ?? DateTime(0));
         case 'rating':
           return b.rating.compareTo(a.rating);
         default:
@@ -39,7 +46,7 @@ class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScree
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Đánh giá & Phản hồi'),
+        title: const Text('Đánh giá của khách hàng'),
         actions: [
           IconButton(
             onPressed: () => _showWriteReviewDialog(),
@@ -50,94 +57,86 @@ class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScree
       body: SafeArea(
         child: Column(
           children: [
-          // Filters
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Filter buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: Wrap(
-                        spacing: 8,
-                        children: [
-                          FilterChip(
-                            label: const Text('Tất cả'),
-                            selected: filterType == null,
-                            onSelected: (selected) {
-                              setState(() {
-                                filterType = selected ? null : filterType;
-                              });
-                            },
-                          ),
-                          FilterChip(
-                            label: const Text('Đánh giá'),
-                            selected: filterType == ReviewType.review,
-                            onSelected: (selected) {
-                              setState(() {
-                                filterType = selected ? ReviewType.review : null;
-                              });
-                            },
-                          ),
-                          FilterChip(
-                            label: const Text('Khiếu nại'),
-                            selected: filterType == ReviewType.complaint,
-                            onSelected: (selected) {
-                              setState(() {
-                                filterType = selected ? ReviewType.complaint : null;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Sort dropdown
-                Row(
-                  children: [
-                    const Text('Sắp xếp: '),
-                    DropdownButton<String>(
-                      value: sortBy,
-                      items: const [
-                        DropdownMenuItem(value: 'newest', child: Text('Mới nhất')),
-                        DropdownMenuItem(value: 'oldest', child: Text('Cũ nhất')),
-                        DropdownMenuItem(value: 'rating', child: Text('Điểm cao')),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            sortBy = value;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ],
+            // Sort dropdown
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Text('Sắp xếp: '),
+                  DropdownButton<String>(
+                    value: sortBy,
+                    items: const [
+                      DropdownMenuItem(value: 'newest', child: Text('Mới nhất')),
+                      DropdownMenuItem(value: 'oldest', child: Text('Cũ nhất')),
+                      DropdownMenuItem(
+                          value: 'rating', child: Text('Điểm cao')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          sortBy = value;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          // Reviews list
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: filteredReviews.length,
-              itemBuilder: (context, index) {
-                final review = filteredReviews[index];
-                return _buildReviewCard(review);
-              },
+            const Divider(height: 1),
+            // Reviews list
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: sortedReviews.length,
+                itemBuilder: (context, index) {
+                  final review = sortedReviews[index];
+                  return _buildReviewCard(review);
+                },
+              ),
             ),
-          ),
           ],
         ),
       ),
     );
   }
 
+  @override
+  void initState() {
+    super.initState();
+    // load reviews from server on first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadReviews();
+    });
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final list = await ref.read(reviewRepositoryProvider).getReviews();
+      ref.read(reviewsProvider.notifier).setReviews(list);
+    } catch (e) {
+      // show a non-blocking error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không tải được đánh giá: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Widget _buildReviewCard(Review review) {
+    final userName = review.user?.name ?? 'Anonymous';
+    final userAvatar = review.user?.avatar;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -149,59 +148,17 @@ class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScree
             Row(
               children: [
                 CircleAvatar(
-                  backgroundImage: review.customerAvatar != null 
-                    ? NetworkImage(review.customerAvatar!)
-                    : null,
-                  child: review.customerAvatar == null 
-                    ? Text(review.customerName[0])
-                    : null,
+                  backgroundImage: userAvatar != null ? NetworkImage(userAvatar) : null,
+                  child: userAvatar == null ? Text(userName[0]) : null,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            review.customerName,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: review.type == ReviewType.complaint 
-                                ? Colors.red.withOpacity(0.1)
-                                : Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  review.type == ReviewType.complaint 
-                                    ? Icons.warning_amber_rounded
-                                    : Icons.chat_bubble_outline,
-                                  size: 12,
-                                  color: review.type == ReviewType.complaint 
-                                    ? Colors.red
-                                    : Colors.blue,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  review.type == ReviewType.complaint ? 'Khiếu nại' : 'Đánh giá',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: review.type == ReviewType.complaint 
-                                      ? Colors.red
-                                      : Colors.blue,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      Text(
+                        userName,
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
                       Row(
                         children: [
@@ -209,17 +166,20 @@ class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScree
                           Row(
                             children: List.generate(5, (index) {
                               return Icon(
-                                index < review.rating ? Icons.star : Icons.star_border,
+                                index < review.rating
+                                    ? Icons.star
+                                    : Icons.star_border,
                                 size: 16,
                                 color: Colors.amber,
                               );
                             }),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            '${review.createdAt.day}/${review.createdAt.month}/${review.createdAt.year}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
+                          if (review.createdAt != null)
+                            Text(
+                              '${review.createdAt!.day}/${review.createdAt!.month}/${review.createdAt!.year}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                         ],
                       ),
                     ],
@@ -229,57 +189,12 @@ class _ReviewsComplaintsScreenState extends ConsumerState<ReviewsComplaintsScree
             ),
             const SizedBox(height: 12),
             // Content
-            Text(review.content),
-            
-            // Restaurant response
-            if (review.restaurantResponse != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Phản hồi từ nhà hàng:',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(review.restaurantResponse!),
-                  ],
-                ),
-              ),
-            ],
-            
-            const SizedBox(height: 12),
-            // Actions
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () => _markHelpful(review.id),
-                  icon: const Icon(Icons.thumb_up_outlined, size: 16),
-                  label: Text('Hữu ích (${review.helpfulCount})'),
-                ),
-                TextButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.thumb_down_outlined, size: 16),
-                  label: const Text('Không hữu ích'),
-                ),
-              ],
-            ),
+            if (review.comment != null && review.comment!.isNotEmpty)
+              Text(review.comment!),
           ],
         ),
       ),
     );
-  }
-
-  void _markHelpful(String reviewId) {
-    ref.read(reviewsProvider.notifier).markHelpful(reviewId);
   }
 
   void _showWriteReviewDialog() {
@@ -298,13 +213,13 @@ class WriteReviewDialog extends ConsumerStatefulWidget {
 }
 
 class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
-  final _contentController = TextEditingController();
-  ReviewType _type = ReviewType.review;
+  final _commentController = TextEditingController();
   int _rating = 5;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
-    _contentController.dispose();
+    _commentController.dispose();
     super.dispose();
   }
 
@@ -317,31 +232,6 @@ class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Type selection
-            const Text('Loại phản hồi:'),
-            const SizedBox(height: 8),
-            SegmentedButton<ReviewType>(
-              segments: const [
-                ButtonSegment(
-                  value: ReviewType.review,
-                  label: Text('Đánh giá'),
-                  icon: Icon(Icons.star_outline),
-                ),
-                ButtonSegment(
-                  value: ReviewType.complaint,
-                  label: Text('Khiếu nại'),
-                  icon: Icon(Icons.warning_amber_outlined),
-                ),
-              ],
-              selected: {_type},
-              onSelectionChanged: (Set<ReviewType> selection) {
-                setState(() {
-                  _type = selection.first;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            
             // Rating
             const Text('Đánh giá sao:'),
             const SizedBox(height: 8),
@@ -361,12 +251,12 @@ class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
               }),
             ),
             const SizedBox(height: 16),
-            
+
             // Content
-            const Text('Nội dung:'),
+            const Text('Bình luận:'),
             const SizedBox(height: 8),
             TextField(
-              controller: _contentController,
+              controller: _commentController,
               maxLines: 4,
               decoration: const InputDecoration(
                 hintText: 'Chia sẻ trải nghiệm của bạn...',
@@ -382,35 +272,68 @@ class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
           child: const Text('Hủy'),
         ),
         ElevatedButton(
-          onPressed: _submitReview,
-          child: const Text('Gửi đánh giá'),
+          onPressed: _isSubmitting ? null : _submitReview,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Gửi đánh giá'),
         ),
       ],
     );
   }
 
-  void _submitReview() {
-    if (_contentController.text.trim().isEmpty) return;
+  void _submitReview() async {
+    if (_commentController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập bình luận của bạn.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    final review = Review(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      customerId: 'current_user',
-      customerName: 'Bạn',
-      rating: _rating,
-      content: _contentController.text.trim(),
-      type: _type,
-      status: ReviewStatus.pending,
-      createdAt: DateTime.now(),
-    );
+    setState(() {
+      _isSubmitting = true;
+    });
 
-    ref.read(reviewsProvider.notifier).addReview(review);
-    Navigator.pop(context);
+    try {
+      final payload = {
+        'rating': _rating,
+        'comment': _commentController.text.trim(),
+        // optionally: 'type': 'review'
+      };
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đánh giá của bạn đã được gửi và đang chờ duyệt'),
-      ),
-    );
+      final createdReview = await ref.read(reviewRepositoryProvider).createReview(payload);
+
+      // Add server returned review to provider
+      ref.read(reviewsProvider.notifier).addReview(createdReview);
+
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cảm ơn bạn! Đánh giá của bạn đã được gửi và đang chờ duyệt.'),
+        ),
+      );
+    } catch (e) {
+      // Show error (attempt to use message if present)
+      final message = e is Exception ? e.toString() : 'Gửi đánh giá thất bại';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $message'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 }
-

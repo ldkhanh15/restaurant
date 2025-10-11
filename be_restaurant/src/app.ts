@@ -26,9 +26,21 @@ import notificationRoutes from "./routes/notificationRoutes"
 import blogPostRoutes from "./routes/blogPostRoutes"
 import chatSessionRoutes from "./routes/chatSessionRoutes"
 import chatMessageRoutes from "./routes/chatMessageRoutes"
+
+// Import app_user routes
 import menuAppUserRoutes from "./routes/menu_app_userRoutes"
 import tableAppUserRoutes from "./routes/table_app_userRoutes"
 import reservationAppUserRoutes from "./routes/reservation_app_userRoutes"
+import authAppUserRoutes from "./routes/auth_app_userRoutes"
+import orderAppUserRoutes from "./routes/order_app_userRoutes"
+import reviewAppUserRoutes from "./routes/review_app_userRoutes"
+import notificationAppUserRoutes from "./routes/notification_app_userRoutes"
+import userAppUserRoutes from "./routes/user_app_userRoutes"
+import eventAppUserRoutes from "./routes/event_app_userRoutes"
+import eventBookingAppUserRoutes from "./routes/eventBooking_app_userRoutes"
+import voucherAppUserRoutes from "./routes/voucher_app_userRoutes"
+import voucherUsageAppUserRoutes from "./routes/voucherUsage_app_userRoutes"
+import blogPostAppUserRoutes from "./routes/blogPost_app_userRoutes"
 
 // Import models to initialize associations
 import "./models/index"
@@ -77,9 +89,21 @@ app.use("/api/chat/sessions", chatSessionRoutes)
 app.use("/api/chat/messages", chatMessageRoutes)
 
 // App user lightweight endpoints (mobile app)
+app.use("/api/app_user/auth", authAppUserRoutes)
 app.use("/api/app_user/menu", menuAppUserRoutes)
 app.use("/api/app_user/tables", tableAppUserRoutes)
 app.use("/api/app_user/reservations", reservationAppUserRoutes)
+app.use("/api/app_user/orders", orderAppUserRoutes)
+app.use("/api/app_user/reviews", reviewAppUserRoutes)
+app.use("/api/app_user/notifications", notificationAppUserRoutes)
+app.use("/api/app_user/user", userAppUserRoutes)
+app.use("/api/app_user/events", eventAppUserRoutes)
+app.use("/api/app_user/vouchers", voucherAppUserRoutes)
+app.use("/api/app_user/blog", blogPostAppUserRoutes)
+
+// Event bookings and voucher usages (endpoints used by mobile app)
+app.use("/api/app_user/event-bookings", eventBookingAppUserRoutes)
+app.use("/api/voucher-usages", voucherUsageAppUserRoutes)
 
 // Error handling
 app.use(notFoundHandler)

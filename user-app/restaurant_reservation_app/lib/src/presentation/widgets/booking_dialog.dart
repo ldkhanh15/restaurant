@@ -60,7 +60,7 @@ class _BookingDialogState extends State<BookingDialog> {
   void _handleBook() {
     if (_formKey.currentState!.validate() && _selectedDate != null && _selectedTime.isNotEmpty) {
       final booking = Booking(
-        id: widget.editingBooking?.id ?? DateTime.now().millisecondsSinceEpoch,
+        id: widget.editingBooking?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         tableId: widget.table.id,
         tableName: widget.table.name,
         date: _selectedDate!,

@@ -8,7 +8,8 @@ import '../../domain/entities/reservation.dart' as ent_reservation;
 import '../../domain/entities/user.dart' as ent_user;
 import '../../domain/entities/table.dart' as ent_table_entity;
 import '../../data/repositories/reservation_repository_impl.dart';
-import '../../data/datasources/data_source_adapter_app_user.dart';
+import '../../data/services/reservation_app_user_service_app_user.dart';
+import '../../data/services/table_app_user_service_app_user.dart';
 import '../../data/datasources/api_config.dart';
 import '../../domain/usecases/create_reservation.dart';
 import '../widgets/table_card.dart';
@@ -35,21 +36,30 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
     try {
       final repo = ReservationRepositoryImpl();
       final usecase = CreateReservation(repo);
+      final currentUser = ref.read(userProvider);
+
+      // Combine date and time correctly
+      final timeParts = newBooking.time.split(':');
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = int.tryParse(timeParts[1]) ?? 0;
+      final reservationDateTime = DateTime(
+        newBooking.date.year,
+        newBooking.date.month,
+        newBooking.date.day,
+        hour,
+        minute,
+        ).toUtc(); // Convert to UTC before sending
 
       final reservation = ent_reservation.Reservation(
         id: '',
-        user: ent_user.User(id: '', name: newBooking.tableName, email: ''),
+        user: ent_user.User(id: currentUser?.id.toString() ?? '', name: currentUser?.name ?? 'Unknown', email: currentUser?.email ?? ''),
         table: ent_table_entity.Table(
-          id: newBooking.tableId.toString(),
-          tableNumber: newBooking.tableId,
+          id: newBooking.tableId,
+          tableNumber: int.tryParse(newBooking.tableName) ?? 0,
           capacity: newBooking.guests,
           isOccupied: false,
         ),
-        dateTime: DateTime(
-          newBooking.date.year,
-          newBooking.date.month,
-          newBooking.date.day,
-        ),
+        dateTime: reservationDateTime,
         numberOfGuests: newBooking.guests,
       );
       // debug: log reservation and current user id
@@ -62,9 +72,9 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
 
       // Map created Reservation to Booking model expected by providers
       final createdBooking = Booking(
-        id: int.tryParse(created.id) ?? DateTime.now().millisecondsSinceEpoch,
+        id: created.id,
   serverId: created.id.toString(),
-        tableId: int.tryParse(created.table.id) ?? newBooking.tableId,
+        tableId: created.table.id, // Already a string
         tableName: newBooking.tableName,
         date: DateTime(created.dateTime.year, created.dateTime.month, created.dateTime.day),
         time: '${created.dateTime.hour.toString().padLeft(2, '0')}:${created.dateTime.minute.toString().padLeft(2, '0')}',
@@ -88,6 +98,11 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         ref.read(tablesProvider.notifier).updateTable(
           selectedTable!.copyWith(status: TableStatus.reserved),
         );
+        try {
+          await TableAppUserServiceAppUser.updateTableStatus(selectedTable!.id.toString(), 'reserved');
+        } catch (e) {
+          print('Failed to update table status on backend: $e');
+        }
       }
 
       // Close dialog and navigate
@@ -97,8 +112,9 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       });
 
       if (mounted) {
-        // After booking, navigate user to their bookings
-        context.go('/my-bookings');
+        // After booking, switch to the 'myBookings' tab
+        setState(() => activeTab = "myBookings");
+        _loadBookingsFromServer();
       }
     } catch (e) {
       // Fallback to local behavior if API call fails
@@ -120,7 +136,10 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       try {
         await _loadBookingsFromServer();
       } catch (_) {}
-  if (mounted) context.go('/my-bookings');
+      if (mounted) {
+        setState(() => activeTab = "myBookings");
+        _loadBookingsFromServer();
+      }
     }
   }
 
@@ -134,42 +153,31 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       _isLoadingBookings = true;
     });
     try {
-      // debug info
-      // ignore: avoid_print
-      print('[TableBookingScreen] ApiConfig.baseUrl = ${ApiConfig.baseUrl}');
-      // ignore: avoid_print
-      print('[TableBookingScreen] ApiConfig.authToken length = ${ApiConfig.authToken.length}');
-      final raw = await DataSourceAdapterAppUser.getReservations_app_user();
-      // debug: log raw response size
-      // ignore: avoid_print
-      print('[TableBookingScreen] raw reservations from server: ${raw.runtimeType} ${raw.length}');
-      // raw is a List<dynamic> where each item is Map<String, dynamic>
-      final List<Booking> fetched = raw.map<Booking>((item) {
-        final map = item as Map<String, dynamic>;
-        // ignore: avoid_print
-        print('[TableBookingScreen] reservation item id=${map['id']} status=${map['status']}');
-        final sid = map['id']?.toString() ?? '';
+      // Fetch raw data to ensure correct parsing, bypassing the repository
+      final reservationsRaw = await ReservationAppUserServiceAppUser.fetchReservations();
+      final fetched = reservationsRaw.map((r) {
+        final map = r as Map<String, dynamic>;
         final tableMap = map['table'] as Map<String, dynamic>?;
-        final tableId = int.tryParse(tableMap?['id']?.toString() ?? '') ?? (tableMap?['tableNumber'] as int?) ?? 0;
-        final dateTime = DateTime.tryParse(map['dateTime'] ?? '') ?? DateTime.now();
-        final statusStr = (map['status'] ?? '').toString().toLowerCase();
-        BookingStatus status = BookingStatus.pending;
-        if (statusStr == 'confirmed') status = BookingStatus.confirmed;
-        if (statusStr == 'cancelled' || statusStr == 'canceled') status = BookingStatus.cancelled;
+
+        final reservationTime = (DateTime.tryParse(map['reservation_time'] ?? '') ?? DateTime.now()).toLocal();
+        final statusString = (map['status'] ?? 'pending').toString();
+        final status = BookingStatus.values.firstWhere(
+          (e) => e.name == statusString,
+          orElse: () => BookingStatus.pending,
+        );
 
         return Booking(
-          id: int.tryParse(sid) ?? DateTime.now().millisecondsSinceEpoch,
-          serverId: sid,
-          tableId: tableId,
-          tableName: tableMap?['tableNumber']?.toString() ?? 'Bàn ${tableId}',
-          date: DateTime(dateTime.year, dateTime.month, dateTime.day),
-          time: '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-          guests: (map['numberOfGuests'] as int?) ?? (map['guests'] as int?) ?? 1,
-          notes: map['notes'] as String?,
+          id: map['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          serverId: map['id']?.toString(),
+          tableId: tableMap?['id']?.toString() ?? '',
+          tableName: tableMap?['table_number']?.toString() ?? 'Unknown Table',
+          date: reservationTime,
+          time: TimeOfDay.fromDateTime(reservationTime).format(context),
+          guests: (map['num_people'] is int) ? map['num_people'] as int : 1,
           status: status,
-          location: map['location'] as String? ?? '',
-          price: (map['price'] is num) ? (map['price'] as num).toDouble() : 0.0,
-          createdAt: DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
+          location: tableMap?['location'] ?? 'N/A',
+          price: (tableMap?['price'] as num?)?.toDouble() ?? 0.0,
+          createdAt: (DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now()).toLocal(),
         );
       }).toList();
 
@@ -208,11 +216,23 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty)
             ? booking.serverId!
             : booking.id.toString();
+      // Combine date and time correctly for update
+      final timeParts = updated.time.split(':');
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = int.tryParse(timeParts[1]) ?? 0;
+      final reservationDateTime = DateTime(
+        updated.date.year,
+        updated.date.month,
+        updated.date.day,
+        hour,
+        minute,
+      ).toUtc(); // Convert to UTC before sending
+
         final payload = {
-          'dateTime': DateTime(updated.date.year, updated.date.month, updated.date.day).toIso8601String(),
-          'numberOfGuests': updated.guests,
+        'reservation_time': reservationDateTime.toIso8601String(),
+        'num_people': updated.guests,
         };
-  await DataSourceAdapterAppUser.updateReservation_app_user(idStr, payload);
+  await ReservationAppUserServiceAppUser.updateReservation(idStr, payload);
   final updatedBooking = updated;
         ref.read(bookingsProvider.notifier).updateBooking(updatedBooking);
       } catch (e) {
@@ -253,16 +273,17 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty)
           ? booking.serverId!
           : booking.id.toString();
-      await DataSourceAdapterAppUser.deleteReservation_app_user(idStr);
-      // remove from provider
-      final list = ref.read(bookingsProvider);
-      final newList = list.where((b) => b.id != booking.id).toList();
-      ref.read(bookingsProvider.notifier).setBookings(newList);
+  await ReservationAppUserServiceAppUser.cancelReservation(idStr);
+      // Update the booking in the provider with the new 'cancelled' status
+      final updatedBooking = Booking.fromReservation(
+        Booking.toReservation(booking), // Convert existing booking to reservation entity
+        context,
+      ).copyWith(status: BookingStatus.cancelled); // Create a new booking model with updated status
+
+      ref.read(bookingsProvider.notifier).updateBooking(updatedBooking);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy đặt bàn')));
     } catch (e) {
-      // fallback: remove locally
-      final list = ref.read(bookingsProvider);
-      final newList = list.where((b) => b.id != booking.id).toList();
-      ref.read(bookingsProvider.notifier).setBookings(newList);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hủy thất bại: $e')));
     }
   }
 
@@ -470,7 +491,8 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            if (booking.status == BookingStatus.confirmed) ...[
+                            if (booking.status == BookingStatus.confirmed ||
+                                booking.status == BookingStatus.seated) ...[
                               ElevatedButton.icon(
                                 onPressed: () => onOrderFood(booking),
                                 icon: const Icon(Icons.restaurant_menu),

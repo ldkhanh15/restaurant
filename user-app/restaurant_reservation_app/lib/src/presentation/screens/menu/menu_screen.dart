@@ -22,6 +22,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
   String searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  @override
+  void initState() {
+    print('loggggg');
+    // TODO: implement api function
+    super.initState();
+  }
+
 
   @override
   Widget build(BuildContext context) {

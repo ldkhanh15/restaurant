@@ -2,7 +2,7 @@ enum EventCategory { music, food, party, workshop }
 enum AvailabilityStatus { available, full }
 
 class Event {
-  final int id;
+  final String id;
   final String title;
   final String description;
   final DateTime date;
@@ -31,7 +31,7 @@ class Event {
   });
 
   factory Event.fromJson(Map<String, dynamic> json) => Event(
-        id: json['id'] as int,
+        id: json['id'].toString(),
         title: json['title'] as String,
         description: json['description'] as String,
         date: DateTime.parse(json['date'] as String),
@@ -61,7 +61,7 @@ class Event {
       };
 
   Event copyWith({
-    int? id,
+    String? id,
     String? title,
     String? description,
     DateTime? date,
@@ -92,8 +92,8 @@ class Event {
 }
 
 class EventBooking {
-  final int id;
-  final int eventId;
+  final String id;
+  final String eventId;
   final String eventTitle;
   final DateTime date;
   final String time;
@@ -115,8 +115,8 @@ class EventBooking {
   });
 
   factory EventBooking.fromJson(Map<String, dynamic> json) => EventBooking(
-        id: json['id'] as int,
-        eventId: json['eventId'] as int,
+        id: json['id'].toString(),
+        eventId: json['eventId'].toString(),
         eventTitle: json['eventTitle'] as String,
         date: DateTime.parse(json['date'] as String),
         time: json['time'] as String,
@@ -139,8 +139,8 @@ class EventBooking {
       };
 
   EventBooking copyWith({
-    int? id,
-    int? eventId,
+    String? id,
+    String? eventId,
     String? eventTitle,
     DateTime? date,
     String? time,
@@ -162,5 +162,3 @@ class EventBooking {
     );
   }
 }
-
-

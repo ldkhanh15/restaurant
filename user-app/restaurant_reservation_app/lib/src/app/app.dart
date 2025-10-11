@@ -16,7 +16,9 @@ import '../presentation/screens/vouchers/voucher_screen.dart';
 import '../presentation/screens/auth/login_screen.dart';
 import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/home/home_screen.dart';
+import '../presentation/screens/notifications/notifications_screen.dart';
 import '../presentation/screens/table_booking_screen.dart';
+
 
 class RestaurantReservationApp extends ConsumerStatefulWidget {
   const RestaurantReservationApp({super.key});
@@ -32,7 +34,7 @@ class _RestaurantReservationAppState extends ConsumerState<RestaurantReservation
     // Initialize app user data from backend if baseUrl is configured
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (ApiConfig.baseUrl.isNotEmpty) {
-        initializeAppUserData_app_user(ref);
+        initializeAppUserData_app_user(ref); // This is the consolidated initializer
       }
     });
   }
@@ -158,6 +160,15 @@ final _router = GoRouter(
     GoRoute(
       path: '/home',
       builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationsScreen(),
+    ),
+    // Compatibility route: some places may navigate to '/notification' (singular)
+    GoRoute(
+      path: '/notification',
+      builder: (context, state) => const NotificationsScreen(),
     ),
     GoRoute(
       path: '/my-bookings',

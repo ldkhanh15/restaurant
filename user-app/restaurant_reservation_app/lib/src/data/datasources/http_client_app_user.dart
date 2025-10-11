@@ -19,5 +19,7 @@ class HttpClientAppUser {
 
   Future<http.Response> put(Uri url, {Object? body}) => _client.put(url, headers: _defaultHeaders(), body: body);
 
+  Future<http.Response> patch(Uri url, {Object? body}) => _client.patch(url, headers: _defaultHeaders(), body: body);
+
   Future<http.Response> delete(Uri url) => _client.delete(url, headers: _defaultHeaders());
 }

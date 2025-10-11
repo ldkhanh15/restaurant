@@ -1,7 +1,9 @@
+import 'payment.dart';
+
 enum KitchenStatus { pending, preparing, ready, served }
 
 class OrderItem {
-  final int id;
+  final String id;
   final String name;
   final double price;
   final int quantity;
@@ -26,7 +28,7 @@ class OrderItem {
   });
 
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
-        id: json['id'] as int,
+        id: json['id'].toString(),
         name: json['name'] as String,
         price: (json['price'] as num).toDouble(),
         quantity: json['quantity'] as int,
@@ -36,7 +38,7 @@ class OrderItem {
             [],
         specialNote: json['specialNote'] as String?,
         kitchenStatus: KitchenStatus.values.firstWhere(
-            (e) => e.name == json['kitchenStatus'],
+            (e) => e.name == (json['kitchenStatus'] ?? json['kitchen_status']),
             orElse: () => KitchenStatus.pending),
         estimatedTime: json['estimatedTime'] as int,
         actualTime: json['actualTime'] as int?,
@@ -57,7 +59,7 @@ class OrderItem {
       };
 
   OrderItem copyWith({
-    int? id,
+    String? id,
     String? name,
     double? price,
     int? quantity,
@@ -85,11 +87,11 @@ class OrderItem {
   double get totalPrice => price * quantity;
 }
 
-enum OrderStatus { created, sentToKitchen, completed, cancelled }
+enum OrderStatus { created, sentToKitchen, paid, completed, cancelled }
 
 class Order {
-  final int id;
-  final int bookingId;
+  final String id;
+  final String bookingId;
   final List<OrderItem> items;
   final double subtotal;
   final double serviceCharge;
@@ -98,6 +100,8 @@ class Order {
   final OrderStatus status;
   final DateTime createdAt;
   final String? specialInstructions;
+  final PaymentMethodType? paymentMethod;
+  final PaymentStatus? paymentStatus;
 
   const Order({
     required this.id,
@@ -110,11 +114,13 @@ class Order {
     required this.status,
     required this.createdAt,
     this.specialInstructions,
+    this.paymentMethod,
+    this.paymentStatus,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
-        id: json['id'] as int,
-        bookingId: json['bookingId'] as int,
+        id: json['id'].toString(),
+        bookingId: json['bookingId'].toString(),
         items: (json['items'] as List<dynamic>)
             .map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -122,7 +128,7 @@ class Order {
         serviceCharge: (json['serviceCharge'] as num).toDouble(),
         tax: (json['tax'] as num).toDouble(),
         total: (json['total'] as num).toDouble(),
-        status: OrderStatus.values.firstWhere((e) => e.name == json['status']),
+        status: OrderStatus.values.firstWhere((e) => e.name == json['status'], orElse: () => OrderStatus.created),
         createdAt: DateTime.parse(json['createdAt'] as String),
         specialInstructions: json['specialInstructions'] as String?,
       );
@@ -141,8 +147,8 @@ class Order {
       };
 
   Order copyWith({
-    int? id,
-    int? bookingId,
+    String? id,
+    String? bookingId,
     List<OrderItem>? items,
     double? subtotal,
     double? serviceCharge,
@@ -151,6 +157,8 @@ class Order {
     OrderStatus? status,
     DateTime? createdAt,
     String? specialInstructions,
+    PaymentMethodType? paymentMethod,
+    PaymentStatus? paymentStatus,
   }) {
     return Order(
       id: id ?? this.id,
@@ -163,8 +171,8 @@ class Order {
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       specialInstructions: specialInstructions ?? this.specialInstructions,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
     );
   }
 }
-
-

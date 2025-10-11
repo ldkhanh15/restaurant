@@ -32,38 +32,37 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     )}đ';
   }
 
-  Future<void> _handleConfirmOrder() async {
-    setState(() => _isConfirming = true);
-
-    // Create order from cart items
-    final cartItems = ref.read(cartItemsProvider);
+  // Helper to build a local order object
+  Order _buildLocalOrder(List<OrderItem> orderItems) {
     final subtotal = ref.read(cartTotalProvider);
     final serviceCharge = subtotal * 0.1; // 10% service charge
     final tax = (subtotal + serviceCharge) * 0.1; // 10% VAT
     final total = subtotal + serviceCharge + tax;
 
-    final orderItems = cartItems.map((cartItem) {
-      return OrderItem(
-        id: cartItem.id,
-        name: cartItem.name,
-        price: cartItem.price,
-        quantity: cartItem.quantity,
-        customizations: cartItem.customizations,
-        specialNote: cartItem.specialNote,
-        estimatedTime: _getEstimatedTime(cartItem.name),
-        image: cartItem.image,
-      );
-    }).toList();
+    return Order(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      bookingId: widget.booking.id,
+      items: orderItems,
+      subtotal: subtotal,
+      serviceCharge: serviceCharge,
+      tax: tax,
+      total: total,
+      status: OrderStatus.created,
+      createdAt: DateTime.now(),
+      specialInstructions: _specialInstructionsController.text.trim().isEmpty
+          ? null
+          : _specialInstructionsController.text.trim(),
+    );
+  }
 
-    // Build payload for backend
+  Map<String, dynamic> _buildOrderPayload(Order order) {
     final payload = {
-      // Prefer server reservation id if available
-      'reservation_id': (widget.booking.serverId ?? widget.booking.id.toString()).toString(),
+      'reservation_id': widget.booking.serverId ?? widget.booking.id,
       'table_id': widget.booking.tableId.toString(),
       'user_id': null, // optional: fill if you have user info
-      'total_amount': total,
-      'notes': _specialInstructionsController.text.isEmpty ? null : _specialInstructionsController.text,
-      'items': orderItems.map((oi) => {
+      'total_amount': order.total,
+      'notes': order.specialInstructions,
+      'items': order.items.map((oi) => {
         'dish_id': oi.id,
         'name': oi.name,
         'price': oi.price,
@@ -71,82 +70,88 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
         'customizations': oi.customizations,
       }).toList(),
     };
+    return payload;
+  }
+
+  Order _createOrderFromServerResponse(Map<String, dynamic> created, Order localOrder) {
+    final serverItems = (created['items'] as List<dynamic>?) ?? [];
+    final mappedItems = serverItems.map((si) {
+      return OrderItem(
+        id: si['dish_id']?.toString() ?? si['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        name: si['name'] ?? '',
+        price: (si['price'] is num) ? (si['price'] as num).toDouble() : double.tryParse((si['price'] ?? '0').toString()) ?? 0.0,
+        quantity: (si['quantity'] as int?) ?? int.tryParse((si['quantity'] ?? '1').toString()) ?? 1,
+        customizations: (si['customizations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        specialNote: null,
+        estimatedTime: 10, // Consider getting this from server or local logic
+        image: '', // Consider getting this from server or local logic
+      );
+    }).toList();
+
+    return Order(
+      id: created['id']?.toString() ?? localOrder.id,
+      bookingId: created['reservation_id']?.toString() ?? localOrder.bookingId,
+      items: mappedItems.isNotEmpty ? mappedItems : localOrder.items,
+      subtotal: (created['subtotal'] is num) ? (created['subtotal'] as num).toDouble() : localOrder.subtotal,
+      serviceCharge: (created['serviceCharge'] is num) ? (created['serviceCharge'] as num).toDouble() : localOrder.serviceCharge,
+      tax: (created['tax'] is num) ? (created['tax'] as num).toDouble() : localOrder.tax,
+      total: (created['total_amount'] is num) ? (created['total_amount'] as num).toDouble() : localOrder.total,
+      status: OrderStatus.created,
+      createdAt: DateTime.tryParse(created['created_at'] ?? '') ?? localOrder.createdAt,
+      specialInstructions: created['notes'] as String? ?? localOrder.specialInstructions,
+    );
+  }
+
+  OrderItem _createOrderItemFromCartItem(dynamic cartItem) {
+    return OrderItem(
+      id: cartItem.id.toString(), // Ensure cartItem.id is treated as a string
+      name: cartItem.name,
+      price: cartItem.price,
+      quantity: cartItem.quantity,
+      customizations: cartItem.customizations,
+      specialNote: cartItem.specialNote,
+      estimatedTime: _getEstimatedTime(cartItem.name),
+      image: cartItem.image,
+    );
+  }
+
+  Future<void> _submitOrder({required String navigateTo}) async {
+    setState(() => _isConfirming = true);
+
+    final orderItems = ref.read(cartItemsProvider).map(_createOrderItemFromCartItem).toList();
+    final localOrder = _buildLocalOrder(orderItems);
+    final payload = _buildOrderPayload(localOrder);
 
     try {
       final created = await OrderAppUserService.createOrder(payload);
-
-      // Map created order from server to local models
-      final serverItems = (created['items'] as List<dynamic>?) ?? [];
-      final mappedItems = serverItems.map((si) {
-        return OrderItem(
-          id: si['dish_id'] ?? si['id'],
-          name: si['name'] ?? '',
-          price: (si['price'] is num) ? (si['price'] as num).toDouble() : double.tryParse((si['price'] ?? '0').toString()) ?? 0.0,
-          quantity: (si['quantity'] as int?) ?? int.tryParse((si['quantity'] ?? '1').toString()) ?? 1,
-          customizations: (si['customizations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-          specialNote: null,
-          estimatedTime: 10,
-          image: '',
-        );
-      }).toList();
-
-      final serverOrder = Order(
-        id: created['id'] ?? DateTime.now().millisecondsSinceEpoch,
-        bookingId: int.tryParse(created['reservation_id']?.toString() ?? '') ?? widget.booking.id,
-        items: mappedItems,
-        subtotal: (created['subtotal'] is num) ? (created['subtotal'] as num).toDouble() : subtotal,
-        serviceCharge: (created['serviceCharge'] is num) ? (created['serviceCharge'] as num).toDouble() : serviceCharge,
-        tax: (created['tax'] is num) ? (created['tax'] as num).toDouble() : tax,
-        total: (created['total_amount'] is num) ? (created['total_amount'] as num).toDouble() : total,
-        status: OrderStatus.created,
-        createdAt: DateTime.parse(created['created_at'] ?? DateTime.now().toIso8601String()),
-        specialInstructions: created['notes'] as String?,
-      );
-
-      // Save order from server
+      final serverOrder = _createOrderFromServerResponse(created, localOrder);
       ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
-      ref.read(orderItemsProvider.notifier).setItems(mappedItems);
-      ref.read(cartItemsProvider.notifier).clearCart();
-
-      setState(() => _isConfirming = false);
-
-      if (mounted) context.go('/kitchen-status');
+      ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
     } catch (e) {
-      // Fallback to local behavior
-      final order = Order(
-        id: DateTime.now().millisecondsSinceEpoch,
-        bookingId: widget.booking.id,
-        items: orderItems,
-        subtotal: subtotal,
-        serviceCharge: serviceCharge,
-        tax: tax,
-        total: total,
-        status: OrderStatus.created,
-        createdAt: DateTime.now(),
-        specialInstructions: _specialInstructionsController.text.isEmpty
-            ? null
-            : _specialInstructionsController.text,
-      );
-
-      // Save order locally
-      ref.read(currentOrderProvider.notifier).setOrder(order);
-      ref.read(orderItemsProvider.notifier).setItems(orderItems);
+      // Fallback to local behavior if API fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể gửi đơn hàng. Sử dụng dữ liệu tạm. Lỗi: $e')),
+        );
+      }
+      ref.read(currentOrderProvider.notifier).setOrder(localOrder);
+      ref.read(orderItemsProvider.notifier).setItems(localOrder.items);
+    } finally {
       ref.read(cartItemsProvider.notifier).clearCart();
-
       setState(() => _isConfirming = false);
-      if (mounted) context.go('/kitchen-status');
+      if (mounted) context.go(navigateTo);
     }
   }
 
-  void _handlePayNow() async {
-    await _handleConfirmOrder();
-    if (mounted) {
-      context.go('/payment');
-    }
+  void _handleSendToKitchen() {
+    _submitOrder(navigateTo: '/kitchen-status');
+  }
+
+  void _handlePayNow() {
+    _submitOrder(navigateTo: '/payment');
   }
 
   int _getEstimatedTime(String itemName) {
-    // Mock estimated time based on item name
     if (itemName.toLowerCase().contains('phở') || 
         itemName.toLowerCase().contains('bún')) {
       return 15;
@@ -362,7 +367,7 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _isConfirming ? null : _handleConfirmOrder,
+                    onPressed: _isConfirming ? null : _handleSendToKitchen,
                     child: _isConfirming
                         ? const SizedBox(
                             width: 20,

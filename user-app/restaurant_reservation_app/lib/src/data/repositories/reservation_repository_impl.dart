@@ -1,62 +1,51 @@
 
-import 'package:restaurant_reservation_app/src/data/datasources/data_source_adapter_app_user.dart';
-import 'package:restaurant_reservation_app/src/data/datasources/api_config.dart';
+import 'package:restaurant_reservation_app/src/data/services/reservation_app_user_service_app_user.dart';
 import 'package:restaurant_reservation_app/src/domain/entities/reservation.dart';
 import 'package:restaurant_reservation_app/src/domain/entities/table.dart' as ent_table;
 import 'package:restaurant_reservation_app/src/domain/entities/user.dart';
-import 'package:restaurant_reservation_app/src/domain/repositories/reservation_repository.dart';
+import 'package:restaurant_reservation_app/src/domain/repositories/reservation_repository.dart'; // Keep this import
 
 class ReservationRepositoryImpl implements ReservationRepository {
   ReservationRepositoryImpl();
 
   @override
   Future<List<Reservation>> getReservations() async {
-    final raw = await DataSourceAdapterAppUser.getReservations_app_user();
+    final raw = await ReservationAppUserServiceAppUser.fetchReservations();
     return raw.map<Reservation>((item) {
       if (item is Reservation) return item;
       final map = item as Map<String, dynamic>;
+      final userMap = map['user'] as Map<String, dynamic>?;
+      final tableMap = map['table'] as Map<String, dynamic>?;
+
       return Reservation(
         id: map['id'].toString(),
         user: User(
-          id: (map['user']?['id'] ?? '').toString(),
-          name: map['user']?['name'] ?? '',
-          email: map['user']?['email'] ?? '',
+          id: (userMap?['id'] ?? '').toString(),
+          name: userMap?['full_name'] ?? userMap?['name'] ?? 'Unknown User',
+          email: userMap?['email'] ?? '',
         ),
         table: ent_table.Table(
-          id: (map['table']?['id'] ?? '').toString(),
-          tableNumber: (map['table']?['tableNumber'] as int?) ?? 0,
-          capacity: (map['table']?['capacity'] as int?) ?? 0,
-          isOccupied: map['table']?['isOccupied'] ?? false,
+          id: (tableMap?['id'] ?? '').toString(),
+          tableNumber: int.tryParse(tableMap?['table_number']?.toString() ?? '0') ?? 0,
+          capacity: (tableMap?['capacity'] as int?) ?? 0,
+          isOccupied: tableMap?['status'] != 'available',
+          location: tableMap?['location'] as String?,
         ),
-        dateTime: DateTime.parse(map['dateTime'] ?? DateTime.now().toIso8601String()),
-        numberOfGuests: (map['numberOfGuests'] as int?) ?? (map['guests'] as int?) ?? 1,
+        dateTime: DateTime.parse(map['reservation_time'] ?? DateTime.now().toIso8601String()).toLocal(),
+        numberOfGuests: (map['num_people'] as int?) ?? 1,
+        status: map['status'] as String?,
+        createdAt: DateTime.tryParse(map['createdAt'] ?? '')?.toLocal(),
       );
     }).toList();
   }
 
   @override
   Future<Reservation> createReservation(Reservation reservation) async {
-    final raw = await DataSourceAdapterAppUser.createReservation_app_user({
-      // top-level linkage fields expected by backend
-  'user_id': ApiConfig.currentUserId.isNotEmpty ? ApiConfig.currentUserId : reservation.user.id.toString(),
-  'table_id': reservation.table.id.toString(),
-      'user': {
-        'id': reservation.user.id,
-        'name': reservation.user.name,
-        'email': reservation.user.email,
-      },
-      'table': {
-        'id': reservation.table.id,
-        'tableNumber': reservation.table.tableNumber,
-        'capacity': reservation.table.capacity,
-      },
-      'dateTime': reservation.dateTime.toIso8601String(),
-      'numberOfGuests': reservation.numberOfGuests,
-      // backend model expects reservation_time and num_people
+    final raw = await ReservationAppUserServiceAppUser.createReservation({
+      // Backend expects these top-level fields. user_id is added by the backend from the auth token.
+      'table_id': reservation.table.id,
       'reservation_time': reservation.dateTime.toIso8601String(),
       'num_people': reservation.numberOfGuests,
-      // ask backend to persist as confirmed for app-user bookings
-      'status': 'confirmed',
     });
 
     var map = raw as Map<String, dynamic>;
@@ -71,17 +60,20 @@ class ReservationRepositoryImpl implements ReservationRepository {
       id: map['id'].toString(),
       user: User(
         id: (map['user']?['id'] ?? '').toString(),
-        name: map['user']?['name'] ?? '',
+        name: map['user']?['full_name'] ?? map['user']?['name'] ?? 'Unknown User',
         email: map['user']?['email'] ?? '',
       ),
       table: ent_table.Table(
         id: (map['table']?['id'] ?? '').toString(),
-        tableNumber: (map['table']?['tableNumber'] as int?) ?? 0,
+        tableNumber: int.tryParse(map['table']?['table_number']?.toString() ?? '0') ?? 0,
         capacity: (map['table']?['capacity'] as int?) ?? 0,
-        isOccupied: map['table']?['isOccupied'] ?? false,
+        isOccupied: map['table']?['status'] != 'available',
+        location: map['table']?['location'] as String?,
       ),
-      dateTime: DateTime.parse(map['dateTime'] ?? map['reservation_time'] ?? DateTime.now().toIso8601String()),
+      dateTime: DateTime.parse(map['dateTime'] ?? map['reservation_time'] ?? DateTime.now().toIso8601String()).toLocal(),
       numberOfGuests: (map['numberOfGuests'] as int?) ?? (map['num_people'] as int?) ?? (map['guests'] as int?) ?? 1,
+      status: map['status'] as String?,
+      createdAt: DateTime.tryParse(map['createdAt'] ?? '')?.toLocal(),
     );
   }
 }
