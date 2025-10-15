@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "react-toastify"
 import { voucherService } from "@/services/voucherService"
 import type { Voucher as ApiVoucher } from "@/services/voucherService"
 
