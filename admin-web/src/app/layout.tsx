@@ -6,6 +6,7 @@ import '@/app/globals.css'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import AuthGate from '@/components/shared/AuthGate'
+import { ToastContainer } from 'react-toastify'
 
 export const metadata: Metadata = {
   title: 'My Restaurant Dashboard',
@@ -30,6 +31,16 @@ export default function RootLayout({
             </div>
           </div>
         </AuthGate>
+        <ToastContainer
+          position="bottom-right"
+          autoClose={2000}
+          hideProgressBar={false}
+          newestOnTop={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          theme="light" // có thể đổi "light" | "dark" | "colored"
+        />
         <Analytics />
       </body>
     </html>

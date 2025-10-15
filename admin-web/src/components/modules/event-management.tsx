@@ -1,151 +1,149 @@
 "use client"
 
-import { useState } from "react" 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card" 
-import { Button } from "@/components/ui/button" 
-import { Input } from "@/components/ui/input" 
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
- import { Badge } from "@/components/ui/badge" 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table" 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog" 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" 
-import { Search, Plus, Edit, Trash2, Eye, Filter } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Search, Plus, Trash2, Eye, Filter, Pencil } from "lucide-react"
+import { eventService } from "@/services/eventService"
+import { toast } from "react-toastify"
+import { v4 as uuidv4 } from "uuid"
 
 interface Event {
   id: string
   name: string
   description?: string
   price?: number
-  inclusions?: {
-    items: string[]
-    services: string[]
-  }
-  decorations?: {
-    theme: string
-    items: string[]
-  }
+  inclusions?: Record<string, string>
+  decorations?: Record<string, string>
   created_at: string
-  deleted_at?: string
+  deleted_at?: string | null
 }
 
-const mockEvents: Event[] = [
-  {
-    id: "1",
-    name: "Tiệc Cưới Cổ Điển",
-    description: "Gói tiệc cưới truyền thống với không gian sang trọng",
-    price: 50000000,
-    inclusions: {
-      items: ["Thực đơn 8 món", "Rượu vang", "Bánh cưới 3 tầng"],
-      services: ["MC", "Âm thanh ánh sáng", "Trang trí cổng hoa"]
-    },
-    decorations: {
-      theme: "Cổ điển",
-      items: ["Hoa tươi", "Nến trang trí", "Thảm đỏ"]
-    },
-    created_at: "2024-01-15",
-  },
-  {
-    id: "2",
-    name: "Tiệc Sinh Nhật Trẻ Em",
-    description: "Gói tiệc sinh nhật vui nhộn cho bé",
-    price: 15000000,
-    inclusions: {
-      items: ["Bánh sinh nhật", "Nước ngọt", "Đồ ăn nhẹ"],
-      services: ["Chương trình hoạt náo", "Trang trí bóng bay"]
-    },
-    decorations: {
-      theme: "Hoạt hình",
-      items: ["Bóng bay", "Banner", "Confetti"]
-    },
-    created_at: "2024-02-20",
-  },
-  {
-    id: "3",
-    name: "Hội Nghị Doanh Nghiệp",
-    description: "Gói tổ chức hội nghị chuyên nghiệp",
-    price: 35000000,
-    inclusions: {
-      items: ["Coffee break", "Bữa trưa buffet", "Tài liệu hội nghị"],
-      services: ["Âm thanh hội nghị", "Máy chiếu", "Lễ tân"]
-    },
-    decorations: {
-      theme: "Hiện đại",
-      items: ["Backdrop", "Bảng tên", "Hoa trang trí"]
-    },
-    created_at: "2024-03-10",
-  },
-  {
-    id: "4",
-    name: "Tiệc Tất Niên",
-    description: "Gói tiệc cuối năm cho doanh nghiệp",
-    price: 40000000,
-    inclusions: {
-      items: ["Thực đơn buffet", "Rượu bia", "Quà tặng"],
-      services: ["Ca nhạc", "Games tương tác", "Quay phim chụp ảnh"]
-    },
-    decorations: {
-      theme: "Năm mới",
-      items: ["Đèn trang trí", "Hoa tươi", "Banner chúc mừng"]
-    },
-    created_at: "2024-03-25",
-    deleted_at: "2024-04-01",
-  },
-]
-
 export function EventManagement() {
-  const [events, setEvents] = useState<Event[]>(mockEvents)
+  const [events, setEvents] = useState<Event[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [showDeleted, setShowDeleted] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
   const [newEvent, setNewEvent] = useState({
     name: "",
     description: "",
     price: "",
-    inclusions: { items: [] as string[], services: [] as string[] },
-    decorations: { theme: "", items: [] as string[] },
+    inclusions: {} as Record<string, string>,
+    decorations: {} as Record<string, string>,
   })
-  const [tempTag, setTempTag] = useState("")
 
-  const handleAddTag = (section: "inclusions" | "decorations", field: "items" | "services", value: string) => {
-    if (!value.trim()) return
-    setNewEvent((prev) => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: [...(prev[section] as any)[field], value.trim()],
-      },
-    }))
+  // 🔹 Load dữ liệu
+  const getAllEvents = async () => {
+    try {
+      const response = await eventService.getAll()
+      if (response && response.data.data) {
+        const data = response.data.data?.data || response.data.data
+        setEvents(Array.isArray(data) ? data : [])
+      } else {
+        toast.error("Lỗi khi tải dữ liệu sự kiện")
+      }
+    } catch (error) {
+      toast.error("Lỗi khi tải dữ liệu sự kiện")
+      setEvents([])
+    }
   }
 
-  const handleRemoveTag = (section: "inclusions" | "decorations", field: "items" | "services", tag: string) => {
-    setNewEvent((prev) => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: [...(prev[section] as any)[field]].filter((t:any) => t !== tag),
-      },
-    }))
-  }
+  useEffect(() => {
+    getAllEvents()
+  }, [])
 
+  // 🔹 Lọc dữ liệu
   const filteredEvents = events.filter((event) => {
-    const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch =
+      event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesDeleted = showDeleted ? true : !event.deleted_at
-    return matchesSearch && matchesDeleted
+
+    // Nếu bật "hiện đã xóa" => hiện tất cả, ngược lại chỉ hiện event chưa xóa
+    if (showDeleted) return matchesSearch
+    return matchesSearch && !event.deleted_at
   })
 
   const formatPrice = (price?: number) => {
     if (!price) return "Chưa có giá"
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price)
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(price)
   }
 
-  const handleCreateEvent = () => {
+  const handleAddRow = (field: "inclusions" | "decorations") => {
+    setNewEvent({
+      ...newEvent,
+      [field]: { ...newEvent[field], "": "" },
+    })
+  }
+
+  const handleKeyChange = (field: "inclusions" | "decorations", index: number, newKey: string) => {
+    const updated = { ...newEvent[field] }
+    const keys = Object.keys(updated)
+    const oldKey = keys[index]
+    const val = updated[oldKey]
+    delete updated[oldKey]
+    updated[newKey] = val
+    setNewEvent({ ...newEvent, [field]: updated })
+  }
+
+  const handleValueChange = (field: "inclusions" | "decorations", index: number, newValue: string) => {
+    const updated = { ...newEvent[field] }
+    const keys = Object.keys(updated)
+    updated[keys[index]] = newValue
+    setNewEvent({ ...newEvent, [field]: updated })
+  }
+
+  const handleDeleteRow = (field: "inclusions" | "decorations", index: number) => {
+    const updated = { ...newEvent[field] }
+    const key = Object.keys(updated)[index]
+    delete updated[key]
+    setNewEvent({ ...newEvent, [field]: updated })
+  }
+
+  const resetForm = () => {
+    setNewEvent({
+      name: "",
+      description: "",
+      price: "",
+      inclusions: {},
+      decorations: {},
+    })
+  }
+
+  const handleCreateEvent = async () => {
+    if (!newEvent.name.trim() || !newEvent.price) {
+      toast.error("Vui lòng nhập đầy đủ thông tin!")
+      return
+    }
+
     const event: Event = {
-      id: (events.length + 1).toString(),
+      id: uuidv4(),
       name: newEvent.name,
       description: newEvent.description,
       price: Number(newEvent.price),
@@ -153,32 +151,161 @@ export function EventManagement() {
       decorations: newEvent.decorations,
       created_at: new Date().toISOString().split("T")[0],
     }
+
+    const response = await eventService.create(event)
+    if (!response || response.status !== 201) {
+      toast.error("Tạo sự kiện thất bại!")
+      return
+    }
+
     setEvents([...events, event])
-    setNewEvent({
-      name: "",
-      description: "",
-      price: "",
-      inclusions: { items: [], services: [] },
-      decorations: { theme: "", items: [] },
-    })
+    toast.success("Tạo sự kiện thành công!")
+
+    resetForm()
     setIsCreateDialogOpen(false)
   }
 
-  const handleDeleteEvent = (eventId: string) => {
+  const handleEditEvent = (event: Event) => {
+    setSelectedEvent(event)
+    setNewEvent({
+      name: event.name,
+      description: event.description || "",
+      price: event.price?.toString() || "",
+      inclusions: event.inclusions || {},
+      decorations: event.decorations || {},
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleUpdateEvent = async () => {
+    if (!selectedEvent) return
+
+    const updatedEvent: Event = {
+      ...selectedEvent,
+      name: newEvent.name,
+      description: newEvent.description,
+      price: Number(newEvent.price),
+      inclusions: newEvent.inclusions,
+      decorations: newEvent.decorations,
+    }
+
+    const response = await eventService.update(selectedEvent.id, updatedEvent)
+    if (!response || response.status !== 200) {
+      toast.error("Cập nhật sự kiện thất bại!")
+      return
+    }
+
+    setEvents(events.map(e => e.id === selectedEvent.id ? updatedEvent : e))
+    toast.success("Cập nhật sự kiện thành công!")
+    setIsEditDialogOpen(false)
+    resetForm()
+  }
+
+  const handleDeleteEvent = async (eventId: string) => {
+    const response = await eventService.remove(eventId)
+    if (!response || response.status !== 200) {
+      toast.error("Xóa sự kiện thất bại!")
+      return
+    }
+    toast.success("Xóa sự kiện thành công!")
     setEvents(
       events.map((event) =>
-        event.id === eventId ? { ...event, deleted_at: new Date().toISOString().split("T")[0] } : event,
-      ),
+        event.id === eventId
+          ? { ...event, deleted_at: new Date().toISOString().split("T")[0] }
+          : event
+      )
     )
   }
 
-  const handleRestoreEvent = (eventId: string) => {
-    setEvents(events.map((event) => (event.id === eventId ? { ...event, deleted_at: undefined } : event)))
-  }
+  const renderEventForm = (isEdit = false) => (
+    <div className="grid gap-4 py-4">
+      <div className="grid gap-2">
+        <Label>Tên sự kiện</Label>
+        <Input
+          value={newEvent.name}
+          onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
+          placeholder="Nhập tên sự kiện"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label>Mô tả</Label>
+        <Input
+          value={newEvent.description}
+          onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+          placeholder="Nhập mô tả sự kiện"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label>Giá gói</Label>
+        <Input
+          type="number"
+          value={newEvent.price}
+          onChange={(e) => setNewEvent({ ...newEvent, price: e.target.value })}
+          placeholder="Nhập giá gói"
+        />
+      </div>
+
+      {/* Inclusions */}
+      <div className="grid gap-2">
+        <Label>Inclusions</Label>
+        {Object.entries(newEvent.inclusions).map(([key, value], index) => (
+          <div key={index} className="flex gap-2 items-center">
+            <Input
+              placeholder="Tên mục"
+              value={key}
+              onChange={(e) => handleKeyChange("inclusions", index, e.target.value)}
+            />
+            <Input
+              placeholder="Giá trị"
+              value={value}
+              onChange={(e) => handleValueChange("inclusions", index, e.target.value)}
+            />
+            <Button variant="ghost" size="icon" onClick={() => handleDeleteRow("inclusions", index)}>
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+        ))}
+        <Button variant="outline" onClick={() => handleAddRow("inclusions")}>
+          + Thêm dòng
+        </Button>
+      </div>
+
+      {/* Decorations */}
+      <div className="grid gap-2">
+        <Label>Decorations</Label>
+        {Object.entries(newEvent.decorations).map(([key, value], index) => (
+          <div key={index} className="flex gap-2 items-center">
+            <Input
+              placeholder="Tên mục"
+              value={key}
+              onChange={(e) => handleKeyChange("decorations", index, e.target.value)}
+            />
+            <Input
+              placeholder="Giá trị"
+              value={value}
+              onChange={(e) => handleValueChange("decorations", index, e.target.value)}
+            />
+            <Button variant="ghost" size="icon" onClick={() => handleDeleteRow("decorations", index)}>
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+        ))}
+        <Button variant="outline" onClick={() => handleAddRow("decorations")}>
+          + Thêm dòng
+        </Button>
+      </div>
+
+      <DialogFooter>
+        <Button onClick={isEdit ? handleUpdateEvent : handleCreateEvent}>
+          {isEdit ? "Cập nhật sự kiện" : "Tạo sự kiện"}
+        </Button>
+      </DialogFooter>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
-      {/* Header Actions */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex flex-col sm:flex-row gap-4 flex-1">
           <div className="relative flex-1 max-w-sm">
@@ -191,139 +318,40 @@ export function EventManagement() {
             />
           </div>
 
-          <Button variant={showDeleted ? "default" : "outline"} onClick={() => setShowDeleted(!showDeleted)}>
+          <Button
+            variant={showDeleted ? "default" : "outline"}
+            onClick={() => setShowDeleted(!showDeleted)}
+          >
             <Filter className="h-4 w-4 mr-2" />
             {showDeleted ? "Ẩn đã xóa" : "Hiện đã xóa"}
           </Button>
         </div>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        {/* Dialog Thêm */}
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open)
+            if (open) resetForm() // reset form mỗi khi mở create
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               Thêm sự kiện
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Thêm sự kiện mới</DialogTitle>
-              <DialogDescription>Tạo gói sự kiện mới trong hệ thống</DialogDescription>
+              <DialogDescription>Tạo gói sự kiện mới</DialogDescription>
             </DialogHeader>
-
-            {/* FORM TẠO SỰ KIỆN */}
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Tên sự kiện</Label>
-                <Input
-                  value={newEvent.name}
-                  onChange={(e:any) => setNewEvent({ ...newEvent, name: e.target.value })}
-                  placeholder="Nhập tên sự kiện"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Mô tả</Label>
-                <Input
-                  value={newEvent.description}
-                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                  placeholder="Nhập mô tả sự kiện"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Giá gói</Label>
-                <Input
-                  type="number"
-                  value={newEvent.price}
-                  onChange={(e) => setNewEvent({ ...newEvent, price: e.target.value })}
-                  placeholder="Nhập giá gói"
-                />
-              </div>
-
-              {/* Phụ kiện đi kèm */}
-              <div className="grid gap-2">
-                <Label>Phụ kiện (vật phẩm)</Label>
-                <div className="flex flex-wrap gap-2">
-                  {newEvent.inclusions.items.map((item, i) => (
-                    <Badge key={i} variant="secondary" onClick={() => handleRemoveTag("inclusions", "items", item)} className="cursor-pointer">
-                      {item} ✕
-                    </Badge>
-                  ))}
-                </div>
-                <Input
-                  placeholder="Nhập vật phẩm và nhấn Enter"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleAddTag("inclusions", "items", (e.target as HTMLInputElement).value)
-                      ;(e.target as HTMLInputElement).value = ""
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Dịch vụ đi kèm</Label>
-                <div className="flex flex-wrap gap-2">
-                  {newEvent.inclusions.services.map((sv, i) => (
-                    <Badge key={i} variant="secondary" onClick={() => handleRemoveTag("inclusions", "services", sv)} className="cursor-pointer">
-                      {sv} ✕
-                    </Badge>
-                  ))}
-                </div>
-                <Input
-                  placeholder="Nhập dịch vụ và nhấn Enter"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleAddTag("inclusions", "services", (e.target as HTMLInputElement).value)
-                      ;(e.target as HTMLInputElement).value = ""
-                    }
-                  }}
-                />
-              </div>
-
-              {/* Trang trí */}
-              <div className="grid gap-2">
-                <Label>Chủ đề trang trí</Label>
-                <Input
-                  placeholder="Nhập chủ đề (ví dụ: Cổ điển)"
-                  value={newEvent.decorations.theme}
-                  onChange={(e) => setNewEvent({
-                    ...newEvent,
-                    decorations: { ...newEvent.decorations, theme: e.target.value },
-                  })}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Vật phẩm trang trí</Label>
-                <div className="flex flex-wrap gap-2">
-                  {newEvent.decorations.items.map((item, i) => (
-                    <Badge key={i} variant="secondary" onClick={() => handleRemoveTag("decorations", "items", item)} className="cursor-pointer">
-                      {item} ✕
-                    </Badge>
-                  ))}
-                </div>
-                <Input
-                  placeholder="Nhập vật phẩm trang trí và nhấn Enter"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleAddTag("decorations", "items", (e.target as HTMLInputElement).value)
-                      ;(e.target as HTMLInputElement).value = ""
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button onClick={handleCreateEvent}>Tạo sự kiện</Button>
-            </DialogFooter>
+            {renderEventForm(false)}
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Table hiển thị sự kiện */}
+      {/* Table */}
       <Card>
         <CardHeader>
           <CardTitle>Danh sách sự kiện</CardTitle>
@@ -336,7 +364,6 @@ export function EventManagement() {
                 <TableHead>Tên sự kiện</TableHead>
                 <TableHead>Mô tả</TableHead>
                 <TableHead>Giá</TableHead>
-                <TableHead>Chủ đề</TableHead>
                 <TableHead>Ngày tạo</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
@@ -348,12 +375,13 @@ export function EventManagement() {
                   <TableCell>{event.name}</TableCell>
                   <TableCell>{event.description}</TableCell>
                   <TableCell>{formatPrice(event.price)}</TableCell>
-                  <TableCell><Badge variant="outline">{event.decorations?.theme}</Badge></TableCell>
                   <TableCell>{event.created_at}</TableCell>
                   <TableCell>
-                    {event.deleted_at
-                      ? <Badge variant="destructive">Đã xóa</Badge>
-                      : <Badge variant="secondary">Hoạt động</Badge>}
+                    {event.deleted_at ? (
+                      <Badge variant="destructive">Đã xóa</Badge>
+                    ) : (
+                      <Badge variant="secondary">Hoạt động</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -361,15 +389,13 @@ export function EventManagement() {
                         <Eye className="h-4 w-4" />
                       </Button>
                       {!event.deleted_at && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteEvent(event.id)}>
-                          <Trash2 className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" onClick={() => handleEditEvent(event)}>
+                          <Pencil className="h-4 w-4" />
                         </Button>
                       )}
-                      {event.deleted_at && (
-                        <Button variant="ghost" size="sm" onClick={() => handleRestoreEvent(event.id)}>
-                          Khôi phục
-                        </Button>
-                      )}
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteEvent(event.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -379,42 +405,42 @@ export function EventManagement() {
         </CardContent>
       </Card>
 
-      {/* View Dialog */}
+      {/* Dialog xem chi tiết */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Chi tiết sự kiện</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Chi tiết sự kiện</DialogTitle>
+          </DialogHeader>
           {selectedEvent && (
             <div className="space-y-4">
               <p><b>Tên:</b> {selectedEvent.name}</p>
               <p><b>Mô tả:</b> {selectedEvent.description}</p>
               <p><b>Giá:</b> {formatPrice(selectedEvent.price)}</p>
-              <p><b>Chủ đề:</b> {selectedEvent.decorations?.theme}</p>
               <div>
-                <Label>Phụ kiện:</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {selectedEvent.inclusions?.items.map((i, idx) => (
-                    <Badge key={idx} variant="outline">{i}</Badge>
-                  ))}
-                </div>
+                <Label>Inclusions:</Label>
+                <pre className="bg-muted p-2 rounded text-sm overflow-auto max-h-40">
+                  {JSON.stringify(selectedEvent.inclusions, null, 2)}
+                </pre>
               </div>
               <div>
-                <Label>Dịch vụ:</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {selectedEvent.inclusions?.services.map((s, idx) => (
-                    <Badge key={idx} variant="outline">{s}</Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Trang trí:</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {selectedEvent.decorations?.items.map((d, idx) => (
-                    <Badge key={idx} variant="outline">{d}</Badge>
-                  ))}
-                </div>
+                <Label>Decorations:</Label>
+                <pre className="bg-muted p-2 rounded text-sm overflow-auto max-h-40">
+                  {JSON.stringify(selectedEvent.decorations, null, 2)}
+                </pre>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog chỉnh sửa */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa sự kiện</DialogTitle>
+            <DialogDescription>Cập nhật thông tin sự kiện</DialogDescription>
+          </DialogHeader>
+          {renderEventForm(true)}
         </DialogContent>
       </Dialog>
     </div>
