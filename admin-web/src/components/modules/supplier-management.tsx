@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,9 +14,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Search, Plus, Edit, Trash2, Eye, Filter } from "lucide-react"
+import { Search, Plus, Edit, Trash2, Eye } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -24,6 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
+import { v4 as uuidv4 } from "uuid"
+import { supplierService } from "@/services/supplierService"
+import { toast } from "react-toastify"
+import { el } from "date-fns/locale"
 
 interface Supplier {
   id: string
@@ -33,39 +37,35 @@ interface Supplier {
   deleted_at?: string | null
 }
 
-// Mock data for testing
-const mockSuppliers: Supplier[] = [
-  {
-    id: "1",
-    name: "Công ty TNHH Thực phẩm A",
-    contact: "0901234567",
-    created_at: "2024-03-15",
-  },
-  {
-    id: "2",
-    name: "Nhà cung cấp B",
-    contact: "0912345678",
-    created_at: "2024-03-16",
-  },
-  {
-    id: "3",
-    name: "Công ty Thực phẩm C",
-    contact: "0923456789",
-    created_at: "2024-03-17",
-    deleted_at: "2024-03-20",
-  },
-]
-
 export function SupplierManagement() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [statusFilter, setStatusFilter] = useState("all") // "all", "active", "deleted"
+  const [statusFilter, setStatusFilter] = useState("all")
 
-  // Filter suppliers based on search term and status
+  // Lấy danh sách nhà cung cấp
+  const getSuppliers = async () => {
+    try {
+      const response = await supplierService.getAll()
+      if (response && response.status === 200) {
+        const data = response.data.data?.data || response.data.data
+        setSuppliers(Array.isArray(data) ? data : [])
+      } else {
+        toast.error("Lấy danh sách nhà cung cấp thất bại")
+      }
+    } catch (err) {
+      toast.error("Lỗi khi tải danh sách nhà cung cấp")
+      setSuppliers([])
+    }
+  }
+
+  useEffect(() => {
+    getSuppliers()
+  }, [])
+
   const filteredSuppliers = suppliers.filter(
     (supplier) =>
       (supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,40 +75,57 @@ export function SupplierManagement() {
         (statusFilter === "deleted" && supplier.deleted_at))
   )
 
-  // Handler functions
-  const handleCreateSupplier = (data: Omit<Supplier, "id" | "created_at">) => {
+  // Tạo mới
+  const handleCreateSupplier = async (data: Omit<Supplier, "id" | "created_at">) => {
     const newSupplier: Supplier = {
-      id: Date.now().toString(),
+      id: uuidv4(),
       ...data,
       created_at: new Date().toISOString().split("T")[0],
     }
-    setSuppliers([...suppliers, newSupplier])
+
+    setSuppliers((prev) => [...prev, newSupplier])
     setIsCreateDialogOpen(false)
+
+    const response = await supplierService.create(newSupplier)
+    if (response && response.status === 201) {
+      toast.success("Đã thêm nhà cung cấp thành công")
+    } else {
+      toast.error("Thêm nhà cung cấp thất bại")
+    }
   }
 
-  const handleUpdateSupplier = (id: string, data: Partial<Supplier>) => {
-    setSuppliers(
-      suppliers.map((supplier) =>
-        supplier.id === id ? { ...supplier, ...data } : supplier
+  // Cập nhật
+  const handleUpdateSupplier = async (id: string, data: Partial<Supplier>) => {
+    const response = await supplierService.update(id, data);
+    if (response && response.status === 200) {
+      toast.error("Cập nhật nhà cung cấp thành công")
+        setSuppliers((prev) =>
+        prev.map((supplier) =>
+          supplier.id === id ? { ...supplier, ...data } : supplier
+        )
       )
-    )
-    setIsEditDialogOpen(false)
+      setIsEditDialogOpen(false)
+    }
+    else {
+      toast.success("Đã cập nhật nhà cung cấp thất bại")
+    } 
   }
 
-  const handleDeleteSupplier = (id: string) => {
-    setSuppliers(
-      suppliers.map((supplier) =>
-        supplier.id === id ? { ...supplier, deleted_at: new Date().toISOString().split("T")[0] } : supplier
+  // Xóa
+  const handleDeleteSupplier = async (id: string) => {
+    const response = await supplierService.remove(id)
+    if (response && response.status === 200) {
+      toast.success("Đã xóa nhà cung cấp thành công")
+      setSuppliers((prev) =>
+        prev.map((supplier) =>
+          supplier.id === id
+            ? { ...supplier, deleted_at: new Date().toISOString().split("T")[0] }
+            : supplier
+        )
       )
-    )
-  }
-
-  const handleRestoreSupplier = (id: string) => {
-    setSuppliers(
-      suppliers.map((supplier) =>
-        supplier.id === id ? { ...supplier, deleted_at: null } : supplier
-      )
-    )
+    } else {
+      toast.error("Xóa nhà cung cấp thất bại")
+    }
   }
 
   return (
@@ -206,15 +223,6 @@ export function SupplierManagement() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </>
-                      )}
-                      {supplier.deleted_at && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRestoreSupplier(supplier.id)}
-                        >
-                          Khôi phục
-                        </Button>
                       )}
                     </div>
                   </TableCell>
