@@ -68,6 +68,7 @@ InventoryImport.init(
     timestamps: true,
     createdAt: "timestamp",
     updatedAt: false,
+    paranoid: false,
   },
 )
 

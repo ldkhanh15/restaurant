@@ -12,7 +12,6 @@ class TableService extends BaseService<Table> {
       ...options,
       where: { 
         status: status,
-        deleted_at: null 
       },
     })
   }

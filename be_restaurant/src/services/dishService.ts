@@ -7,16 +7,25 @@ class DishService extends BaseService<Dish> {
     super(Dish)
   }
 
-  async findDishesByCategoryId(id: string, options?: any) {
-    return await this.findAll({
-      ...options,
-      where: {
-        category_id: id,
-        deleted_at: null,
-      },
+  async checkExistedName(name:string){
+    const existedDish = await this.model.findOne({
+      where:{
+        name:name,
+        deleted_at:null
+      }
+    })
+    if(existedDish)
+      return true;
+    return false;
+  }
+
+  async findDishesByCategoryId(id: string) {
+    return await this.model.findAndCountAll({
+      where: { category_id: id },
       include: [{ model: CategoryDish, as: "category" }],
-  })
-}
+    })
+  }
+
 
   async findCategoryByDishId(id: string) {
     return await this.findById(id, {

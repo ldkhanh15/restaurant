@@ -42,7 +42,13 @@ export class BaseService<T extends Model> {
 
   async softDelete(id: string): Promise<T> {
     const record = await this.findById(id)
-    await record.update({ deletedAt: new Date() })
+    await record.update({ deleted_at: new Date() })
+    return record
+  }
+
+  async restore(id: string): Promise<T> {
+    const record = await this.findById(id, { paranoid: false })
+    await record.restore()
     return record
   }
 }

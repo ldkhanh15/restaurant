@@ -49,14 +49,21 @@ Ingredient.belongsToMany(Dish, { through: DishIngredient, foreignKey: "ingredien
 Employee.hasMany(InventoryImport, { foreignKey: "employee_id", as: "inventoryImports" })
 InventoryImport.belongsTo(Employee, { foreignKey: "employee_id", as: "employee" })
 
-Supplier.hasMany(InventoryImport, { foreignKey: "supplier_id", as: "inventoryImports" })
-InventoryImport.belongsTo(Supplier, { foreignKey: "supplier_id", as: "supplier" })
-
 InventoryImport.hasMany(InventoryImportIngredient, { foreignKey: "inventory_imports_id", as: "ingredients" })
 InventoryImportIngredient.belongsTo(InventoryImport, { foreignKey: "inventory_imports_id", as: "inventoryImport" })
 
-Ingredient.hasMany(InventoryImportIngredient, { foreignKey: "ingredient_id", as: "imports" })
 InventoryImportIngredient.belongsTo(Ingredient, { foreignKey: "ingredient_id", as: "ingredient" })
+Ingredient.hasMany(InventoryImportIngredient, { foreignKey: "ingredient_id", as: "inventoryImports" })
+
+Supplier.hasMany(InventoryImport, { foreignKey: "supplier_id", as: "inventoryImports" })
+InventoryImport.belongsTo(Supplier, { foreignKey: "supplier_id", as: "supplier" })
+
+// InventoryImport.hasMany(InventoryImportIngredient, { foreignKey: "inventory_imports_id", as: "ingredients" })
+// InventoryImportIngredient.belongsTo(InventoryImport, { foreignKey: "inventory_imports_id", as: "inventoryImport" })
+
+// Ingredient.hasMany(InventoryImportIngredient, { foreignKey: "ingredient_id", as: "imports" })
+// InventoryImportIngredient.belongsTo(Ingredient, { foreignKey: "ingredient_id", as: "ingredient" })
+
 
 User.hasMany(Reservation, { foreignKey: "user_id", as: "reservations" })
 Reservation.belongsTo(User, { foreignKey: "user_id", as: "user" })

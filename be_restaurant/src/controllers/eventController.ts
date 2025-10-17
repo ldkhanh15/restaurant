@@ -51,7 +51,7 @@ export const updateEvent = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteEvent = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await eventService.delete(req.params.id)
+    await eventService.softDelete(req.params.id)
     res.json({ status: "success", message: "Event deleted successfully" })
   } catch (error) {
     next(error)
