@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,10 +15,33 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge, Package } from "lucide-react"
-import { useState } from "react"
+import { Package, Eye, Edit, Trash2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { supplierService } from "@/services/supplierService"
+import { ingredientService } from "@/services/ingredientService"
+import { inventoryImportService } from "@/services/inventoryImportService"
+import { toast } from "react-toastify"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationEllipsis,
+} from "@/components/ui/pagination"
 
-interface Ingredient {
+interface IngredientAttributes {
   id: string
   name: string
   unit: string
@@ -31,41 +54,297 @@ interface Ingredient {
   deleted_at?: Date | null
 }
 
-interface InventoryImport {
-  id: number
-  reason: string
-  total_price: number
-  employee_id: number
-  employee_name: string
-  supplier_id?: number
-  supplier_name?: string
-  import_date: string
-  status: "pending" | "completed" | "cancelled"
-  items: ImportItem[]
-}
-
-interface ImportItem {
-  ingredient_id: number
-  ingredient_name: string
+interface ImportIngredient {
+  ingredient: {
+    id: string
+    name: string
+    unit: string
+  }
   quantity: number
-  unit_price: number
   total_price: number
 }
 
-interface ImportManagementProps {
-  imports: InventoryImport[]
-  ingredients: Ingredient[]
+interface InventoryImportAttributes {
+  id: string
+  reason?: string
+  total_price: number
+  employee_id?: string
+  supplier_id?: string
+  supplier?: Supplier
+  timestamp?: Date
+  ingredients?: ImportIngredient[]
 }
 
-export function ImportManagement({ imports, ingredients }: ImportManagementProps) {
+interface InventoryImportIngredientAttributes {
+  id: string
+  ingredient_id?: string
+  quantity: number
+  total_price: number
+  inventory_imports_id?: string
+  ingredient?: {
+    id: string
+    name: string
+    unit: string
+  }
+}
+
+interface Supplier {
+  id: string
+  name: string
+  email?: string
+  contact?: string
+  address?: string
+}
+
+interface PaginationResult<T> {
+  items: T[]
+  total: number
+  page: number
+  totalPages: number
+  hasNext: boolean
+  hasPrevious: boolean
+}
+
+export function ImportManagement() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [selectedIngredients, setSelectedIngredients] = useState<InventoryImportIngredientAttributes[]>([])
+  const [totalImportPrice, setTotalImportPrice] = useState(0)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [ingredients, setIngredients] = useState<IngredientAttributes[]>([])
+  const [imports, setImports] = useState<PaginationResult<InventoryImportAttributes>>()
+  const [selectedImport, setSelectedImport] = useState<InventoryImportAttributes>()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedSupplier, setSelectedSupplier] = useState("")
+  const [reason, setReason] = useState("")
+
+  useEffect(() => {
+    loadSuppliers()
+    loadIngredients()
+    loadImports(1)
+  }, [])
+
+  const loadSuppliers = async () => {
+    try {
+      const response = await supplierService.getAllNoPaging()
+      setSuppliers(response.data.data)
+    } catch (error) {
+      toast.error("Không thể tải danh sách nhà cung cấp")
+    }
+  }
+
+  const loadIngredients = async () => {
+    try {
+      const response = await ingredientService.getAllNoPaging()
+      setIngredients(response.data.data)
+    } catch (error) {
+      toast.error("Không thể tải danh sách nguyên liệu")
+    }
+  }
+
+  const loadImports = async (page: number) => {
+    try {
+      const response = await inventoryImportService.getAll({ 
+        page,
+        limit: 10,
+        sortBy: 'timestamp',
+        sortOrder: 'DESC'
+      })
+      const data = response.data.data.data
+      setImports({
+        items: data,
+        total: data.length,
+        page: 1,
+        totalPages: 1,
+        hasNext: false,
+        hasPrevious: false
+      })
+      setCurrentPage(page)
+    } catch (error) {
+      toast.error("Không thể tải lịch sử nhập hàng")
+    }
+  }
+
+  const handleCreateImport = async () => {
+    // Validate ingredients not empty
+    if (!selectedIngredients.length) {
+      toast.error("Vui lòng thêm ít nhất một nguyên liệu")
+      return
+    }
+
+    // Validate required fields
+    if (!selectedSupplier) {
+      toast.error("Vui lòng chọn nhà cung cấp")
+      return
+    }
+
+    try {
+      const importData = {
+        reason,
+        supplier_id: selectedSupplier,
+        total_price: Number(totalImportPrice),
+        ingredients: selectedIngredients.map(ing => ({
+          id: ing.id,
+          ingredient_id: ing.ingredient_id!,
+          quantity: Number(ing.quantity) || 0,
+          total_price: Number(ing.total_price) || 0
+        }))
+      }
+      
+      await inventoryImportService.create(importData)
+      toast.success("Tạo phiếu nhập hàng thành công")
+      setIsImportDialogOpen(false)
+      loadImports(currentPage)
+      resetForm()
+    } catch (error) {
+      console.error('Create error:', error)
+      toast.error("Không thể tạo phiếu nhập hàng")
+    }
+  }
+
+  const handleUpdateImport = async () => {
+    if (!selectedImport) return
+    
+    // Validate ingredients not empty
+    if (!selectedIngredients.length) {
+      toast.error("Vui lòng thêm ít nhất một nguyên liệu")
+      return
+    }
+
+    try {
+      // First update main import info
+      const importData = {
+        reason,
+        supplier_id: selectedSupplier,
+        total_price: Number(totalImportPrice),
+      }
+      
+      await inventoryImportService.update(selectedImport.id, importData)
+
+      // Then update ingredients
+      const ingredients = selectedIngredients.map(ing => ({
+        id: ing.id,
+        ingredient_id: ing.ingredient_id!,
+        quantity: Number(ing.quantity) || 0,
+        total_price: Number(ing.total_price) || 0
+      }))
+
+      await inventoryImportService.updateInventoryIngredients(selectedImport.id, ingredients)
+      
+      toast.success("Cập nhật phiếu nhập hàng thành công")
+      setIsEditDialogOpen(false)
+      loadImports(currentPage)
+      resetForm()
+    } catch (error) {
+      console.error('Update error:', error)
+      toast.error("Không thể cập nhật phiếu nhập hàng")
+    }
+  }
+
+  const handleDeleteImport = async () => {
+    if (!selectedImport) return
+    try {
+      await inventoryImportService.remove(selectedImport.id)
+      toast.success("Xóa phiếu nhập hàng thành công")
+      setIsDeleteDialogOpen(false)
+      loadImports(currentPage)
+      setSelectedImport(undefined)
+    } catch (error) {
+      toast.error("Không thể xóa phiếu nhập hàng")
+    }
+  }
+
+  const resetForm = () => {
+    setSelectedIngredients([])
+    setTotalImportPrice(0)
+    setSelectedSupplier("")
+    setReason("")
+    setSelectedImport(undefined)
+  }
+
+  const handleEdit = (importRecord: InventoryImportAttributes) => {
+    // replaced by async loader below; kept for type compatibility
+    ;(async () => {
+      try {
+        const resp = await inventoryImportService.getById(importRecord.id)
+        const data = resp.data?.data?.data ?? resp.data?.data ?? resp.data
+
+        setSelectedImport(data)
+        setReason(data.reason || "")
+        setSelectedSupplier(data.supplier_id || data.supplier?.id || "")
+        setTotalImportPrice(data.total_price || 0)
+
+        if (data.ingredients) {
+          setSelectedIngredients(
+            data.ingredients.map((ing: any) => ({
+              id: ing.id ?? crypto.randomUUID(),
+              ingredient_id: ing.ingredient?.id ?? ing.ingredient_id,
+              quantity: ing.quantity,
+              total_price: ing.total_price,
+            }))
+          )
+        }
+
+        setIsEditDialogOpen(true)
+      } catch (error) {
+        toast.error("Không thể tải chi tiết phiếu nhập")
+      }
+    })()
+  }
+
+  const loadImportDetail = async (id: string) => {
+    try {
+      const resp = await inventoryImportService.getById(id)
+      const data = resp.data?.data?.data ?? resp.data?.data ?? resp.data
+      setSelectedImport(data)
+      setIsDetailDialogOpen(true)
+    } catch (error) {
+      toast.error("Không thể tải chi tiết phiếu nhập")
+    }
+  }
+
+  // Calculate page numbers to display
+  const getPageNumbers = () => {
+    if (!imports) return []
+    const totalPages = imports.totalPages
+    const maxPagesToShow = 5
+    const pages: (number | string)[] = []
+    let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2))
+    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1)
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1)
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i)
+    }
+
+    if (startPage > 1) {
+      pages.unshift('...')
+      pages.unshift(1)
+    }
+    if (endPage < totalPages) {
+      pages.push('...')
+      pages.push(totalPages)
+    }
+
+    return pages
+  }
+
+  const handleOpenImportDialog = () => {
+    resetForm() // Clear form data before opening
+    setIsImportDialogOpen(true)
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
         <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleOpenImportDialog}>
               <Package className="h-4 w-4 mr-2" />
               Nhập hàng
             </Button>
@@ -79,18 +358,25 @@ export function ImportManagement({ imports, ingredients }: ImportManagementProps
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="import-reason">Lý do nhập</Label>
-                  <Input id="import-reason" placeholder="Nhập hàng định kỳ" />
+                  <Input 
+                    id="import-reason" 
+                    placeholder="Nhập hàng định kỳ" 
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="supplier">Nhà cung cấp</Label>
-                  <Select>
+                  <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                     <SelectTrigger>
                       <SelectValue placeholder="Chọn nhà cung cấp" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Công ty Thịt Sạch ABC</SelectItem>
-                      <SelectItem value="2">Nhà máy Bánh Phở Hà Nội</SelectItem>
-                      <SelectItem value="3">Nông trại Xanh</SelectItem>
+                      {suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -98,38 +384,296 @@ export function ImportManagement({ imports, ingredients }: ImportManagementProps
               <div className="grid gap-2">
                 <Label>Nguyên liệu nhập</Label>
                 <div className="border rounded-lg p-4 space-y-3">
-                  <div className="grid grid-cols-4 gap-2 text-sm font-medium">
+                  <div className="grid grid-cols-3 gap-2 text-sm font-medium">
                     <span>Nguyên liệu</span>
                     <span>Số lượng</span>
-                    <span>Đơn giá</span>
                     <span>Thành tiền</span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn nguyên liệu" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ingredients.map((ingredient) => (
-                          <SelectItem key={ingredient.id} value={ingredient.id.toString()}>
-                            {ingredient.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input type="number" placeholder="0" />
-                    <Input type="number" placeholder="0" />
-                    <Input type="number" placeholder="0" disabled />
-                  </div>
+                  {selectedIngredients.map((item, index) => (
+                    <div key={index} className="grid grid-cols-3 gap-2 items-center">
+                      <Select 
+                        value={item.ingredient_id} 
+                        onValueChange={(value) => {
+                          const newIngredients = [...selectedIngredients]
+                          newIngredients[index] = {
+                            ...item,
+                            ingredient_id: value
+                          }
+                          setSelectedIngredients(newIngredients)
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn nguyên liệu" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ingredients.map((ingredient) => (
+                            <SelectItem key={ingredient.id} value={ingredient.id}>
+                              {ingredient.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input 
+                        type="number" 
+                        min="0"
+                        value={item.quantity} 
+                        onChange={(e) => {
+                          const newIngredients = [...selectedIngredients]
+                          const quantity = parseFloat(e.target.value) || 0
+                          newIngredients[index] = {
+                            ...item,
+                            quantity,
+                          }
+                          setSelectedIngredients(newIngredients)
+                        }}
+                      />
+                      <Input 
+                        type="number" 
+                        min="0"
+                        value={item.total_price} 
+                        onChange={(e) => {
+                          const newIngredients = [...selectedIngredients]
+                          const total_price = parseFloat(e.target.value) || 0
+                          newIngredients[index] = {
+                            ...item,
+                            total_price
+                          }
+                          setSelectedIngredients(newIngredients)
+                          setTotalImportPrice(newIngredients.reduce((sum, i) => sum + i.total_price, 0))
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedIngredients([
+                        ...selectedIngredients,
+                        { id: crypto.randomUUID(), quantity: 0, total_price: 0 }
+                      ])
+                    }}
+                  >
+                    + Thêm nguyên liệu
+                  </Button>
+                </div>
+                <div className="text-right font-medium">
+                  Tổng cộng: {totalImportPrice.toLocaleString('vi-VN')}đ
                 </div>
               </div>
             </div>
             <DialogFooter>
-              <Button type="submit">Tạo phiếu nhập</Button>
+              <Button type="submit" onClick={handleCreateImport}>Tạo phiếu nhập</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Chi tiết phiếu nhập</DialogTitle>
+            <DialogDescription>
+              Phiếu #{selectedImport?.id} - {selectedImport?.reason}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Ngày nhập</Label>
+                <div>{selectedImport?.timestamp ? new Date(selectedImport.timestamp).toLocaleDateString("vi-VN") : "-"}</div>
+              </div>
+              <div>
+                <Label>Tổng tiền</Label>
+                <div>{selectedImport?.total_price.toLocaleString("vi-VN")}đ</div>
+              </div>
+            </div>
+            {selectedImport?.supplier && (
+              <div className="grid grid-cols-1 gap-2">
+                <Label>Nhà cung cấp:</Label>
+                <div className="text-sm">
+                  <span className="font-medium">Tên:{selectedImport.supplier.name}</span>
+                  {selectedImport.supplier.contact && <div>SĐT: {selectedImport.supplier.contact}</div>}
+                </div>
+              </div>
+            )}
+            <div>
+              <Label>Danh sách nguyên liệu</Label>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tên nguyên liệu</TableHead>
+                    <TableHead>Số lượng</TableHead>
+                    <TableHead>Đơn vị</TableHead>
+                    <TableHead>Thành tiền</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedImport?.ingredients?.map((ingredientItem) => (
+                    <TableRow key={ingredientItem.ingredient.id}>
+                      <TableCell>{ingredientItem.ingredient.name}</TableCell>
+                      <TableCell>{ingredientItem.quantity}</TableCell>
+                      <TableCell>{ingredientItem.ingredient.unit}</TableCell>
+                      <TableCell>{ingredientItem.total_price.toLocaleString("vi-VN")}đ</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa phiếu nhập #{selectedImport?.id}? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteImport}>
+              Xác nhận
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Chỉnh sửa phiếu nhập</DialogTitle>
+          <DialogDescription>Cập nhật thông tin phiếu nhập hàng #{selectedImport?.id}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-reason">Lý do nhập</Label>
+              <Input
+                id="edit-reason"
+                placeholder="Nhập hàng định kỳ"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-supplier">Nhà cung cấp</Label>
+              <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn nhà cung cấp" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Nguyên liệu nhập</Label>
+            <div className="border rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 text-sm font-medium">
+                <span>Nguyên liệu</span>
+                <span>Số lượng</span>
+                <span>Thành tiền</span>
+                <span></span>
+              </div>
+              {selectedIngredients.map((item, index) => (
+                <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 items-center">
+                  <Select
+                    value={item.ingredient_id || ""}
+                    onValueChange={(value) => {
+                      const newIngredients = [...selectedIngredients];
+                      newIngredients[index] = {
+                        ...item,
+                        ingredient_id: value,
+                      };
+                      setSelectedIngredients(newIngredients);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn nguyên liệu" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ingredients.map((ingredient) => (
+                        <SelectItem key={ingredient.id} value={ingredient.id}>
+                          {ingredient.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={item.quantity !== undefined ? item.quantity : ""}
+                    onChange={(e) => {
+                      const newIngredients = [...selectedIngredients];
+                      const quantity = Number(e.target.value) || 0;
+                      newIngredients[index] = {
+                        ...item,
+                        quantity,
+                      };
+                      setSelectedIngredients(newIngredients);
+                    }}
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    value={item.total_price !== undefined ? item.total_price : ""}
+                    onChange={(e) => {
+                      const newIngredients = [...selectedIngredients];
+                      const total_price = Number(e.target.value) || 0;
+                      newIngredients[index] = {
+                        ...item,
+                        total_price,
+                      };
+                      setSelectedIngredients(newIngredients);
+                      setTotalImportPrice(newIngredients.reduce((sum, i) => sum + Number(i.total_price || 0), 0));
+                    }}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const newIngredients = selectedIngredients.filter((_, i) => i !== index);
+                      setSelectedIngredients(newIngredients);
+                      setTotalImportPrice(newIngredients.reduce((sum, i) => sum + Number(i.total_price || 0), 0));
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSelectedIngredients([
+                    ...selectedIngredients,
+                    { id: crypto.randomUUID(), quantity: 0, total_price: 0, ingredient_id: "" },
+                  ]);
+                }}
+              >
+                + Thêm nguyên liệu
+              </Button>
+            </div>
+            <div className="text-right font-medium">
+              Tổng cộng: {totalImportPrice.toLocaleString("vi-VN")}đ
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="submit" onClick={handleUpdateImport}>
+            Cập nhật
+          </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -142,43 +686,85 @@ export function ImportManagement({ imports, ingredients }: ImportManagementProps
               <TableRow>
                 <TableHead>Mã phiếu</TableHead>
                 <TableHead>Lý do</TableHead>
-                <TableHead>Nhà cung cấp</TableHead>
-                <TableHead>Nhân viên</TableHead>
                 <TableHead>Ngày nhập</TableHead>
                 <TableHead>Tổng tiền</TableHead>
-                <TableHead>Trạng thái</TableHead>
+                <TableHead>Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {imports.map((importRecord) => (
+              {(imports?.items || []).map((importRecord) => (
                 <TableRow key={importRecord.id}>
                   <TableCell className="font-medium">#{importRecord.id}</TableCell>
-                  <TableCell>{importRecord.reason}</TableCell>
-                  <TableCell>{importRecord.supplier_name || "Nhiều nhà cung cấp"}</TableCell>
-                  <TableCell>{importRecord.employee_name}</TableCell>
-                  <TableCell>{new Date(importRecord.import_date).toLocaleDateString("vi-VN")}</TableCell>
+                  <TableCell>{importRecord.reason || "Nhập hàng"}</TableCell>
+                  <TableCell>{importRecord.timestamp ? new Date(importRecord.timestamp).toLocaleDateString("vi-VN") : "-"}</TableCell>
                   <TableCell className="font-medium">{importRecord.total_price.toLocaleString("vi-VN")}đ</TableCell>
                   <TableCell>
-                    <Badge
-                      className={
-                        importRecord.status === "completed"
-                          ? "bg-green-100 text-green-800"
-                          : importRecord.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-red-100 text-red-800"
-                      }
-                    >
-                      {importRecord.status === "completed"
-                        ? "Hoàn thành"
-                        : importRecord.status === "pending"
-                          ? "Đang xử lý"
-                          : "Đã hủy"}
-                    </Badge>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => loadImportDetail(importRecord.id)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEdit(importRecord)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedImport(importRecord)
+                          setIsDeleteDialogOpen(true)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          
+          {imports && (
+            <div className="mt-4">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => imports.hasPrevious && loadImports(currentPage - 1)}
+                      className={imports.hasPrevious ? '' : 'pointer-events-none opacity-50'}
+                    />
+                  </PaginationItem>
+                  {getPageNumbers().map((page, index) => (
+                    <PaginationItem key={index}>
+                      {page === '...' ? (
+                        <PaginationEllipsis />
+                      ) : (
+                        <PaginationLink
+                          isActive={currentPage === page}
+                          onClick={() => loadImports(page as number)}
+                        >
+                          {page}
+                        </PaginationLink>
+                      )}
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => imports.hasNext && loadImports(currentPage + 1)}
+                      className={imports.hasNext ? '' : 'pointer-events-none opacity-50'}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
