@@ -1,31 +1,39 @@
-import { DataTypes, Model, type Optional } from "sequelize"
-import sequelize from "../config/database"
+import { DataTypes, Model, type Optional } from "sequelize";
+import sequelize from "../config/database";
 
 interface ChatSessionAttributes {
-  id: string
-  user_id?: string
-  is_authenticated: boolean
-  channel: "web" | "app" | "zalo"
-  context?: any
-  start_time?: Date
-  end_time?: Date
-  status: "active" | "closed"
-  handled_by: "bot" | "human"
+  id: string;
+  user_id?: string;
+  is_authenticated: boolean;
+  channel: "web" | "app" | "zalo";
+  context?: any;
+  start_time?: Date;
+  end_time?: Date;
+  status: "active" | "closed";
+  handled_by: "bot" | "human";
+  bot_enabled?: boolean;
 }
 
 interface ChatSessionCreationAttributes
-  extends Optional<ChatSessionAttributes, "id" | "is_authenticated" | "channel" | "status" | "handled_by"> {}
+  extends Optional<
+    ChatSessionAttributes,
+    "id" | "is_authenticated" | "channel" | "status" | "handled_by"
+  > {}
 
-class ChatSession extends Model<ChatSessionAttributes, ChatSessionCreationAttributes> implements ChatSessionAttributes {
-  public id!: string
-  public user_id?: string
-  public is_authenticated!: boolean
-  public channel!: "web" | "app" | "zalo"
-  public context?: any
-  public start_time?: Date
-  public end_time?: Date
-  public status!: "active" | "closed"
-  public handled_by!: "bot" | "human"
+class ChatSession
+  extends Model<ChatSessionAttributes, ChatSessionCreationAttributes>
+  implements ChatSessionAttributes
+{
+  public id!: string;
+  public user_id?: string;
+  public is_authenticated!: boolean;
+  public channel!: "web" | "app" | "zalo";
+  public context?: any;
+  public start_time?: Date;
+  public end_time?: Date;
+  public status!: "active" | "closed";
+  public handled_by!: "bot" | "human";
+  public bot_enabled?: boolean;
 }
 
 ChatSession.init(
@@ -72,12 +80,16 @@ ChatSession.init(
       type: DataTypes.ENUM("bot", "human"),
       defaultValue: "bot",
     },
+    bot_enabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
   },
   {
     sequelize,
     tableName: "chat_sessions",
     timestamps: false,
-  },
-)
+  }
+);
 
-export default ChatSession
+export default ChatSession;

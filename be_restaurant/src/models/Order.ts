@@ -34,7 +34,7 @@ class Order extends Model<OrderAttributes, OrderCreationAttributes> implements O
   public table_group_id?: string
   public event_id?: string
   public voucher_id?: string
-  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
+  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready"  | "paid" | "cancelled"
   public total_amount!: number
   public voucher_discount_amount?: number
   public final_amount!: number
