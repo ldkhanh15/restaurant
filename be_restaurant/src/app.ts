@@ -28,8 +28,6 @@ import notificationRoutes from "./routes/notificationRoutes";
 import blogPostRoutes from "./routes/blogPostRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
 import chatRoutes from "./routes/chatRoutes";
-import chatSessionRoutes from "./routes/chatSessionRoutes";
-import chatMessageRoutes from "./routes/chatMessageRoutes";
 import userBehaviorRoutes from "./routes/userBehaviorRoutes";
 
 // Import app_user routes
@@ -97,8 +95,6 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/blog", blogPostRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
-app.use("/api/chat/sessions", chatSessionRoutes);
-app.use("/api/chat/messages", chatMessageRoutes);
 app.use("/api/recommendations", userBehaviorRoutes);
 
 

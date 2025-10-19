@@ -19,24 +19,19 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // if(email === '123@gmail.com' && password === '123')
-    // {
-    //     toast.success("Đăng nhập thành công")
-    router.replace("/dashboard");
-    // }
-    // try {
-    //     const res = await authService.login({ email, password })
-    //     const token = res?.token || res?.data?.token
-    //     if (token) {
-    //         setToken(token)
-    //         toast.success("Đăng nhập thành công")
-    //         router.replace("/dashboard")
-    //     } else {
-    //         toast.error("Không nhận được token")
-    //     }
-    // } finally {
-    //     setLoading(false)
-    // }
+    try {
+      const res = await authService.login({ email, password });
+      const token = res?.token || res?.data?.token;
+      if (token) {
+        setToken(token);
+        toast.success("Đăng nhập thành công");
+        router.replace("/dashboard");
+      } else {
+        toast.error("Không nhận được token");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
