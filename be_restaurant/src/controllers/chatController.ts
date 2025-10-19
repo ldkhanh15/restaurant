@@ -6,6 +6,7 @@ import {
   listMessages,
   listUserSessions,
   sendMessage,
+  listAllSessions,
 } from "../services/chatService";
 import { getIO } from "../sockets";
 
@@ -38,6 +39,19 @@ export const getSessions = async (
     const userId = req.user?.id;
     if (!userId) return res.status(400).json({ message: "Missing user id" });
     const sessions = await listUserSessions(userId);
+    res.json(sessions);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getAllSessions = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const sessions = await listAllSessions();
     res.json(sessions);
   } catch (err) {
     next(err);

@@ -1,5 +1,6 @@
 import ChatSession from "../models/ChatSession";
 import ChatMessage from "../models/ChatMessage";
+import { User } from "../models";
 
 export interface CreateSessionParams {
   userId?: string;
@@ -29,6 +30,24 @@ export const createSession = async ({
 export const getSessionsByUser = async (userId: string) => {
   return ChatSession.findAll({
     where: { user_id: userId },
+    include: [
+      {
+        model: User,
+        as: "user",
+      },
+    ],
+    order: [["start_time", "DESC"]],
+  });
+};
+
+export const getAllSessions = async () => {
+  return ChatSession.findAll({
+    include: [
+      {
+        model: User,
+        as: "user",
+      },
+    ],
     order: [["start_time", "DESC"]],
   });
 };

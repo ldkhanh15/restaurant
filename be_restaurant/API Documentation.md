@@ -474,6 +474,128 @@ Hệ thống sử dụng **JWT (JSON Web Token)** để xác thực và phân qu
 
 ---
 
+## 🎫 Voucher Module
+
+### GET /api/vouchers/active
+- ✅ **Mô tả chức năng**: Lấy danh sách voucher đang hoạt động (public endpoint)
+- 🔑 **Quyền truy cập**: Public (không cần authentication)
+- 📥 **Input**: Không có
+- 📤 **Output (200)**:
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "uuid",
+      "code": "SAVE10",
+      "discount_type": "percentage|fixed",
+      "value": 10.00,
+      "expiry_date": "2024-12-31",
+      "max_uses": 100,
+      "current_uses": 25,
+      "min_order_value": 200000,
+      "active": true,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+- 🚫 **Error cases**: 500 (Internal server error)
+
+### GET /api/vouchers
+- ✅ **Mô tả chức năng**: Lấy danh sách voucher với phân trang và sắp xếp
+- 🔑 **Quyền truy cập**: admin, employee
+- 📥 **Input**:
+  - Query: `page` (1+), `limit` (1-100), `sortBy` (created_at|code|discount_type|value|expiry_date|max_uses|current_uses), `sortOrder` (ASC|DESC)
+- 📤 **Output (200)**: Paginated vouchers list với relations
+- 🚫 **Error cases**: 401, 403, 400 (Invalid query params)
+
+### GET /api/vouchers/:id
+- ✅ **Mô tả chức năng**: Lấy voucher theo ID với thống kê sử dụng
+- 🔑 **Quyền truy cập**: admin, employee
+- 📥 **Input**: Path param `id` (UUID)
+- 📤 **Output (200)**:
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "uuid",
+    "code": "SAVE10",
+    "discount_type": "percentage",
+    "value": 10.00,
+    "expiry_date": "2024-12-31",
+    "max_uses": 100,
+    "current_uses": 25,
+    "min_order_value": 200000,
+    "active": true,
+    "created_at": "2024-01-01T00:00:00Z",
+    "orders": [
+      {
+        "id": "uuid",
+        "user": { "id": "uuid", "username": "john_doe" },
+        "table": { "id": "uuid", "table_number": "T001" },
+        "items": [
+          {
+            "id": "uuid",
+            "dish": { "id": "uuid", "name": "Pho Bo", "price": 45000 }
+          }
+        ]
+      }
+    ],
+    "usages": [
+      {
+        "id": "uuid",
+        "user": { "id": "uuid", "username": "john_doe" },
+        "order": { "id": "uuid" },
+        "discount_amount": 50000,
+        "used_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  }
+}
+```
+- 🚫 **Error cases**: 401, 403, 404 (Not found)
+
+### POST /api/vouchers
+- ✅ **Mô tả chức năng**: Tạo voucher mới
+- 🔑 **Quyền truy cập**: admin
+- 📥 **Input**:
+```json
+{
+  "code": "SAVE10", // required, max 50 chars
+  "discount_type": "percentage|fixed", // required
+  "value": 10.00, // required
+  "expiry_date": "2024-12-31", // optional
+  "max_uses": 100, // optional, default 0
+  "min_order_value": 200000, // optional, default 0
+  "active": true // optional, default true
+}
+```
+- 📤 **Output (201)**: Created voucher object
+- 🚫 **Error cases**: 401, 403, 400 (Validation error)
+
+### PUT /api/vouchers/:id
+- ✅ **Mô tả chức năng**: Cập nhật voucher
+- 🔑 **Quyền truy cập**: admin
+- 📥 **Input**: Same as POST (all fields optional)
+- 📤 **Output (200)**: Updated voucher object
+- 🚫 **Error cases**: 401, 403, 404 (Not found), 400 (Validation error)
+
+### DELETE /api/vouchers/:id
+- ✅ **Mô tả chức năng**: Xóa voucher
+- 🔑 **Quyền truy cập**: admin
+- 📥 **Input**: Path param `id`
+- 📤 **Output (200)**:
+```json
+{
+  "status": "success",
+  "message": "Voucher deleted successfully"
+}
+```
+- 🚫 **Error cases**: 401, 403, 404 (Not found)
+
+---
+
 ## 💳 Payment Module
 
 ### GET /api/payments
@@ -756,6 +878,38 @@ Hệ thống sử dụng **JWT (JSON Web Token)** để xác thực và phân qu
   transaction_id?: string
   created_at?: Date
   updated_at?: Date
+}
+```
+
+### Voucher
+
+```typescript
+{
+  id: string (UUID)
+  code: string
+  discount_type: "percentage" | "fixed"
+  value: number
+  expiry_date?: Date
+  max_uses: number
+  current_uses: number
+  min_order_value: number
+  active: boolean
+  created_at?: Date
+  deleted_at?: Date | null
+}
+```
+
+### VoucherUsage
+
+```typescript
+{
+  id: string (UUID)
+  voucher_id: string (UUID)
+  user_id: string (UUID)
+  order_id: string (UUID)
+  discount_amount: number
+  used_at: Date
+  created_at?: Date
 }
 ```
 

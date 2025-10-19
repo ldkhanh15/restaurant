@@ -1,397 +1,395 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Eye, Clock, CheckCircle, XCircle, CreditCard, Banknote } from "lucide-react"
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  ShoppingCart,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Filter,
+  Search,
+} from "lucide-react";
+import { useOrderWebSocket } from "@/hooks/useWebSocket";
+import { orderService } from "@/services/orderService";
+import { useToast } from "@/components/ui/use-toast";
 
 interface Order {
-  id: number
-  user_id: number
-  customer_name: string
-  customer_phone: string
-  status: "pending" | "preparing" | "ready" | "delivered" | "cancelled"
-  payment_status: "pending" | "paid" | "failed" | "refunded"
-  payment_method: "cash" | "card" | "transfer" | "momo" | "zalopay"
-  total_amount: number
-  created_at: string
-  updated_at: string
-  order_items: OrderItem[]
-  table_number?: number
-  notes?: string
+  id: string;
+  order_number: string;
+  status: string;
+  total_amount: number;
+  table_id?: string;
+  table_name?: string;
+  customer_name?: string;
+  created_at: string;
+  items: OrderItem[];
 }
 
 interface OrderItem {
-  id: number
-  dish_id: number
-  dish_name: string
-  quantity: number
-  price: number
-  customizations?: string
-  status: "pending" | "preparing" | "ready" | "served"
-  duration_seconds?: number
+  id: string;
+  dish_name: string;
+  quantity: number;
+  price: number;
+  status: string;
 }
 
-const mockOrders: Order[] = [
+interface OrderManagementProps {
+  className?: string;
+}
+
+const ORDER_STATUSES = [
   {
-    id: 1001,
-    user_id: 1,
-    customer_name: "Nguyễn Văn A",
-    customer_phone: "0901234567",
-    status: "preparing",
-    payment_status: "paid",
-    payment_method: "card",
-    total_amount: 285000,
-    created_at: "2024-03-20T10:30:00",
-    updated_at: "2024-03-20T10:35:00",
-    table_number: 5,
-    notes: "Không cay, ít muối",
-    order_items: [
-      {
-        id: 1,
-        dish_id: 1,
-        dish_name: "Phở Bò Tái",
-        quantity: 2,
-        price: 85000,
-        status: "preparing",
-        duration_seconds: 300,
-      },
-      {
-        id: 2,
-        dish_id: 2,
-        dish_name: "Gỏi Cuốn Tôm",
-        quantity: 3,
-        price: 45000,
-        status: "ready",
-        customizations: "Không rau thơm",
-      },
-      {
-        id: 3,
-        dish_id: 4,
-        dish_name: "Cà Phê Sữa Đá",
-        quantity: 2,
-        price: 30000,
-        status: "served",
-      },
-    ],
+    value: "pending",
+    label: "Chờ xử lý",
+    color: "bg-yellow-100 text-yellow-800",
   },
   {
-    id: 1002,
-    user_id: 2,
-    customer_name: "Trần Thị B",
-    customer_phone: "0907654321",
-    status: "ready",
-    payment_status: "pending",
-    payment_method: "cash",
-    total_amount: 155000,
-    created_at: "2024-03-20T11:15:00",
-    updated_at: "2024-03-20T11:45:00",
-    table_number: 8,
-    order_items: [
-      {
-        id: 4,
-        dish_id: 1,
-        dish_name: "Phở Bò Tái",
-        quantity: 1,
-        price: 85000,
-        status: "ready",
-      },
-      {
-        id: 5,
-        dish_id: 3,
-        dish_name: "Chè Ba Màu",
-        quantity: 2,
-        price: 25000,
-        status: "ready",
-      },
-      {
-        id: 6,
-        dish_id: 4,
-        dish_name: "Cà Phê Sữa Đá",
-        quantity: 2,
-        price: 30000,
-        status: "ready",
-      },
-    ],
+    value: "confirmed",
+    label: "Đã xác nhận",
+    color: "bg-blue-100 text-blue-800",
   },
   {
-    id: 1003,
-    user_id: 3,
-    customer_name: "Lê Quân C",
-    customer_phone: "0912345678",
-    status: "delivered",
-    payment_status: "paid",
-    payment_method: "momo",
-    total_amount: 130000,
-    created_at: "2024-03-20T09:20:00",
-    updated_at: "2024-03-20T10:15:00",
-    table_number: 3,
-    order_items: [
-      {
-        id: 7,
-        dish_id: 2,
-        dish_name: "Gỏi Cuốn Tôm",
-        quantity: 2,
-        price: 45000,
-        status: "served",
-      },
-      {
-        id: 8,
-        dish_id: 4,
-        dish_name: "Cà Phê Sữa Đá",
-        quantity: 1,
-        price: 30000,
-        status: "served",
-      },
-    ],
+    value: "preparing",
+    label: "Đang chuẩn bị",
+    color: "bg-orange-100 text-orange-800",
+  },
+  { value: "ready", label: "Sẵn sàng", color: "bg-green-100 text-green-800" },
+  {
+    value: "served",
+    label: "Đã phục vụ",
+    color: "bg-purple-100 text-purple-800",
   },
   {
-    id: 1004,
-    user_id: 4,
-    customer_name: "Phạm Thị D",
-    customer_phone: "0923456789",
-    status: "cancelled",
-    payment_status: "refunded",
-    payment_method: "transfer",
-    total_amount: 170000,
-    created_at: "2024-03-20T08:45:00",
-    updated_at: "2024-03-20T09:00:00",
-    order_items: [
-      {
-        id: 9,
-        dish_id: 1,
-        dish_name: "Phở Bò Tái",
-        quantity: 2,
-        price: 85000,
-        status: "pending",
-      },
-    ],
+    value: "completed",
+    label: "Hoàn thành",
+    color: "bg-gray-100 text-gray-800",
   },
-]
+  { value: "cancelled", label: "Đã hủy", color: "bg-red-100 text-red-800" },
+];
 
-export function OrderManagement() {
-  const [orders, setOrders] = useState<Order[]>(mockOrders)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [paymentFilter, setPaymentFilter] = useState<string>("all")
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+const ITEM_STATUSES = [
+  { value: "pending", label: "Chờ", color: "bg-yellow-100 text-yellow-800" },
+  {
+    value: "preparing",
+    label: "Đang làm",
+    color: "bg-orange-100 text-orange-800",
+  },
+  { value: "ready", label: "Sẵn sàng", color: "bg-green-100 text-green-800" },
+  { value: "served", label: "Đã lên", color: "bg-purple-100 text-purple-800" },
+];
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toString().includes(searchTerm) ||
-      order.customer_phone.includes(searchTerm)
+function OrderManagement({ className }: OrderManagementProps) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter
-    const matchesPayment = paymentFilter === "all" || order.payment_status === paymentFilter
+  const { toast } = useToast();
 
-    return matchesSearch && matchesStatus && matchesPayment
-  })
+  // WebSocket integration
+  const {
+    isConnected: isWebSocketConnected,
+    joinOrder,
+    onOrderCreated,
+    onOrderUpdated,
+    onOrderStatusChanged,
+    onOrderItemStatusChanged,
+    onPaymentRequested,
+    onPaymentCompleted,
+  } = useOrderWebSocket();
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800">
-            <Clock className="h-3 w-3 mr-1" />
-            Chờ xử lý
-          </Badge>
+  // Load orders on component mount
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  // WebSocket event listeners
+  useEffect(() => {
+    if (!isWebSocketConnected) return;
+
+    const handleOrderCreated = (newOrder: Order) => {
+      setOrders((prev) => [newOrder, ...prev]);
+      setLastUpdate(new Date());
+      toast({
+        title: "Đơn hàng mới",
+        description: `Đơn hàng #${newOrder.order_number} đã được tạo`,
+      });
+    };
+
+    const handleOrderUpdated = (updatedOrder: Order) => {
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === updatedOrder.id ? updatedOrder : order
         )
-      case "preparing":
-        return (
-          <Badge className="bg-blue-100 text-blue-800">
-            <Clock className="h-3 w-3 mr-1" />
-            Đang chuẩn bị
-          </Badge>
+      );
+      setLastUpdate(new Date());
+
+      if (selectedOrder?.id === updatedOrder.id) {
+        setSelectedOrder(updatedOrder);
+      }
+    };
+
+    const handleOrderStatusChanged = (order: Order) => {
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === order.id ? { ...o, status: order.status } : o
         )
-      case "ready":
-        return (
-          <Badge className="bg-green-100 text-green-800">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Sẵn sàng
-          </Badge>
-        )
-      case "delivered":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-800">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Đã giao
-          </Badge>
-        )
-      case "cancelled":
-        return (
-          <Badge className="bg-red-100 text-red-800">
-            <XCircle className="h-3 w-3 mr-1" />
-            Đã hủy
-          </Badge>
-        )
-      default:
-        return <Badge variant="outline">{status}</Badge>
+      );
+      setLastUpdate(new Date());
+
+      toast({
+        title: "Trạng thái đơn hàng thay đổi",
+        description: `Đơn hàng #${
+          order.order_number
+        } chuyển sang ${getStatusLabel(order.status)}`,
+      });
+    };
+
+    const handleItemStatusChanged = (data: {
+      orderId: string;
+      itemId: string;
+      status: string;
+    }) => {
+      setOrders((prev) =>
+        prev.map((order) => {
+          if (order.id === data.orderId) {
+            return {
+              ...order,
+              items: order.items.map((item) =>
+                item.id === data.itemId
+                  ? { ...item, status: data.status }
+                  : item
+              ),
+            };
+          }
+          return order;
+        })
+      );
+      setLastUpdate(new Date());
+    };
+
+    const handlePaymentRequested = (order: Order) => {
+      toast({
+        title: "Yêu cầu thanh toán",
+        description: `Đơn hàng #${order.order_number} yêu cầu thanh toán`,
+      });
+    };
+
+    const handlePaymentCompleted = (order: Order) => {
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: "completed" } : o))
+      );
+      setLastUpdate(new Date());
+
+      toast({
+        title: "Thanh toán thành công",
+        description: `Đơn hàng #${order.order_number} đã thanh toán`,
+      });
+    };
+
+    onOrderCreated(handleOrderCreated);
+    onOrderUpdated(handleOrderUpdated);
+    onOrderStatusChanged(handleOrderStatusChanged);
+    onOrderItemStatusChanged(handleItemStatusChanged);
+    onPaymentRequested(handlePaymentRequested);
+    onPaymentCompleted(handlePaymentCompleted);
+
+    return () => {
+      // Cleanup listeners
+    };
+  }, [
+    isWebSocketConnected,
+    selectedOrder,
+    toast,
+    onOrderCreated,
+    onOrderUpdated,
+    onOrderStatusChanged,
+    onOrderItemStatusChanged,
+    onPaymentRequested,
+    onPaymentCompleted,
+  ]);
+
+  // Filter orders when search term or status filter changes
+  useEffect(() => {
+    let filtered = orders;
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (order) =>
+          order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          order.customer_name
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          order.table_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
-  }
-
-  const getPaymentBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return (
-          <Badge variant="outline">
-            <Clock className="h-3 w-3 mr-1" />
-            Chờ thanh toán
-          </Badge>
-        )
-      case "paid":
-        return (
-          <Badge className="bg-green-100 text-green-800">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Đã thanh toán
-          </Badge>
-        )
-      case "failed":
-        return (
-          <Badge className="bg-red-100 text-red-800">
-            <XCircle className="h-3 w-3 mr-1" />
-            Thất bại
-          </Badge>
-        )
-      case "refunded":
-        return <Badge className="bg-orange-100 text-orange-800">Đã hoàn tiền</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
+    console.log(filtered);
+    console.log(orders);
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((order) => order.status === statusFilter);
     }
-  }
 
-  const getPaymentMethodIcon = (method: string) => {
-    switch (method) {
-      case "cash":
-        return <Banknote className="h-4 w-4" />
-      case "card":
-      case "transfer":
-      case "momo":
-      case "zalopay":
-        return <CreditCard className="h-4 w-4" />
-      default:
-        return <CreditCard className="h-4 w-4" />
+    setFilteredOrders(filtered);
+  }, [orders, searchTerm, statusFilter]);
+
+  const loadOrders = async () => {
+    setIsLoading(true);
+    try {
+      const response = await orderService.getAllOrders({
+        page: 1,
+        limit: 100,
+        sortBy: "created_at",
+        sortOrder: "DESC",
+      });
+
+      if (response.data?.data) {
+        setOrders(response.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to load orders:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải danh sách đơn hàng",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
-  const getPaymentMethodName = (method: string) => {
-    switch (method) {
-      case "cash":
-        return "Tiền mặt"
-      case "card":
-        return "Thẻ"
-      case "transfer":
-        return "Chuyển khoản"
-      case "momo":
-        return "MoMo"
-      case "zalopay":
-        return "ZaloPay"
-      default:
-        return method
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      await orderService.updateOrderStatus(orderId, newStatus);
+      toast({
+        title: "Thành công",
+        description: "Cập nhật trạng thái đơn hàng thành công",
+      });
+    } catch (error) {
+      console.error("Failed to update order status:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật trạng thái đơn hàng",
+        variant: "destructive",
+      });
     }
-  }
+  };
 
-  const updateOrderStatus = (orderId: number, newStatus: string) => {
-    setOrders(
-      orders.map((order) =>
-        order.id === orderId ? { ...order, status: newStatus as any, updated_at: new Date().toISOString() } : order,
-      ),
-    )
-  }
+  const updateItemStatus = async (
+    orderId: string,
+    itemId: string,
+    newStatus: string
+  ) => {
+    try {
+      await orderService.updateOrderItemStatus(orderId, itemId, newStatus);
+      toast({
+        title: "Thành công",
+        description: "Cập nhật trạng thái món ăn thành công",
+      });
+    } catch (error) {
+      console.error("Failed to update item status:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể cập nhật trạng thái món ăn",
+        variant: "destructive",
+      });
+    }
+  };
 
-  const updatePaymentStatus = (orderId: number, newStatus: string) => {
-    setOrders(
-      orders.map((order) =>
-        order.id === orderId
-          ? { ...order, payment_status: newStatus as any, updated_at: new Date().toISOString() }
-          : order,
-      ),
-    )
-  }
+  const getStatusLabel = (status: string) => {
+    return ORDER_STATUSES.find((s) => s.value === status)?.label || status;
+  };
 
-  const stats = {
-    total: orders.length,
-    pending: orders.filter((o) => o.status === "pending").length,
-    preparing: orders.filter((o) => o.status === "preparing").length,
-    ready: orders.filter((o) => o.status === "ready").length,
-    delivered: orders.filter((o) => o.status === "delivered").length,
-    totalRevenue: orders.filter((o) => o.payment_status === "paid").reduce((sum, o) => sum + o.total_amount, 0),
-  }
+  const getStatusColor = (status: string) => {
+    return (
+      ORDER_STATUSES.find((s) => s.value === status)?.color ||
+      "bg-gray-100 text-gray-800"
+    );
+  };
+
+  const getItemStatusLabel = (status: string) => {
+    return ITEM_STATUSES.find((s) => s.value === status)?.label || status;
+  };
+
+  const getItemStatusColor = (status: string) => {
+    return (
+      ITEM_STATUSES.find((s) => s.value === status)?.color ||
+      "bg-gray-100 text-gray-800"
+    );
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(amount);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString("vi-VN");
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+    <div className={`w-full ${className}`}>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng đơn</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Chờ xử lý</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Đang chuẩn bị</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.preparing}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Sẵn sàng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.ready}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Đã giao</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{stats.delivered}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Doanh thu</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-primary">{stats.totalRevenue.toLocaleString("vi-VN")}đ</div>
-          </CardContent>
-        </Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Quản lý đơn hàng
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {/* WebSocket Connection Status */}
+              <Badge variant={isWebSocketConnected ? "default" : "destructive"}>
+                {isWebSocketConnected ? (
+                  <>
+                    <Wifi className="h-3 w-3 mr-1" />
+                    Kết nối
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-3 w-3 mr-1" />
+                    Mất kết nối
+                  </>
+                )}
+              </Badge>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadOrders}
+                disabled={isLoading}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`}
+                />
+                Làm mới
+              </Button>
+            </div>
       </div>
 
-      <Tabs defaultValue="orders" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="orders">Danh sách đơn hàng</TabsTrigger>
-          <TabsTrigger value="kitchen">Bếp</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="orders" className="space-y-6">
-          {/* Header Actions */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          {/* Filters */}
+          <div className="flex gap-4 mt-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Tìm kiếm đơn hàng..."
                   value={searchTerm}
@@ -399,307 +397,223 @@ export function OrderManagement() {
                   className="pl-10"
                 />
               </div>
-
+            </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Trạng thái" />
+                <SelectValue placeholder="Lọc theo trạng thái" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                  <SelectItem value="pending">Chờ xử lý</SelectItem>
-                  <SelectItem value="preparing">Đang chuẩn bị</SelectItem>
-                  <SelectItem value="ready">Sẵn sàng</SelectItem>
-                  <SelectItem value="delivered">Đã giao</SelectItem>
-                  <SelectItem value="cancelled">Đã hủy</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Thanh toán" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả thanh toán</SelectItem>
-                  <SelectItem value="pending">Chờ thanh toán</SelectItem>
-                  <SelectItem value="paid">Đã thanh toán</SelectItem>
-                  <SelectItem value="failed">Thất bại</SelectItem>
-                  <SelectItem value="refunded">Đã hoàn tiền</SelectItem>
+                {ORDER_STATUSES.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          {/* Orders Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Danh sách đơn hàng</CardTitle>
-              <CardDescription>
-                Quản lý tất cả đơn hàng trong hệ thống ({filteredOrders.length} đơn hàng)
-              </CardDescription>
-            </CardHeader>
+          <div className="text-sm text-gray-500">
+            Cập nhật lần cuối: {lastUpdate.toLocaleTimeString("vi-VN")}
+          </div>
+        </CardHeader>
+
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mã đơn</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Bàn</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Thanh toán</TableHead>
-                    <TableHead>Phương thức</TableHead>
-                    <TableHead>Tổng tiền</TableHead>
-                    <TableHead>Thời gian</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredOrders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-medium">#{order.id}</TableCell>
-                      <TableCell>
+          <Tabs defaultValue="list" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="list">Danh sách đơn hàng</TabsTrigger>
+              <TabsTrigger value="details" disabled={!selectedOrder}>
+                Chi tiết đơn hàng
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="list" className="mt-4">
+              <div className="space-y-4">
+                {isLoading ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+                    <p>Đang tải đơn hàng...</p>
+                  </div>
+                ) : filteredOrders.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Không có đơn hàng nào</p>
+                  </div>
+                ) : (
+                  filteredOrders.map((order) => (
+                    <Card
+                      key={order.id}
+                      className={`cursor-pointer transition-colors hover:bg-gray-50 ${
+                        selectedOrder?.id === order.id
+                          ? "ring-2 ring-blue-500"
+                          : ""
+                      }`}
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold">
+                                #{order.order_number}
+                              </h3>
+                              <Badge className={getStatusColor(order.status)}>
+                                {getStatusLabel(order.status)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                              <div>
+                                <span className="font-medium">Bàn:</span>{" "}
+                                {order.table_name || "Chưa chọn bàn"}
+                              </div>
+                              <div>
+                                <span className="font-medium">Khách hàng:</span>{" "}
+                                {order.customer_name || "Khách vãng lai"}
+                              </div>
+                              <div>
+                                <span className="font-medium">Tổng tiền:</span>{" "}
+                                {formatCurrency(order.total_amount)}
+                              </div>
                         <div>
-                          <p className="font-medium">{order.customer_name}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer_phone}</p>
+                                <span className="font-medium">Thời gian:</span>{" "}
+                                {formatDateTime(order.created_at)}
+                              </div>
+                            </div>
                         </div>
-                      </TableCell>
-                      <TableCell>{order.table_number ? `Bàn ${order.table_number}` : "Mang về"}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {getStatusBadge(order.status)}
-                          <Select value={order.status} onValueChange={(value) => updateOrderStatus(order.id, value)}>
-                            <SelectTrigger className="w-32 h-6 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Chờ xử lý</SelectItem>
-                              <SelectItem value="preparing">Đang chuẩn bị</SelectItem>
-                              <SelectItem value="ready">Sẵn sàng</SelectItem>
-                              <SelectItem value="delivered">Đã giao</SelectItem>
-                              <SelectItem value="cancelled">Đã hủy</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {getPaymentBadge(order.payment_status)}
+                          <div className="flex flex-col gap-2">
                           <Select
-                            value={order.payment_status}
-                            onValueChange={(value) => updatePaymentStatus(order.id, value)}
+                            value={order.status}
+                            onValueChange={(value) =>
+                              updateOrderStatus(order.id, value)
+                            }
                           >
-                            <SelectTrigger className="w-32 h-6 text-xs">
+                              <SelectTrigger className="w-32">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="pending">Chờ thanh toán</SelectItem>
-                              <SelectItem value="paid">Đã thanh toán</SelectItem>
-                              <SelectItem value="failed">Thất bại</SelectItem>
-                              <SelectItem value="refunded">Đã hoàn tiền</SelectItem>
+                                {ORDER_STATUSES.map((status) => (
+                                  <SelectItem
+                                    key={status.value}
+                                    value={status.value}
+                                  >
+                                    {status.label}
+                              </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getPaymentMethodIcon(order.payment_method)}
-                          <span className="text-sm">{getPaymentMethodName(order.payment_method)}</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{order.total_amount.toLocaleString("vi-VN")}đ</TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <p>{new Date(order.created_at).toLocaleDateString("vi-VN")}</p>
-                          <p className="text-muted-foreground">
-                            {new Date(order.created_at).toLocaleTimeString("vi-VN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedOrder(order)
-                            setIsViewDialogOpen(true)
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
             </CardContent>
           </Card>
+                  ))
+                )}
+              </div>
         </TabsContent>
 
-        <TabsContent value="kitchen" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders
-              .filter((order) => ["pending", "preparing"].includes(order.status))
-              .map((order) => (
-                <Card key={order.id} className="border-l-4 border-l-primary">
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">Đơn #{order.id}</CardTitle>
-                        <CardDescription>
-                          {order.customer_name} - {order.table_number ? `Bàn ${order.table_number}` : "Mang về"}
-                        </CardDescription>
-                      </div>
-                      {getStatusBadge(order.status)}
-                    </div>
+            <TabsContent value="details" className="mt-4">
+              {selectedOrder && (
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>
+                        Chi tiết đơn hàng #{selectedOrder.order_number}
+                        </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {order.order_items.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center p-2 bg-muted rounded">
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                          <p className="font-medium">{item.dish_name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Số lượng: {item.quantity}
-                            {item.customizations && ` - ${item.customizations}`}
-                          </p>
-                        </div>
+                          <span className="font-medium">Trạng thái:</span>
                         <Badge
-                          variant={item.status === "ready" ? "default" : "outline"}
-                          className={item.status === "ready" ? "bg-green-100 text-green-800" : ""}
-                        >
-                          {item.status === "pending"
-                            ? "Chờ"
-                            : item.status === "preparing"
-                              ? "Đang làm"
-                              : item.status === "ready"
-                                ? "Xong"
-                                : "Đã phục vụ"}
+                            className={`ml-2 ${getStatusColor(
+                              selectedOrder.status
+                            )}`}
+                          >
+                            {getStatusLabel(selectedOrder.status)}
                         </Badge>
                       </div>
-                    ))}
-                    {order.notes && (
-                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                        <p className="text-sm">
-                          <strong>Ghi chú:</strong> {order.notes}
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateOrderStatus(order.id, "preparing")}
-                        disabled={order.status === "preparing"}
-                      >
-                        Bắt đầu làm
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => updateOrderStatus(order.id, "ready")}
-                        disabled={order.status !== "preparing"}
-                      >
-                        Hoàn thành
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* View Order Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Chi tiết đơn hàng #{selectedOrder?.id}</DialogTitle>
-            <DialogDescription>Thông tin chi tiết về đơn hàng</DialogDescription>
-          </DialogHeader>
-          {selectedOrder && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-sm font-medium">Khách hàng</Label>
-                  <p className="text-sm">{selectedOrder.customer_name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedOrder.customer_phone}</p>
+                          <span className="font-medium">Tổng tiền:</span>{" "}
+                          {formatCurrency(selectedOrder.total_amount)}
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Bàn</Label>
-                  <p className="text-sm">
-                    {selectedOrder.table_number ? `Bàn ${selectedOrder.table_number}` : "Mang về"}
-                  </p>
+                          <span className="font-medium">Bàn:</span>{" "}
+                          {selectedOrder.table_name || "Chưa chọn bàn"}
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Trạng thái đơn hàng</Label>
-                  {getStatusBadge(selectedOrder.status)}
+                          <span className="font-medium">Khách hàng:</span>{" "}
+                          {selectedOrder.customer_name || "Khách vãng lai"}
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Trạng thái thanh toán</Label>
-                  {getPaymentBadge(selectedOrder.payment_status)}
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Phương thức thanh toán</Label>
-                  <div className="flex items-center gap-2">
-                    {getPaymentMethodIcon(selectedOrder.payment_method)}
-                    <span className="text-sm">{getPaymentMethodName(selectedOrder.payment_method)}</span>
+                          <span className="font-medium">Thời gian tạo:</span>{" "}
+                          {formatDateTime(selectedOrder.created_at)}
                   </div>
                 </div>
-                <div>
-                  <Label className="text-sm font-medium">Tổng tiền</Label>
-                  <p className="text-lg font-semibold text-primary">
-                    {selectedOrder.total_amount.toLocaleString("vi-VN")}đ
-                  </p>
-                </div>
-              </div>
+                    </CardContent>
+                  </Card>
 
-              {selectedOrder.notes && (
-                <div>
-                  <Label className="text-sm font-medium">Ghi chú</Label>
-                  <p className="text-sm text-muted-foreground mt-1">{selectedOrder.notes}</p>
-                </div>
-              )}
-
-              <div>
-                <Label className="text-sm font-medium">Món ăn đã đặt</Label>
-                <div className="mt-2 space-y-2">
-                  {selectedOrder.order_items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded">
-                      <div>
-                        <p className="font-medium">{item.dish_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Số lượng: {item.quantity} × {item.price.toLocaleString("vi-VN")}đ
-                        </p>
-                        {item.customizations && (
-                          <p className="text-sm text-muted-foreground">Yêu cầu: {item.customizations}</p>
-                        )}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Danh sách món ăn</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {selectedOrder?.items?.map((item) => (
+                    <div
+                      key={item.id}
+                            className="flex items-center justify-between p-3 border rounded-lg"
+                          >
+                            <div className="flex-1">
+                              <h4 className="font-medium">{item.dish_name}</h4>
+                              <div className="text-sm text-gray-600">
+                                Số lượng: {item.quantity} | Giá:{" "}
+                                {formatCurrency(item.price)}
+                              </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium">{(item.quantity * item.price).toLocaleString("vi-VN")}đ</p>
-                        <Badge variant="outline">{item.status}</Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                className={getItemStatusColor(item.status)}
+                              >
+                                {getItemStatusLabel(item.status)}
+                              </Badge>
+                              <Select
+                                value={item.status}
+                                onValueChange={(value) =>
+                                  updateItemStatus(
+                                    selectedOrder.id,
+                                    item.id,
+                                    value
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ITEM_STATUSES.map((status) => (
+                                    <SelectItem
+                                      key={status.value}
+                                      value={status.value}
+                                    >
+                                      {status.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-4 border-t">
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Đặt lúc: {new Date(selectedOrder.created_at).toLocaleString("vi-VN")}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Cập nhật: {new Date(selectedOrder.updated_at).toLocaleString("vi-VN")}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold">Tổng cộng: {selectedOrder.total_amount.toLocaleString("vi-VN")}đ</p>
-                </div>
-              </div>
+                    </CardContent>
+                  </Card>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
-  )
+  );
 }
+
+export default OrderManagement;
+export { OrderManagement };

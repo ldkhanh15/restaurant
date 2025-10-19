@@ -20,7 +20,7 @@ apiClient.interceptors.request.use((config) => {
 })
 
 apiClient.interceptors.response.use(
-    (response) => response.data,
+    (response) => response.data.data,
     (error) => {
         const status = error?.response?.status
         const message = error?.response?.data?.message || error.message || "Đã xảy ra lỗi"

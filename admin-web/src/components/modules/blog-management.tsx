@@ -1,13 +1,27 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useEffect, useState } from "react";
+import { blogService } from "@/services/blogService";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -16,37 +30,43 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, Edit, Eye, Trash2, ImageIcon } from "lucide-react"
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Search, Plus, Edit, Eye, Trash2, ImageIcon } from "lucide-react";
 
 interface BlogPost {
-  id: number
-  title: string
-  content: string
-  excerpt: string
-  images: string[]
-  status: "draft" | "published" | "archived"
-  author_id: number
-  author_name: string
-  published_at?: string
-  created_at: string
-  updated_at: string
-  views: number
-  category: string
-  tags: string[]
+  id: string;
+  title: string;
+  content: string;
+  excerpt: string;
+  images: string[];
+  status: "draft" | "published" | "archived";
+  author_id: string;
+  author_name: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+  views: number;
+  category: string;
+  tags: string[];
 }
 
 const mockBlogPosts: BlogPost[] = [
   {
-    id: 1,
+    id: "1",
     title: "Bí quyết nấu phở bò ngon như quán",
     content:
       "Phở bò là món ăn truyền thống của Việt Nam, được yêu thích bởi hương vị đậm đà và cách chế biến tinh tế...",
     excerpt: "Khám phá bí quyết nấu nước dùng phở trong vắt, thơm ngon",
     images: ["/placeholder.svg?key=blog1"],
     status: "published",
-    author_id: 1,
+    author_id: "1",
     author_name: "Bếp trưởng Minh",
     published_at: "2024-03-15T10:00:00",
     created_at: "2024-03-14T15:30:00",
@@ -56,13 +76,14 @@ const mockBlogPosts: BlogPost[] = [
     tags: ["phở", "nước dùng", "bí quyết"],
   },
   {
-    id: 2,
+    id: "2",
     title: "Thực đơn mùa xuân 2024",
-    content: "Chào đón mùa xuân với những món ăn tươi mới, nhẹ nhàng và đầy màu sắc...",
+    content:
+      "Chào đón mùa xuân với những món ăn tươi mới, nhẹ nhàng và đầy màu sắc...",
     excerpt: "Giới thiệu các món ăn mới trong thực đơn mùa xuân",
     images: ["/placeholder.svg?key=blog2", "/placeholder.svg?key=blog3"],
     status: "published",
-    author_id: 2,
+    author_id: "2",
     author_name: "Quản lý Lan",
     published_at: "2024-03-10T14:00:00",
     created_at: "2024-03-08T09:15:00",
@@ -72,13 +93,14 @@ const mockBlogPosts: BlogPost[] = [
     tags: ["mùa xuân", "thực đơn mới", "món ăn"],
   },
   {
-    id: 3,
+    id: "3",
     title: "Cách bảo quản nguyên liệu tươi ngon",
-    content: "Việc bảo quản nguyên liệu đúng cách là yếu tố quan trọng để đảm bảo chất lượng món ăn...",
+    content:
+      "Việc bảo quản nguyên liệu đúng cách là yếu tố quan trọng để đảm bảo chất lượng món ăn...",
     excerpt: "Hướng dẫn bảo quản nguyên liệu để giữ được độ tươi ngon",
     images: [],
     status: "draft",
-    author_id: 1,
+    author_id: "1",
     author_name: "Bếp trưởng Minh",
     created_at: "2024-03-18T11:20:00",
     updated_at: "2024-03-19T16:45:00",
@@ -86,61 +108,92 @@ const mockBlogPosts: BlogPost[] = [
     category: "Hướng dẫn",
     tags: ["bảo quản", "nguyên liệu", "chất lượng"],
   },
-]
+];
 
 export function BlogManagement() {
-  const [posts, setPosts] = useState<BlogPost[]>(mockBlogPosts)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
   const filteredPosts = posts.filter((post) => {
     const matchesSearch =
       post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      post.author_name.toLowerCase().includes(searchTerm.toLowerCase())
+      post.author_name.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = statusFilter === "all" || post.status === statusFilter
-    const matchesCategory = categoryFilter === "all" || post.category === categoryFilter
+    const matchesStatus =
+      statusFilter === "all" || post.status === statusFilter;
+    const matchesCategory =
+      categoryFilter === "all" || post.category === categoryFilter;
 
-    return matchesSearch && matchesStatus && matchesCategory
-  })
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "draft":
-        return <Badge className="bg-yellow-100 text-yellow-800">Nháp</Badge>
+        return <Badge className="bg-yellow-100 text-yellow-800">Nháp</Badge>;
       case "published":
-        return <Badge className="bg-green-100 text-green-800">Đã xuất bản</Badge>
+        return (
+          <Badge className="bg-green-100 text-green-800">Đã xuất bản</Badge>
+        );
       case "archived":
-        return <Badge className="bg-gray-100 text-gray-800">Lưu trữ</Badge>
+        return <Badge className="bg-gray-100 text-gray-800">Lưu trữ</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline">{status}</Badge>;
     }
-  }
+  };
 
-  const updatePostStatus = (postId: number, newStatus: string) => {
-    setPosts(
-      posts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              status: newStatus as any,
-              published_at: newStatus === "published" ? new Date().toISOString() : post.published_at,
-              updated_at: new Date().toISOString(),
-            }
-          : post,
-      ),
-    )
-  }
+  const updatePostStatus = async (postId: string, newStatus: string) => {
+    try {
+      await blogService.update(postId, { status: newStatus });
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                status: newStatus as any,
+              }
+            : post
+        )
+      );
+    } catch (_) {}
+  };
 
-  const categories = [...new Set(posts.map((p) => p.category))]
-  const publishedPosts = posts.filter((p) => p.status === "published").length
-  const draftPosts = posts.filter((p) => p.status === "draft").length
-  const totalViews = posts.reduce((sum, p) => sum + p.views, 0)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await blogService.list();
+        const raw = (res?.data?.data as any[]) || (res?.data as any[]) || [];
+        const mapped: BlogPost[] = raw.map((p) => ({
+          id: p.id || "",
+          title: p.title,
+          content: p.content || "",
+          excerpt: p.excerpt || "",
+          images: p.images || [],
+          status: (p.status as any) || "draft",
+          author_id: p.author_id || "",
+          author_name: p.author_name || "",
+          published_at: p.published_at || undefined,
+          created_at: p.created_at || new Date().toISOString(),
+          updated_at: p.updated_at || p.created_at || new Date().toISOString(),
+          views: p.views || 0,
+          category: p.category || "Khác",
+          tags: p.tags || [],
+        }));
+        setPosts(mapped);
+      } catch (_) {}
+    })();
+  }, []);
+
+  const categories = [...new Set(posts.map((p) => p.category))];
+  const publishedPosts = posts.filter((p) => p.status === "published").length;
+  const draftPosts = posts.filter((p) => p.status === "draft").length;
+  const totalViews = posts.reduce((sum, p) => sum + p.views, 0);
 
   return (
     <div className="space-y-6">
@@ -148,7 +201,9 @@ export function BlogManagement() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng bài viết</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Tổng bài viết
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{posts.length}</div>
@@ -156,26 +211,38 @@ export function BlogManagement() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Đã xuất bản</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Đã xuất bản
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{publishedPosts}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {publishedPosts}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Bản nháp</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Bản nháp
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{draftPosts}</div>
+            <div className="text-2xl font-bold text-yellow-600">
+              {draftPosts}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng lượt xem</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Tổng lượt xem
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{totalViews.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-primary">
+              {totalViews.toLocaleString()}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -230,7 +297,9 @@ export function BlogManagement() {
           <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>Tạo bài viết mới</DialogTitle>
-              <DialogDescription>Viết bài blog mới cho website nhà hàng</DialogDescription>
+              <DialogDescription>
+                Viết bài blog mới cho website nhà hàng
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -239,7 +308,10 @@ export function BlogManagement() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="post-excerpt">Tóm tắt</Label>
-                <Input id="post-excerpt" placeholder="Tóm tắt ngắn gọn về bài viết" />
+                <Input
+                  id="post-excerpt"
+                  placeholder="Tóm tắt ngắn gọn về bài viết"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
@@ -257,19 +329,27 @@ export function BlogManagement() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="post-tags">Tags (phân cách bằng dấu phẩy)</Label>
+                  <Label htmlFor="post-tags">
+                    Tags (phân cách bằng dấu phẩy)
+                  </Label>
                   <Input id="post-tags" placeholder="tag1, tag2, tag3" />
                 </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="post-content">Nội dung</Label>
-                <Textarea id="post-content" placeholder="Viết nội dung bài viết..." className="min-h-[200px]" />
+                <Textarea
+                  id="post-content"
+                  placeholder="Viết nội dung bài viết..."
+                  className="min-h-[200px]"
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Hình ảnh</Label>
                 <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
                   <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Kéo thả hình ảnh hoặc click để chọn</p>
+                  <p className="text-sm text-muted-foreground">
+                    Kéo thả hình ảnh hoặc click để chọn
+                  </p>
                 </div>
               </div>
             </div>
@@ -285,7 +365,9 @@ export function BlogManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Danh sách bài viết</CardTitle>
-          <CardDescription>Quản lý tất cả bài viết blog ({filteredPosts.length} bài viết)</CardDescription>
+          <CardDescription>
+            Quản lý tất cả bài viết blog ({filteredPosts.length} bài viết)
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -306,7 +388,9 @@ export function BlogManagement() {
                   <TableCell>
                     <div>
                       <p className="font-medium line-clamp-1">{post.title}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{post.excerpt}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-1">
+                        {post.excerpt}
+                      </p>
                     </div>
                   </TableCell>
                   <TableCell>{post.author_name}</TableCell>
@@ -316,7 +400,12 @@ export function BlogManagement() {
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       {getStatusBadge(post.status)}
-                      <Select value={post.status} onValueChange={(value) => updatePostStatus(post.id, value)}>
+                      <Select
+                        value={post.status}
+                        onValueChange={(value) =>
+                          updatePostStatus(post.id, value)
+                        }
+                      >
                         <SelectTrigger className="w-32 h-6 text-xs">
                           <SelectValue />
                         </SelectTrigger>
@@ -329,15 +418,17 @@ export function BlogManagement() {
                     </div>
                   </TableCell>
                   <TableCell>{post.views.toLocaleString()}</TableCell>
-                  <TableCell>{new Date(post.created_at).toLocaleDateString("vi-VN")}</TableCell>
+                  <TableCell>
+                    {new Date(post.created_at).toLocaleDateString("vi-VN")}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setSelectedPost(post)
-                          setIsViewDialogOpen(true)
+                          setSelectedPost(post);
+                          setIsViewDialogOpen(true);
                         }}
                       >
                         <Eye className="h-4 w-4" />
@@ -364,14 +455,17 @@ export function BlogManagement() {
             <DialogTitle>{selectedPost?.title}</DialogTitle>
             <DialogDescription>
               Bởi {selectedPost?.author_name} • {selectedPost?.category} •{" "}
-              {selectedPost?.created_at && new Date(selectedPost.created_at).toLocaleDateString("vi-VN")}
+              {selectedPost?.created_at &&
+                new Date(selectedPost.created_at).toLocaleDateString("vi-VN")}
             </DialogDescription>
           </DialogHeader>
           {selectedPost && (
             <div className="space-y-4">
               <div className="flex gap-2">
                 {getStatusBadge(selectedPost.status)}
-                <Badge variant="outline">{selectedPost.views.toLocaleString()} lượt xem</Badge>
+                <Badge variant="outline">
+                  {selectedPost.views.toLocaleString()} lượt xem
+                </Badge>
               </div>
 
               {selectedPost.images.length > 0 && (
@@ -389,7 +483,9 @@ export function BlogManagement() {
 
               <div>
                 <h4 className="font-medium mb-2">Tóm tắt</h4>
-                <p className="text-sm text-muted-foreground">{selectedPost.excerpt}</p>
+                <p className="text-sm text-muted-foreground">
+                  {selectedPost.excerpt}
+                </p>
               </div>
 
               <div>
@@ -412,11 +508,22 @@ export function BlogManagement() {
 
               <div className="flex justify-between items-center pt-4 border-t text-sm text-muted-foreground">
                 <div>
-                  <p>Tạo: {new Date(selectedPost.created_at).toLocaleString("vi-VN")}</p>
-                  <p>Cập nhật: {new Date(selectedPost.updated_at).toLocaleString("vi-VN")}</p>
+                  <p>
+                    Tạo:{" "}
+                    {new Date(selectedPost.created_at).toLocaleString("vi-VN")}
+                  </p>
+                  <p>
+                    Cập nhật:{" "}
+                    {new Date(selectedPost.updated_at).toLocaleString("vi-VN")}
+                  </p>
                 </div>
                 {selectedPost.published_at && (
-                  <p>Xuất bản: {new Date(selectedPost.published_at).toLocaleString("vi-VN")}</p>
+                  <p>
+                    Xuất bản:{" "}
+                    {new Date(selectedPost.published_at).toLocaleString(
+                      "vi-VN"
+                    )}
+                  </p>
                 )}
               </div>
             </div>
@@ -424,5 +531,5 @@ export function BlogManagement() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

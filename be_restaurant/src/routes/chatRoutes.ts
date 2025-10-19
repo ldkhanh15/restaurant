@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../middlewares/auth";
+import { authenticate, authorize } from "../middlewares/auth";
 import {
   createSession,
   disableBotMode,
@@ -7,6 +7,7 @@ import {
   getMessages,
   getSessions,
   postMessage,
+  getAllSessions,
 } from "../controllers/chatController";
 
 const router = Router();
@@ -16,6 +17,10 @@ router.post("/session", authenticate, createSession);
 
 // List sessions by current user
 router.get("/sessions", authenticate, getSessions);
+
+// List all sessions by admin
+router.get("/sessions/all", authorize("admin"), getAllSessions);
+
 
 // Get messages in a session
 router.get("/sessions/:id/messages", authenticate, getMessages);
