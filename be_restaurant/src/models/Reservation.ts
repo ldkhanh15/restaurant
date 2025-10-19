@@ -2,29 +2,29 @@ import { DataTypes, Model, type Optional } from "sequelize"
 import sequelize from "../config/database"
 
 interface ReservationAttributes {
-  id: string
-  user_id?: string
-  table_id?: string
-  table_group_id?: string
-  reservation_time: Date
-  duration_minutes: number
-  num_people: number
-  preferences?: any
-  event_id?: string
-  event_fee?: number
-  status: "pending" | "confirmed" | "cancelled" | "no_show"
-  timeout_minutes: number
-  confirmation_sent: boolean
-  deposit_amount?: number
-  created_at?: Date
-  updated_at?: Date
-  deleted_at?: Date | null
+  id: string;
+  user_id?: string;
+  table_id?: string;
+  table_group_id?: string;
+  reservation_time: Date;
+  duration_minutes: number;
+  num_people: number;
+  preferences?: any;
+  event_id?: string;
+  event_fee?: number;
+  status: "pending" | "confirmed" | "cancelled" | "no_show";
+  timeout_minutes: number;
+  deposit_amount?: number;
+  pre_order_items?: any;
+  created_at?: Date;
+  updated_at?: Date;
+  deleted_at?: Date | null;
 }
 
 interface ReservationCreationAttributes
   extends Optional<
     ReservationAttributes,
-    "id" | "duration_minutes" | "status" | "timeout_minutes" | "confirmation_sent"
+    "id" | "duration_minutes" | "status" | "timeout_minutes"
   > { }
 
 class Reservation extends Model<ReservationAttributes, ReservationCreationAttributes> implements ReservationAttributes {
@@ -40,8 +40,8 @@ class Reservation extends Model<ReservationAttributes, ReservationCreationAttrib
   public event_fee?: number
   public status!: "pending" | "confirmed" | "cancelled" | "no_show"
   public timeout_minutes!: number
-  public confirmation_sent!: boolean
   public deposit_amount?: number
+  public pre_order_items?: any
   public created_at?: Date
   public updated_at?: Date
   public deleted_at?: Date | null
@@ -97,6 +97,10 @@ Reservation.init(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    pre_order_items: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
     event_id: {
       type: DataTypes.UUID,
       allowNull: true,
@@ -115,10 +119,6 @@ Reservation.init(
     timeout_minutes: {
       type: DataTypes.INTEGER,
       defaultValue: 15,
-    },
-    confirmation_sent: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
     },
     deposit_amount: {
       type: DataTypes.DECIMAL(10, 2),

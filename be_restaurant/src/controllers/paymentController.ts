@@ -1,170 +1,478 @@
-import type { Request, Response, NextFunction } from "express"
-import Order from "../models/Order"
-import { AppError } from "../middlewares/errorHandler"
-import Reservation from "../models/Reservation"
-import paymentService from "../services/paymentService"
-import { getIO } from "../sockets"
-import { orderEvents } from "../sockets/orderSocket"
+import type { Request, Response, NextFunction } from "express";
+import Order from "../models/Order";
+import Reservation from "../models/Reservation";
+import paymentService from "../services/paymentService";
+import { getIO } from "../sockets";
+import { orderEvents } from "../sockets/orderSocket";
+import notificationService from "../services/notificationService";
+import ReservationService from "../services/reservationService";
+import OrderService from "../services/orderService";
+import statisticsService from "../services/statisticsService";
+import { AppError } from "../middlewares/errorHandler";
 
-export const createVnpayPayment = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { order_id, bankCode } = req.body as { order_id: string; bankCode?: string }
-        const order = await Order.findByPk(order_id)
-        if (!order) throw new AppError("Order not found", 404)
+export const vnpayCallback = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const params = req.query as Record<string, any>;
+    const { isValid, isSuccess, kind, targetId } =
+      paymentService.verifyVnpayReturn(params);
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 
-        if (req.user?.role === "customer" && order.user_id && order.user_id !== String(req.user.id)) {
-            throw new AppError("Insufficient permissions", 403)
-        }
-
-        if (order.payment_status === "paid") {
-            throw new AppError("Order already paid", 400)
-        }
-
-        // Get client IP
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
-
-        const url = paymentService.generateVnpayRedirectUrl(order, bankCode, clientIp)
-        res.json({ status: "success", data: { redirect_url: url } })
-    } catch (error) {
-        next(error)
+    if (!isValid) {
+      return res.redirect(`${clientUrl}/payment/failed?reason=invalid_hash`);
     }
-}
 
-export const vnpayCallback = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const params = req.query as Record<string, any>
-
-        // Verify VNPay return parameters
-        const { isValid, isSuccess, kind, targetId } = paymentService.verifyVnpayReturn(params)
-
-        if (!isValid) {
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=invalid_hash`)
-        }
-
-        if (kind === "order") {
-            const order = await Order.findByPk(targetId!)
-            if (!order) {
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=order_not_found`)
-            }
-            if (isSuccess) {
-                await order.update({ payment_status: "paid", status: "paid", payment_method: "vnpay" })
-                try { orderEvents.paymentCompleted(getIO(), order) } catch { }
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?order_id=${order.id}`)
-            } else {
-                await order.update({ payment_status: "failed" })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?order_id=${order.id}`)
-            }
-        }
-
-        if (kind === "deposit_order") {
-            const order = await Order.findByPk(targetId!)
-            if (!order) {
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=order_not_found`)
-            }
-            if (isSuccess) {
-                const amount = Number(params.vnp_Amount || 0) / 100
-                await order.update({ deposit_amount: Number(order.deposit_amount || 0) + amount })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?type=deposit&order_id=${order.id}`)
-            }
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?type=deposit&order_id=${order.id}`)
-        }
-
-        if (kind === "deposit_reservation") {
-            const reservation = await Reservation.findByPk(targetId!)
-            if (!reservation) {
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=reservation_not_found`)
-            }
-            if (isSuccess) {
-                const amount = Number(params.vnp_Amount || 0) / 100
-                await reservation.update({ deposit_amount: Number(reservation.deposit_amount || 0) + amount })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?type=deposit&reservation_id=${reservation.id}`)
-            }
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?type=deposit&reservation_id=${reservation.id}`)
-        }
-
-        return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=unknown_type`)
-    } catch (error) {
-        next(error)
+    if (kind === "order" && targetId) {
+      const order = await Order.findByPk(targetId);
+      if (!order)
+        return res.redirect(
+          `${clientUrl}/payment/failed?reason=order_not_found`
+        );
+      const txnRef = String(params.vnp_TxnRef || "");
+      if (isSuccess) {
+        await OrderService.handlePaymentSuccess(order.id);
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
+      } else {
+        await OrderService.handlePaymentFailure(order.id);
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
+        return res.redirect(`${clientUrl}/payment/failed?order_id=${order.id}`);
+      }
     }
-}
 
-export const vnpayIpn = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const params = req.body as Record<string, any>
-
-        // Verify VNPay IPN parameters
-        const { isValid, isSuccess, kind, targetId } = paymentService.verifyVnpayReturn(params)
-
-        if (!isValid) {
-            return res.json({ RspCode: "97", Message: "Checksum failed" })
-        }
-
-        if (!kind || !targetId) {
-            return res.json({ RspCode: "01", Message: "Not recognized" })
-        }
-
-        if (kind === "order") {
-            const order = await Order.findByPk(targetId)
-            if (!order) return res.json({ RspCode: "01", Message: "Order not found" })
-            if (isSuccess) {
-                await order.update({ payment_status: "paid", status: "paid", payment_method: "vnpay" })
-                try { orderEvents.paymentCompleted(getIO(), order) } catch { }
-            } else {
-                await order.update({ payment_status: "failed" })
-            }
-            return res.json({ RspCode: "00", Message: "Success" })
-        }
-
-        if (kind === "deposit_order") {
-            const order = await Order.findByPk(targetId)
-            if (!order) return res.json({ RspCode: "01", Message: "Order not found" })
-            if (isSuccess) {
-                const amount = Number(params.vnp_Amount || 0) / 100
-                await order.update({ deposit_amount: Number(order.deposit_amount || 0) + amount })
-            }
-            return res.json({ RspCode: "00", Message: "Success" })
-        }
-
-        if (kind === "deposit_reservation") {
-            const reservation = await Reservation.findByPk(targetId)
-            if (!reservation) return res.json({ RspCode: "01", Message: "Reservation not found" })
-            if (isSuccess) {
-                const amount = Number(params.vnp_Amount || 0) / 100
-                await reservation.update({ deposit_amount: Number(reservation.deposit_amount || 0) + amount })
-            }
-            return res.json({ RspCode: "00", Message: "Success" })
-        }
-
-        return res.json({ RspCode: "02", Message: "Unhandled" })
-    } catch (error) {
-        next(error)
+    if (kind === "reservation" && targetId) {
+      const reservation = await Reservation.findByPk(targetId);
+      if (!reservation)
+        return res.redirect(
+          `${clientUrl}/payment/failed?reason=reservation_not_found`
+        );
+      const txnRef = String(params.vnp_TxnRef || "");
+      if (isSuccess) {
+        await ReservationService.handleDepositPaymentSuccess(reservation.id);
+       
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
+        return res.redirect(
+          `${clientUrl}/payment/success?reservation_id=${reservation.id}`
+        );
+      } else {
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
+        await ReservationService.handleDepositPaymentFailure(reservation.id);
+        return res.redirect(
+          `${clientUrl}/payment/failed?reservation_id=${reservation.id}`
+        );
+      }
     }
-}
 
-export const createDepositForOrder = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { order_id, amount, bankCode } = req.body as { order_id: string; amount: number; bankCode?: string }
-        const order = await Order.findByPk(order_id)
-        if (!order) throw new AppError("Order not found", 404)
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
-        const url = paymentService.generateVnpayDepositUrl("order", order_id, Number(amount), bankCode, clientIp)
-        res.json({ status: "success", data: { redirect_url: url } })
-    } catch (error) {
-        next(error)
+    return res.redirect(`${clientUrl}/payment/failed?reason=unknown_type`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const vnpayIpn = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const params = (req.method === "GET" ? req.query : req.body) as Record<
+      string,
+      any
+    >;
+    const { isValid, isSuccess, kind, targetId } =
+      paymentService.verifyVnpayReturn(params);
+    if (!isValid)
+      return res.json({ RspCode: "97", Message: "Checksum failed" });
+    if (!kind || !targetId)
+      return res.json({ RspCode: "01", Message: "Not recognized" });
+
+    const txnRef = String(params.vnp_TxnRef || "");
+    if (kind === "order") {
+      const order = await Order.findByPk(targetId);
+      if (!order)
+        return res.json({ RspCode: "01", Message: "Order not found" });
+      if (isSuccess) {
+        await order.update({
+          payment_status: "paid",
+          status: "paid",
+          payment_method: "vnpay",
+        });
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
+        try {
+          orderEvents.paymentCompleted(getIO(), order);
+          await notificationService.notifyPaymentCompleted(order);
+        } catch {}
+      } else {
+        await order.update({ payment_status: "failed" });
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
+      }
+      return res.json({ RspCode: "00", Message: "Success" });
     }
-}
 
-export const createDepositForReservation = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { reservation_id, amount, bankCode } = req.body as { reservation_id: string; amount: number; bankCode?: string }
-        const reservation = await Reservation.findByPk(reservation_id)
-        if (!reservation) throw new AppError("Reservation not found", 404)
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
-        const url = paymentService.generateVnpayDepositUrl("reservation", reservation_id, Number(amount), bankCode, clientIp)
-        res.json({ status: "success", data: { redirect_url: url } })
-    } catch (error) {
-        next(error)
+    if (kind === "reservation") {
+      const reservation = await Reservation.findByPk(targetId);
+      if (!reservation)
+        return res.json({ RspCode: "01", Message: "Reservation not found" });
+      if (isSuccess) {
+        await reservation.update({
+          status: "confirmed",
+        });
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
+        await ReservationService.handleDepositPaymentSuccess(reservation.id);
+      } else {
+        await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
+        await ReservationService.handleDepositPaymentFailure(reservation.id);
+      }
+      return res.json({ RspCode: "00", Message: "Success" });
     }
-}
+
+    return res.json({ RspCode: "02", Message: "Unhandled" });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
+// Payment CRUD Controllers
+export const getAllPayments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const {
+      order_id,
+      reservation_id,
+      method,
+      status,
+      user_id,
+      start_date,
+      end_date,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const filters = {
+      order_id: order_id as string,
+      reservation_id: reservation_id as string,
+      method: method as "cash" | "vnpay",
+      status: status as "pending" | "completed" | "failed",
+      user_id: user_id as string,
+      start_date: start_date ? new Date(start_date as string) : undefined,
+      end_date: end_date ? new Date(end_date as string) : undefined,
+      page: Number(page),
+      limit: Number(limit),
+    };
+
+    const result = await paymentService.getAllPayments(filters);
+
+    res.json({
+      status: "success",
+      data: result.rows,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.count,
+        pages: Math.ceil(result.count / result.limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPaymentById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const payment = await paymentService.getPaymentById(id);
+
+    if (!payment) {
+      throw new AppError("Payment not found", 404);
+    }
+
+    res.json({
+      status: "success",
+      data: payment,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Statistics Controllers
+export const getRevenueStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getRevenueStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOrderStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getOrderStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getReservationStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getReservationStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPaymentStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getPaymentStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTableRevenueStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getTableRevenueStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerSpendingStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getCustomerSpendingStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDailyRevenueStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    if (!start_date || !end_date) {
+      throw new AppError("start_date and end_date are required", 400);
+    }
+
+    const stats = await statisticsService.getDailyRevenueStats(
+      new Date(start_date as string),
+      new Date(end_date as string)
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMonthlyRevenueStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    if (!start_date || !end_date) {
+      throw new AppError("start_date and end_date are required", 400);
+    }
+
+    const stats = await statisticsService.getMonthlyRevenueStats(
+      new Date(start_date as string),
+      new Date(end_date as string)
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDishStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const stats = await statisticsService.getDishStats(
+      start_date ? new Date(start_date as string) : undefined,
+      end_date ? new Date(end_date as string) : undefined
+    );
+
+    res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Dashboard Overview
+export const getDashboardOverview = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const [
+      revenueStats,
+      orderStats,
+      reservationStats,
+      paymentStats,
+      topTables,
+      topCustomers,
+      topDishes,
+    ] = await Promise.all([
+      statisticsService.getRevenueStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ),
+      statisticsService.getOrderStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ),
+      statisticsService.getReservationStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ),
+      statisticsService.getPaymentStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ),
+      statisticsService.getTableRevenueStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ).then(stats => stats.slice(0, 5)), // Top 5 tables
+      statisticsService.getCustomerSpendingStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ).then(stats => stats.slice(0, 5)), // Top 5 customers
+      statisticsService.getDishStats(
+        start_date ? new Date(start_date as string) : undefined,
+        end_date ? new Date(end_date as string) : undefined
+      ).then(stats => stats.slice(0, 5)), // Top 5 dishes
+    ]);
+
+    res.json({
+      status: "success",
+      data: {
+        revenue: revenueStats,
+        orders: orderStats,
+        reservations: reservationStats,
+        payments: paymentStats,
+        top_tables: topTables,
+        top_customers: topCustomers,
+        top_dishes: topDishes,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
