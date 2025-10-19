@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import User from "../models/User";
 import { AppError } from "../middlewares/errorHandler";
+import userService from "../services/userService";
 import {
   getPaginationParams,
   buildPaginationResult,
@@ -12,7 +13,7 @@ export const getAllUsers = async (
   res: Response,
   next: NextFunction
 ) => {
-   try {
+  try {
     const {
       page = 1,
       limit = 10,
@@ -33,7 +34,9 @@ export const getAllUsers = async (
     // Nếu có unassigned=true → lấy user chưa có trong bảng employees
     if (unassigned === "true") {
       whereClause.id = {
-        [Op.notIn]: Sequelize.literal("(SELECT user_id FROM employees WHERE user_id IS NOT NULL)"),
+        [Op.notIn]: Sequelize.literal(
+          "(SELECT user_id FROM employees WHERE user_id IS NOT NULL AND deleted_at IS NULL)"
+        ),
       };
     }
 
@@ -59,7 +62,7 @@ export const getUserById = async (
 ) => {
   try {
     // Sử dụng findById, phương thức này cũng hỗ trợ options
-    const user = await userService.findById(req.params.id, {
+    const user = await User.findByPk(req.params.id, {
       attributes: { exclude: ["password_hash"] },
     });
 
@@ -68,6 +71,19 @@ export const getUserById = async (
     }
 
     res.json({ status: "success", data: user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const newUser = await userService.create(req.body);
+    res.status(201).json({ status: "success", data: newUser });
   } catch (error) {
     next(error);
   }
@@ -84,6 +100,8 @@ export const updateUser = async (
     if (!user) {
       throw new AppError("User not found", 404);
     }
+
+
 
     await user.update(req.body);
 

@@ -5,8 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDateTimeVN(dateInput: Date | string | number ): string {
-
+export function formatDateTimeVN(dateInput: Date | string | number): string {
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
 
   if (isNaN(date.getTime())) return "";

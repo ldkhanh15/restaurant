@@ -19,3 +19,4 @@ export async function uploadImageToCloudinary(file: File, param:string): Promise
   const data = await response.json()
   return data.secure_url
 }
+
