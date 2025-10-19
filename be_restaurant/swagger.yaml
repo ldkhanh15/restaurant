@@ -20,6 +20,7 @@ info:
     - `/notifications` - Notification events
     - `/order` - Order management events  
     - `/reservations` - Reservation events
+    - `/chat` - Chat event
     
   version: 1.0.0
   contact:
@@ -103,7 +104,11 @@ paths:
                       items:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Notification'
+                          allOf:
+                            - $ref: '#/components/schemas/Notification'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '401':
@@ -168,7 +173,7 @@ paths:
       tags:
         - Notifications
       summary: Get notification by ID
-      description: Retrieve a specific notification by its ID
+      description: Retrieve a specific notification by its ID with related data
       security:
         - BearerAuth: []
       parameters:
@@ -190,7 +195,11 @@ paths:
                     type: string
                     example: success
                   data:
-                    $ref: '#/components/schemas/Notification'
+                    allOf:
+                      - $ref: '#/components/schemas/Notification'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -612,7 +621,33 @@ paths:
                       items:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Order'
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            reservation:
+                              $ref: '#/components/schemas/Reservation'
+                            event:
+                              $ref: '#/components/schemas/Event'
+                            voucher:
+                              $ref: '#/components/schemas/Voucher'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                            payments:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Payment'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '401':
@@ -665,7 +700,7 @@ paths:
       tags:
         - Orders
       summary: Get order by ID
-      description: Retrieve a specific order by its ID
+      description: Retrieve a specific order by its ID with all related data
       security:
         - BearerAuth: []
       parameters:
@@ -687,7 +722,33 @@ paths:
                     type: string
                     example: success
                   data:
-                    $ref: '#/components/schemas/Order'
+                    allOf:
+                      - $ref: '#/components/schemas/Order'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      table:
+                        $ref: '#/components/schemas/Table'
+                      tableGroup:
+                        $ref: '#/components/schemas/TableGroup'
+                      reservation:
+                        $ref: '#/components/schemas/Reservation'
+                      event:
+                        $ref: '#/components/schemas/Event'
+                      voucher:
+                        $ref: '#/components/schemas/Voucher'
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/OrderItem'
+                          properties:
+                            dish:
+                              $ref: '#/components/schemas/Dish'
+                      payments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1315,7 +1376,35 @@ paths:
                       items:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Reservation'
+                          allOf:
+                            - $ref: '#/components/schemas/Reservation'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            event:
+                              $ref: '#/components/schemas/Event'
+                            orders:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/Order'
+                                properties:
+                                  items:
+                                    type: array
+                                    items:
+                                      allOf:
+                                        - $ref: '#/components/schemas/OrderItem'
+                                      properties:
+                                        dish:
+                                          $ref: '#/components/schemas/Dish'
+                            payments:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Payment'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
         '401':
@@ -1397,7 +1486,7 @@ paths:
       tags:
         - Reservations
       summary: Get reservation by ID
-      description: Retrieve a specific reservation by its ID
+      description: Retrieve a specific reservation by its ID with all related data
       security:
         - BearerAuth: []
       parameters:
@@ -1419,7 +1508,35 @@ paths:
                     type: string
                     example: success
                   data:
-                    $ref: '#/components/schemas/Reservation'
+                    allOf:
+                      - $ref: '#/components/schemas/Reservation'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      table:
+                        $ref: '#/components/schemas/Table'
+                      tableGroup:
+                        $ref: '#/components/schemas/TableGroup'
+                      event:
+                        $ref: '#/components/schemas/Event'
+                      orders:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                      payments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1611,6 +1728,353 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # Voucher Module
+  /vouchers/active:
+    get:
+      tags:
+        - Vouchers
+      summary: Get active vouchers
+      description: Get all active vouchers that are not expired (public endpoint)
+      security: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Voucher'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /vouchers:
+    get:
+      tags:
+        - Vouchers
+      summary: Get all vouchers
+      description: Retrieve paginated list of vouchers (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: sortBy
+          in: query
+          description: Sort by field
+          required: false
+          schema:
+            type: string
+            enum: [created_at, code, discount_type, value, expiry_date, max_uses, current_uses]
+            default: created_at
+        - name: sortOrder
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Voucher'
+                          properties:
+                            orders:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Order'
+                            usages:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/VoucherUsage'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      tags:
+        - Vouchers
+      summary: Create new voucher
+      description: Create a new voucher (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - discount_type
+                - value
+              properties:
+                code:
+                  type: string
+                  maxLength: 50
+                  example: "SAVE10"
+                discount_type:
+                  type: string
+                  enum: [percentage, fixed]
+                  example: percentage
+                value:
+                  type: number
+                  format: decimal
+                  example: 10.00
+                expiry_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2024-12-31"
+                max_uses:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  example: 100
+                min_order_value:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  example: 200000
+                active:
+                  type: boolean
+                  default: true
+                  example: true
+      responses:
+        '201':
+          description: Voucher created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Voucher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /vouchers/{id}:
+    get:
+      tags:
+        - Vouchers
+      summary: Get voucher by ID
+      description: Retrieve a specific voucher by its ID with usage statistics (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Voucher'
+                    properties:
+                      orders:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                      usages:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/VoucherUsage'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            order:
+                              $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Vouchers
+      summary: Update voucher
+      description: Update an existing voucher (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  maxLength: 50
+                  example: "SAVE15"
+                discount_type:
+                  type: string
+                  enum: [percentage, fixed]
+                  example: percentage
+                value:
+                  type: number
+                  format: decimal
+                  example: 15.00
+                expiry_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2024-12-31"
+                max_uses:
+                  type: integer
+                  minimum: 0
+                  example: 150
+                min_order_value:
+                  type: integer
+                  minimum: 0
+                  example: 300000
+                active:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Voucher updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Voucher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Vouchers
+      summary: Delete voucher
+      description: Delete a voucher (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Voucher deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: "Voucher deleted successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # Payment Module
   /payments:
     get:
@@ -1687,7 +2151,39 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Payment'
+                      allOf:
+                        - $ref: '#/components/schemas/Payment'
+                      properties:
+                        order:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                        reservation:
+                          allOf:
+                            - $ref: '#/components/schemas/Reservation'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            event:
+                              $ref: '#/components/schemas/Event'
                   pagination:
                     type: object
                     properties:
@@ -1711,7 +2207,7 @@ paths:
       tags:
         - Payments
       summary: Get payment by ID
-      description: Retrieve a specific payment by its ID (admin only)
+      description: Retrieve a specific payment by its ID with related data (admin only)
       security:
         - BearerAuth: []
       parameters:
@@ -1733,7 +2229,39 @@ paths:
                     type: string
                     example: success
                   data:
-                    $ref: '#/components/schemas/Payment'
+                    allOf:
+                      - $ref: '#/components/schemas/Payment'
+                    properties:
+                      order:
+                        allOf:
+                          - $ref: '#/components/schemas/Order'
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          table:
+                            $ref: '#/components/schemas/Table'
+                          tableGroup:
+                            $ref: '#/components/schemas/TableGroup'
+                          items:
+                            type: array
+                            items:
+                              allOf:
+                                - $ref: '#/components/schemas/OrderItem'
+                              properties:
+                                dish:
+                                  $ref: '#/components/schemas/Dish'
+                      reservation:
+                        allOf:
+                          - $ref: '#/components/schemas/Reservation'
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          table:
+                            $ref: '#/components/schemas/Table'
+                          tableGroup:
+                            $ref: '#/components/schemas/TableGroup'
+                          event:
+                            $ref: '#/components/schemas/Event'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2249,6 +2777,271 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  # Chat Module
+  /chat/session:
+    post:
+      tags:
+        - Chat
+      summary: Create a new chat session
+      description: Create a new chat session for a user
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  enum: [web, app, zalo]
+                  default: web
+                  example: web
+                context:
+                  type: object
+                  nullable: true
+                  example: {}
+                botEnabled:
+                  type: boolean
+                  default: true
+                  example: true
+      responses:
+        '201':
+          description: Chat session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/sessions:
+    get:
+      tags:
+        - Chat
+      summary: Get user's chat sessions
+      description: Get all chat sessions for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ChatSession'
+                      properties:
+                        user:
+                          $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/sessions/all:
+    get:
+      tags:
+        - Chat
+      summary: Get all chat sessions (Admin only)
+      description: Get all chat sessions in the system (admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ChatSession'
+                      properties:
+                        user:
+                          $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /chat/sessions/{id}/messages:
+    get:
+      tags:
+        - Chat
+      summary: Get messages in a chat session
+      description: Get all messages in a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Chat
+      summary: Send a message in a chat session
+      description: Send a new message in a chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message_text
+              properties:
+                message_text:
+                  type: string
+                  example: "Hello, I need help with my order"
+                sender_type:
+                  type: string
+                  enum: [user, bot, human]
+                  default: user
+                  example: user
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatMessage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/enable-bot:
+    post:
+      tags:
+        - Chat
+      summary: Enable bot mode for a chat session
+      description: Enable chatbot mode for a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Bot mode enabled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/disable-bot:
+    post:
+      tags:
+        - Chat
+      summary: Disable bot mode for a chat session
+      description: Disable chatbot mode for a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Bot mode disabled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -2257,6 +3050,319 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # Base schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+          type: string
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+84901234567"
+        role:
+          type: string
+          enum: [customer, employee, admin]
+          example: customer
+        full_name:
+          type: string
+          nullable: true
+          example: "John Doe"
+        preferences:
+          type: object
+          nullable: true
+        ranking:
+          type: string
+          enum: [regular, vip, platinum]
+          example: regular
+        points:
+          type: integer
+          example: 100
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        table_number:
+          type: string
+          example: "T001"
+        capacity:
+          type: integer
+          example: 4
+        deposit:
+          type: integer
+          example: 100000
+        cancel_minutes:
+          type: integer
+          example: 15
+        location:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum: [available, occupied, cleaning, reserved]
+          example: available
+        panorama_urls:
+          type: object
+          nullable: true
+        amenities:
+          type: object
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    TableGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        group_name:
+          type: string
+          example: "VIP Section"
+        table_ids:
+          type: object
+          example: ["table1", "table2", "table3"]
+        total_capacity:
+          type: integer
+          example: 12
+        deposit:
+          type: integer
+          example: 200000
+        cancel_minutes:
+          type: integer
+          example: 30
+        status:
+          type: string
+          enum: [available, occupied, cleaning, reserved]
+          example: available
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Dish:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Pho Bo"
+        description:
+          type: string
+          nullable: true
+          example: "Traditional Vietnamese beef noodle soup"
+        price:
+          type: number
+          format: decimal
+          example: 45000
+        category_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        media_urls:
+          type: object
+          nullable: true
+        is_best_seller:
+          type: boolean
+          example: true
+        seasonal:
+          type: boolean
+          example: false
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Voucher:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        code:
+          type: string
+          example: "SAVE10"
+        discount_type:
+          type: string
+          enum: [percentage, fixed]
+          example: percentage
+        value:
+          type: number
+          format: decimal
+          example: 10.00
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-12-31"
+        max_uses:
+          type: integer
+          example: 100
+        current_uses:
+          type: integer
+          example: 25
+        min_order_value:
+          type: integer
+          example: 200000
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Birthday Party Package"
+        description:
+          type: string
+          nullable: true
+          example: "Complete birthday celebration package"
+        price:
+          type: number
+          format: decimal
+          example: 2000000
+        inclusions:
+          type: object
+          nullable: true
+        decorations:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    VoucherUsage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        voucher_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        order_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        discount_amount:
+          type: number
+          format: decimal
+          example: 50000
+        used_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        dish_id:
+          type: string
+          format: uuid
+          nullable: true
+        quantity:
+          type: integer
+          example: 2
+        price:
+          type: number
+          format: decimal
+          example: 45000
+        customizations:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed]
+          example: pending
+        estimated_wait_time:
+          type: integer
+          nullable: true
+          example: 15
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    # Main schemas with relations
     Notification:
       type: object
       properties:
@@ -2505,6 +3611,75 @@ components:
           type: integer
           example: 10
 
+    # Chat schemas
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        is_authenticated:
+          type: boolean
+          example: true
+        channel:
+          type: string
+          enum: [web, app, zalo]
+          example: web
+        context:
+          type: object
+          nullable: true
+          example: {}
+        start_time:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-01T01:00:00Z"
+        status:
+          type: string
+          enum: [active, closed]
+          example: active
+        handled_by:
+          type: string
+          enum: [bot, human]
+          example: bot
+        bot_enabled:
+          type: boolean
+          example: true
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        session_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        sender_type:
+          type: string
+          enum: [user, bot, human]
+          example: user
+        message_text:
+          type: string
+          example: "Hello, I need help with my order"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
     Error:
       type: object
       properties:
@@ -2584,5 +3759,9 @@ tags:
     description: Order management operations
   - name: Reservations
     description: Reservation management operations
+  - name: Vouchers
+    description: Voucher management operations
   - name: Payments
     description: Payment and statistics operations
+  - name: Chat
+    description: Chat and messaging operations

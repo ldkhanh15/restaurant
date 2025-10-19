@@ -21,18 +21,17 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    const status = error?.response?.status;
-    const message =
-      error?.response?.data?.message || error.message || "Đã xảy ra lỗi";
-    toast.error(message);
-    if (status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
-);
+    (response) => response.data.data,
+    (error) => {
+        const status = error?.response?.status
+        const message = error?.response?.data?.message || error.message || "Đã xảy ra lỗi"
+        toast.error(message)
+        if (status === 401 && typeof window !== "undefined") {
+            localStorage.removeItem("token")
+            window.location.href = "/login"
+        }
+        return Promise.reject(error)
+    },
+)
 
 export default apiClient;

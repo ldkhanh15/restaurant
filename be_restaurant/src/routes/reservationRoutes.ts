@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as reservationController from "../controllers/reservationController";
 import { authenticate, authorize } from "../middlewares/auth";
-import { body, query } from "express-validator";
+import { body, param, query } from "express-validator";
 import { validate } from "../middlewares/validator";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.get(
 // Get reservation by ID
 router.get(
   "/:id",
-  [query("id").isUUID().withMessage("Invalid reservation ID"), validate],
+  [param("id").isUUID().withMessage("Invalid reservation ID"), validate],
   reservationController.getReservationById
 );
 
@@ -67,6 +67,7 @@ router.post(
 router.put(
   "/:id",
   [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
     body("table_id").optional().isUUID().withMessage("Invalid table ID"),
     body("reservation_time")
       .optional()
@@ -101,6 +102,7 @@ router.patch(
   "/:id/status",
   authorize("admin", "employee"),
   [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
     body("status")
       .isIn(["pending", "confirmed", "cancelled", "no_show"])
       .withMessage("Invalid status"),
@@ -112,12 +114,13 @@ router.patch(
 // Check-in reservation
 router.post(
   "/:id/checkin",
+  [param("id").isUUID().withMessage("Invalid reservation ID"), validate],
   // authorize("admin", "employee"),
   reservationController.checkInReservation
 );
 
 // Delete reservation
-router.delete("/:id", reservationController.deleteReservation);
+router.delete("/:id", [param("id").isUUID().withMessage("Invalid reservation ID"), validate], reservationController.deleteReservation);
 
 
 export default router;

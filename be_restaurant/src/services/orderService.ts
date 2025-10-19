@@ -73,17 +73,12 @@ class OrderService {
         {
           model: User,
           as: "user",
-          attributes: ["id", "name", "email", "phone"],
+          attributes: ["id", "username", "email", "phone"],
         },
         {
           model: Table,
           as: "table",
           attributes: ["id", "table_number", "capacity", "status"],
-        },
-        {
-          model: TableGroup,
-          as: "table_group",
-          attributes: ["id", "name", "capacity"],
         },
         {
           model: Reservation,
@@ -93,12 +88,12 @@ class OrderService {
         {
           model: Event,
           as: "event",
-          attributes: ["id", "name", "description", "start_time", "end_time"],
+          attributes: ["id", "name", "description"],
         },
         {
           model: Voucher,
           as: "voucher",
-          attributes: ["id", "code", "discount_type", "discount_value"],
+          attributes: ["id", "code", "discount_type", "value"],
         },
         {
           model: OrderItem,
@@ -107,7 +102,7 @@ class OrderService {
             {
               model: Dish,
               as: "dish",
-              attributes: ["id", "name", "price", "image_url", "description"],
+              attributes: ["id", "name", "price", "media_urls", "description"],
             },
           ],
         },
@@ -355,9 +350,9 @@ class OrderService {
     return item;
   }
 
-  async updateItemStatus(itemId: string, status: "pending" | "completed") {
-    if (!["pending", "completed"].includes(status)) {
-      throw new AppError("Invalid item status",400);
+  async updateItemStatus(itemId: string, status: "pending" | "completed" | "preparing" | "ready") {
+    if (!["pending", "preparing","ready", "completed"].includes(status)) {
+      throw new AppError("Invalid item status", 400);
     }
 
     const item = await orderRepository.updateItemStatus(itemId, status);

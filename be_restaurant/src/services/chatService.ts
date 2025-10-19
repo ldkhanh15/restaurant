@@ -7,6 +7,7 @@ import {
   addMessage,
   setBotEnabled,
   getSessionById,
+  getAllSessions,
 } from "../repositories/chatRepository";
 
 const CHATBOT_URL = process.env.CHATBOT_URL || "http://localhost:7860/api";
@@ -22,6 +23,10 @@ export const createChatSession = async (
 
 export const listUserSessions = async (userId: string) => {
   return getSessionsByUser(userId);
+};
+
+export const listAllSessions = async () => {
+  return getAllSessions();
 };
 
 export const listMessages = async (sessionId: string) => {

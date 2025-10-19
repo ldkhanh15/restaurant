@@ -68,22 +68,17 @@ class ReservationService {
         {
           model: User,
           as: "user",
-          attributes: ["id", "name", "email", "phone"],
+          attributes: ["id", "username", "email", "phone"],
         },
         {
           model: Table,
           as: "table",
-          attributes: ["id", "table_number", "capacity", "status", "deposit"],
-        },
-        {
-          model: TableGroup,
-          as: "table_group",
-          attributes: ["id", "name", "capacity"],
+          attributes: ["id", "table_number", "capacity", "status"],
         },
         {
           model: Event,
           as: "event",
-          attributes: ["id", "name", "description", "start_time", "end_time"],
+          attributes: ["id", "name", "description"],
         },
         {
           model: Order,
@@ -96,7 +91,7 @@ class ReservationService {
                 {
                   model: Dish,
                   as: "dish",
-                  attributes: ["id", "name", "price", "image_url"],
+                  attributes: ["id", "name", "price", "media_urls"],
                 },
               ],
             },

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as orderController from "../controllers/orderController";
 import { authenticate, authorize } from "../middlewares/auth";
-import { body, query } from "express-validator";
+import { body, query, param } from "express-validator";
 import { validate } from "../middlewares/validator";
 
 const router = Router();
@@ -32,7 +32,7 @@ router.get(
 );
 
 // Get order by ID
-router.get("/:id", orderController.getOrderById);
+router.get("/:id", [param("id").isUUID().withMessage("Invalid order ID"), validate], orderController.getOrderById);
 
 // Get order by table
 router.get(
@@ -68,6 +68,7 @@ router.post(
 router.put(
   "/:id",
   [
+    param("id").isUUID().withMessage("Invalid order ID"),
     body("table_id").optional().isUUID().withMessage("Invalid table ID"),
     validate,
   ],
@@ -79,6 +80,7 @@ router.patch(
   "/:id/status",
   authorize("admin", "employee"),
   [
+    param("id").isUUID().withMessage("Invalid order ID"),
     body("status")
       .isIn(["pending", "preparing", "ready", "delivered", "paid", "cancelled"])
       .withMessage("Invalid status"),
@@ -91,6 +93,7 @@ router.patch(
 router.post(
   "/:id/items",
   [
+    param("id").isUUID().withMessage("Invalid order ID"),
     body("dish_id").isUUID().withMessage("Invalid dish ID"),
     body("quantity")
       .isInt({ min: 1 })
@@ -104,6 +107,7 @@ router.post(
 router.patch(
   "/items/:itemId/quantity",
   [
+    param("itemId").isUUID().withMessage("Invalid item ID"),
     body("quantity")
       .isInt({ min: 0 })
       .withMessage("Quantity must be non-negative"),
@@ -117,8 +121,9 @@ router.patch(
   "/items/:itemId/status",
   authorize("admin", "employee"),
   [
+    param("itemId").isUUID().withMessage("Invalid item ID"),
     body("status")
-      .isIn(["pending","completed"])
+      .isIn(["pending","completed","preparing","ready"])
       .withMessage("Invalid item status"),
     validate,
   ],
@@ -131,7 +136,11 @@ router.delete("/items/:itemId", orderController.deleteItem);
 // Apply voucher
 router.post(
   "/:id/voucher",
-  [body("code").notEmpty().withMessage("Voucher code is required"), validate],
+  [
+    param("id").isUUID().withMessage("Invalid order ID"),
+    body("code").notEmpty().withMessage("Voucher code is required"),
+    validate,
+  ],
   orderController.applyVoucher
 );
 
@@ -151,11 +160,12 @@ router.post(
 );
 
 // Request support
-router.post("/:id/support", orderController.requestSupport);
+router.post("/:id/support", [param("id").isUUID().withMessage("Invalid order ID"), validate], orderController.requestSupport);
 
 // Request payment
 router.post(
   "/:id/payment/request",
+  [param("id").isUUID().withMessage("Invalid order ID"), validate],
   orderController.requestPayment
 );
 

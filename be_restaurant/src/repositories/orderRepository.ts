@@ -177,7 +177,7 @@ class OrderRepository {
   async update(id: string, data: any): Promise<Order> {
     const order = await Order.findByPk(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     await order.update(data);
@@ -187,7 +187,7 @@ class OrderRepository {
   async delete(id: string): Promise<void> {
     const order = await Order.findByPk(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     await order.destroy();
@@ -206,7 +206,7 @@ class OrderRepository {
   ): Promise<Order> {
     const order = await Order.findByPk(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     await order.update({ status });
@@ -221,7 +221,7 @@ class OrderRepository {
   ): Promise<OrderItem> {
     const order = await Order.findByPk(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     // Check if item already exists
@@ -251,7 +251,7 @@ class OrderRepository {
   ): Promise<OrderItem> {
     const item = await OrderItem.findByPk(itemId);
     if (!item) {
-      throw new AppError("Order item not found",404);
+      throw new AppError("Order item not found", 404);
     }
 
     if (quantity === 0) {
@@ -259,17 +259,17 @@ class OrderRepository {
       return item;
     } else {
       await item.update({ quantity });
-    return item;
-  }
+      return item;
+    }
   }
 
   async updateItemStatus(
     itemId: string,
-    status: "pending" | "completed"
+    status: "pending" | "completed" | "preparing" | "ready"
   ): Promise<OrderItem> {
     const item = await OrderItem.findByPk(itemId);
     if (!item) {
-      throw new AppError("Order item not found",404);
+      throw new AppError("Order item not found", 404);
     }
 
     await item.update({ status });
@@ -279,7 +279,7 @@ class OrderRepository {
   async deleteItem(itemId: string): Promise<void> {
     const item = await OrderItem.findByPk(itemId);
     if (!item) {
-      throw new AppError("Order item not found",404);
+      throw new AppError("Order item not found", 404);
     }
 
     await item.destroy();
@@ -292,7 +292,7 @@ class OrderRepository {
   ): Promise<Order> {
     const order = await Order.findByPk(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     const finalAmount = Math.max(0, order.total_amount - discountAmount);
@@ -309,7 +309,7 @@ class OrderRepository {
   async removeVoucher(orderId: string): Promise<Order> {
     const order = await Order.findByPk(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     await order.update({
@@ -329,7 +329,7 @@ class OrderRepository {
     const targetOrder = await Order.findByPk(targetOrderId);
 
     if (!sourceOrder || !targetOrder) {
-      throw new AppError("One or both orders not found",404);
+      throw new AppError("One or both orders not found", 404);
     }
 
     // Get all items from source order

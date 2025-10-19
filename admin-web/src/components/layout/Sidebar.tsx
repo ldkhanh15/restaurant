@@ -17,10 +17,8 @@ import {
   Star,
   Ticket,
   BarChart3,
-  CalendarCheck,
-  CircleUserRound,
-  UtensilsCrossed,
-  FileWarning,
+  CreditCard,
+  Instagram as Restaurant,
 } from "lucide-react";
 
 const modules = [
@@ -29,16 +27,14 @@ const modules = [
   { id: "menu", label: "Thực đơn", icon: ChefHat },
   { id: "orders", label: "Đơn hàng", icon: ShoppingCart },
   { id: "reservations", label: "Đặt bàn", icon: Calendar },
+  { id: "payments", label: "Thanh toán", icon: CreditCard },
   { id: "inventory", label: "Kho hàng", icon: Package },
   { id: "employees", label: "Nhân viên", icon: UserCheck },
-  { id: "event", label: "Sự kiện", icon: CalendarCheck },
   { id: "blog", label: "Blog", icon: FileText },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "notifications", label: "Thông báo", icon: Bell },
   { id: "reviews", label: "Đánh giá", icon: Star },
-  { id: "complaints", label: "Khiếu nại", icon: FileWarning },
-  { id: "voucher-management", label: "Voucher", icon: Ticket },
-  { id: "supplier", label: "Nhà cung cấp", icon: CircleUserRound },
+  { id: "vouchers", label: "Voucher", icon: Ticket },
 ];
 
 export function Sidebar() {
@@ -48,7 +44,7 @@ export function Sidebar() {
     <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
-          <UtensilsCrossed className="h-8 w-8 text-primary" />
+          <Restaurant className="h-8 w-8 text-primary" />
           <div>
             <h1 className="text-xl font-bold text-sidebar-foreground">
               HIWELL
@@ -62,7 +58,7 @@ export function Sidebar() {
         {modules.map((module) => {
           const Icon = module.icon;
           const href = `/${module.id}`;
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link key={module.id} href={href} className="w-full">
               <Button
