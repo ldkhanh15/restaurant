@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configure Gemini API (securely)
-genai.configure(api_key="AIzaSyDNHlqLN8GbMgYaSiyBJR052cfe5ESMKjU")
+genai.configure(api_key="GOOGLE_API_KEY")
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 BE_URL = os.getenv("BE_URL", "http://localhost:8000/api")  # Configurable backend URL
