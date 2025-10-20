@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { signup, login, validateToken } from "../controllers/authController"
+import { signup, login, validateToken } from "../controllers/auth_app_userController"
 import { authenticate } from "../middlewares/auth"
 import { body } from "express-validator"
 import { validate } from "../middlewares/validator"

@@ -9,6 +9,7 @@ import {
   getOrdersByStatus,
   getOrderDetails,
   updateOrderStatus,
+  sendOrderToKitchen,
   processOrderPayment,
 } from "../controllers/order_app_userController"
 import { authenticate, authorize } from "../middlewares/auth"
@@ -23,6 +24,7 @@ router.post("/", createOrder)
 router.get("/status/:status", getOrdersByStatus)
 router.get("/:id", getOrderById)
 router.put("/:id", updateOrder)
+router.patch("/:id/send-to-kitchen", sendOrderToKitchen)
 router.patch("/:id/payment", processOrderPayment) // New route for processing payment
 router.delete("/:id", deleteOrder)
 

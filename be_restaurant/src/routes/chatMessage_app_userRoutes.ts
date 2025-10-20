@@ -1,5 +1,5 @@
 import { Router } from "express"
-import * as chatMessageController from "../controllers/chatMessageController"
+import * as chatMessageController from "../controllers/chatMessage_app_userController"
 import { authenticate } from "../middlewares/auth"
 
 const router = Router()

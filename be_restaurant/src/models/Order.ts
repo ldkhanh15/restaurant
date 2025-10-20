@@ -9,7 +9,7 @@ interface OrderAttributes {
   table_group_id?: string
   event_id?: string
   voucher_id?: string
-  status: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
+  status: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled" | "waiting_kitchen_confirmation"
   total_amount: number
   voucher_discount_amount?: number
   final_amount: number
@@ -34,7 +34,7 @@ class Order extends Model<OrderAttributes, OrderCreationAttributes> implements O
   public table_group_id?: string
   public event_id?: string
   public voucher_id?: string
-  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
+  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled" | "waiting_kitchen_confirmation"
   public total_amount!: number
   public voucher_discount_amount?: number
   public final_amount!: number
@@ -111,7 +111,7 @@ Order.init(
       onDelete: "SET NULL",
     },
     status: {
-      type: DataTypes.ENUM("pending", "dining", "waiting_payment", "preparing", "ready", "delivered", "paid", "cancelled"),
+      type: DataTypes.ENUM("pending", "dining", "waiting_payment", "preparing", "ready", "delivered", "paid", "cancelled", "waiting_kitchen_confirmation"),
       defaultValue: "pending",
     },
     total_amount: {
