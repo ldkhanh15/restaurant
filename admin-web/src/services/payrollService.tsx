@@ -27,12 +27,12 @@ const payrollApi = {
 
     const response = await apiClient.get<ApiResponse<any>>(url);
 
-    return response.data;
+    return response;
   },
 
   getPayrollRecord: async (id: string) => {
     const response = await apiClient.get<ApiResponse<any>>(`/payroll/${id}`);
-    return response.data;
+    return response;
   },
 
   createPayrollRecord: async (payrollData: any) => {
@@ -40,7 +40,7 @@ const payrollApi = {
       "/payroll",
       payrollData
     );
-    return response.data;
+    return response;
   },
 
   updatePayrollRecord: async (id: string, payrollData: any) => {
@@ -48,14 +48,14 @@ const payrollApi = {
       `/payroll/${id}`,
       payrollData
     );
-    return response.data;
+    return response;
   },
 
   deletePayrollRecord: async (id: string) => {
     const response = await apiClient.delete<ApiResponse<any>>(
       `/payroll/${id}`
     );
-    return response.data;
+    return response;  
   },
 };
 

@@ -1,26 +1,29 @@
-import type { Metadata } from 'next'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
-import { Analytics } from '@vercel/analytics/next'
-import '@/app/globals.css'
-import Sidebar from '@/components/layout/Sidebar'
-import Header from '@/components/layout/Header'
-import AuthGate from '@/components/shared/AuthGate'
+import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import { Analytics } from "@vercel/analytics/next";
+import "@/app/globals.css";
+import Sidebar from "@/components/layout/Sidebar";
+import Header from "@/components/layout/Header";
+import AuthGate from "@/components/shared/AuthGate";
+import { ToastContainer } from "react-toastify";
 
 export const metadata: Metadata = {
-  title: 'My Restaurant Dashboard',
-  description: 'PBL6',
-  generator: 'pbl6',
-}
+  title: "My Restaurant Dashboard",
+  description: "PBL6",
+  generator: "pbl6",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} h-full`}>
+      <body
+        className={`font-sans ${GeistSans.variable} ${GeistMono.variable} h-full`}
+      >
         <AuthGate>
           <div className="flex h-screen bg-background">
             <Sidebar />
@@ -30,8 +33,18 @@ export default function RootLayout({
             </div>
           </div>
         </AuthGate>
+        <ToastContainer
+          position="bottom-right"
+          autoClose={2000}
+          hideProgressBar={false}
+          newestOnTop={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          theme="light" // có thể đổi "light" | "dark" | "colored"
+        />
         <Analytics />
       </body>
     </html>
-  )
+  );
 }

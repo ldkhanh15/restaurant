@@ -27,12 +27,12 @@ const attendanceApi = {
 
     const response = await apiClient.get<ApiResponse<any>>(url);
 
-    return response.data;
+    return response;
   },
 
   getAttendanceLog: async (id: string) => {
     const response = await apiClient.get<ApiResponse<any>>(`/attendance/${id}`);
-    return response.data;
+    return response;
   },
 
   createAttendanceLog: async (attendanceData: any) => {
@@ -40,7 +40,7 @@ const attendanceApi = {
       "/attendance",
       attendanceData
     );
-    return response.data;
+    return response;
   },
 
   updateAttendanceLog: async (id: string, attendanceData: any) => {
@@ -48,14 +48,14 @@ const attendanceApi = {
       `/attendance/${id}`,
       attendanceData
     );
-    return response.data;
+    return response;
   },
 
   deleteAttendanceLog: async (id: string) => {
     const response = await apiClient.delete<ApiResponse<any>>(
       `/attendance/${id}`
     );
-    return response.data;
+    return response;
   },
 };
 

@@ -3,3 +3,166 @@
 2025-09-27 21:41:13,675 - INFO - HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
 2025-09-27 21:41:15,603 - INFO - HTTP Request: GET http://localhost:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
 2025-09-27 21:41:17,947 - INFO - HTTP Request: HEAD http://localhost:7860/ "HTTP/1.1 200 OK"
+2025-10-11 16:12:49,463 - ERROR - Error creating session: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/chat/sessions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000023619A16320>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-10-11 16:14:43,185 - ERROR - Error creating session: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/sessions
+2025-10-11 16:14:45,375 - ERROR - Error creating session: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/sessions
+2025-10-11 23:07:45,495 - ERROR - Error creating session: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/sessions
+2025-10-11 23:09:09,432 - ERROR - Error saving user message: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/messages
+2025-10-11 23:09:09,501 - ERROR - Error fetching tables: 404 Client Error: Not Found for url: http://localhost:8000/api/tables/available?seats=1&date=2025-10-11&time=23%3A09
+2025-10-11 23:09:09,509 - ERROR - Error fetching reservations: 404 Client Error: Not Found for url: http://localhost:8000/api/users/guest/reservations
+2025-10-11 23:09:13,018 - ERROR - Error closing session: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/sessions/10cc7537-7fdc-4ab2-9644-49a2dc557c3a
+2025-10-11 23:09:13,110 - ERROR - Error saving bot message: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/messages
+2025-10-11 23:09:40,487 - ERROR - Error saving user message: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/messages
+2025-10-11 23:09:40,548 - ERROR - Error fetching tables: 404 Client Error: Not Found for url: http://localhost:8000/api/tables/available?seats=1&date=2025-10-11&time=23%3A09
+2025-10-11 23:09:40,582 - ERROR - Error fetching reservations: 404 Client Error: Not Found for url: http://localhost:8000/api/users/guest/reservations
+2025-10-11 23:09:44,326 - ERROR - Error saving bot message: 401 Client Error: Unauthorized for url: http://localhost:8000/api/chat/messages
+2025-10-18 00:33:56,901 - ERROR - Error saving user message: 404 Client Error: Not Found for url: http://localhost:8000/api/chat/messages
+2025-10-18 00:33:56,964 - ERROR - Error fetching tables: 404 Client Error: Not Found for url: http://localhost:8000/api/tables/available?seats=1&date=2025-10-18&time=00%3A33
+2025-10-18 00:33:56,986 - ERROR - Error fetching reservations: 404 Client Error: Not Found for url: http://localhost:8000/api/users/55488f83-9f17-4b20-846c-c63b0923617a/reservations
+2025-10-18 00:33:57,543 - ERROR - Gemini error: 429 Quota exceeded for quota metric 'Generate Content API requests per minute' and limit 'GenerateContent request limit per minute for a region' of service 'generativelanguage.googleapis.com' for consumer 'project_number:568060996570'. [reason: "RATE_LIMIT_EXCEEDED"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+metadata {
+  key: "quota_unit"
+  value: "1/min/{project}/{region}"
+}
+metadata {
+  key: "quota_metric"
+  value: "generativelanguage.googleapis.com/generate_content_requests"
+}
+metadata {
+  key: "quota_location"
+  value: "asia-east1"
+}
+metadata {
+  key: "quota_limit"
+  value: "GenerateContentRequestsPerMinutePerProjectPerRegion"
+}
+metadata {
+  key: "quota_limit_value"
+  value: "0"
+}
+metadata {
+  key: "consumer"
+  value: "projects/568060996570"
+}
+, links {
+  description: "Request a higher quota limit."
+  url: "https://cloud.google.com/docs/quotas/help/request_increase"
+}
+]
+2025-10-18 00:33:57,553 - ERROR - Error saving bot message: 404 Client Error: Not Found for url: http://localhost:8000/api/chat/messages
+2025-10-18 00:53:19,427 - ERROR - Error fetching tables: 404 Client Error: Not Found for url: http://localhost:8000/api/tables/available?seats=1&date=2025-10-18&time=00%3A53
+2025-10-18 00:53:19,452 - ERROR - Error fetching reservations: 404 Client Error: Not Found for url: http://localhost:8000/api/users/55488f83-9f17-4b20-846c-c63b0923617a/reservations
+2025-10-18 00:53:19,716 - ERROR - Gemini error: 429 Quota exceeded for quota metric 'Generate Content API requests per minute' and limit 'GenerateContent request limit per minute for a region' of service 'generativelanguage.googleapis.com' for consumer 'project_number:568060996570'. [reason: "RATE_LIMIT_EXCEEDED"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+metadata {
+  key: "quota_unit"
+  value: "1/min/{project}/{region}"
+}
+metadata {
+  key: "quota_metric"
+  value: "generativelanguage.googleapis.com/generate_content_requests"
+}
+metadata {
+  key: "quota_location"
+  value: "asia-east1"
+}
+metadata {
+  key: "quota_limit"
+  value: "GenerateContentRequestsPerMinutePerProjectPerRegion"
+}
+metadata {
+  key: "quota_limit_value"
+  value: "0"
+}
+metadata {
+  key: "consumer"
+  value: "projects/568060996570"
+}
+, links {
+  description: "Request a higher quota limit."
+  url: "https://cloud.google.com/docs/quotas/help/request_increase"
+}
+]
+2025-10-18 00:53:25,823 - ERROR - Error fetching tables: 404 Client Error: Not Found for url: http://localhost:8000/api/tables/available?seats=1&date=2025-10-18&time=00%3A53
+2025-10-18 00:53:25,850 - ERROR - Error fetching reservations: 404 Client Error: Not Found for url: http://localhost:8000/api/users/55488f83-9f17-4b20-846c-c63b0923617a/reservations
+2025-10-18 00:53:25,919 - ERROR - Gemini error: 429 Quota exceeded for quota metric 'Generate Content API requests per minute' and limit 'GenerateContent request limit per minute for a region' of service 'generativelanguage.googleapis.com' for consumer 'project_number:568060996570'. [reason: "RATE_LIMIT_EXCEEDED"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+metadata {
+  key: "quota_unit"
+  value: "1/min/{project}/{region}"
+}
+metadata {
+  key: "quota_metric"
+  value: "generativelanguage.googleapis.com/generate_content_requests"
+}
+metadata {
+  key: "quota_location"
+  value: "asia-east1"
+}
+metadata {
+  key: "quota_limit"
+  value: "GenerateContentRequestsPerMinutePerProjectPerRegion"
+}
+metadata {
+  key: "quota_limit_value"
+  value: "0"
+}
+metadata {
+  key: "consumer"
+  value: "projects/568060996570"
+}
+, links {
+  description: "Request a higher quota limit."
+  url: "https://cloud.google.com/docs/quotas/help/request_increase"
+}
+]
+2025-10-18 01:03:25,276 - ERROR - Gemini error: 429 Quota exceeded for quota metric 'Generate Content API requests per minute' and limit 'GenerateContent request limit per minute for a region' of service 'generativelanguage.googleapis.com' for consumer 'project_number:568060996570'. [reason: "RATE_LIMIT_EXCEEDED"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+metadata {
+  key: "quota_unit"
+  value: "1/min/{project}/{region}"
+}
+metadata {
+  key: "quota_metric"
+  value: "generativelanguage.googleapis.com/generate_content_requests"
+}
+metadata {
+  key: "quota_location"
+  value: "asia-east1"
+}
+metadata {
+  key: "quota_limit"
+  value: "GenerateContentRequestsPerMinutePerProjectPerRegion"
+}
+metadata {
+  key: "quota_limit_value"
+  value: "0"
+}
+metadata {
+  key: "consumer"
+  value: "projects/568060996570"
+}
+, links {
+  description: "Request a higher quota limit."
+  url: "https://cloud.google.com/docs/quotas/help/request_increase"
+}
+]
+2025-10-18 01:06:09,266 - ERROR - Error closing session: 404 Client Error: Not Found for url: http://localhost:8000/api/chat/sessions/ccd16025-6cbc-4bde-a778-9333467dd9d3
+2025-10-18 01:08:10,983 - ERROR - Error closing session: 404 Client Error: Not Found for url: http://localhost:8000/api/chat/sessions/ccd16025-6cbc-4bde-a778-9333467dd9d3

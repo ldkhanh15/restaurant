@@ -1,26 +1,27 @@
-"use client"
+"use client";
 
-import axios from "axios"
-import { toast } from "sonner"
+import axios from "axios";
+// import { toast } from "sonner";
+import { toast } from "react-toastify"
 
 const apiClient = axios.create({
-    baseURL: "http://localhost:8000/api",
-    withCredentials: false,
-})
+  baseURL: "http://localhost:8000/api",
+  withCredentials: false,
+});
 
 apiClient.interceptors.request.use((config) => {
-    if (typeof window !== "undefined") {
-        const token = localStorage.getItem("token")
-        if (token) {
-            config.headers = config.headers ?? {}
-            config.headers.Authorization = `Bearer ${token}`
-        }
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers = config.headers ?? {};
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return config
-})
+  }
+  return config;
+});
 
 apiClient.interceptors.response.use(
-    (response) => response.data,
+    (response) => response.data.data,
     (error) => {
         const status = error?.response?.status
         const message = error?.response?.data?.message || error.message || "Đã xảy ra lỗi"
@@ -33,6 +34,4 @@ apiClient.interceptors.response.use(
     },
 )
 
-export default apiClient
-
-
+export default apiClient;

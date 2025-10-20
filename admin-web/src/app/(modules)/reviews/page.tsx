@@ -1,7 +1,4 @@
-import { ReviewsComplaints } from "@/components/modules/reviews-complaints"
-
+import { ReviewsManagement } from "@/components/modules/reviews-management";
 export default function Page() {
-    return <ReviewsComplaints />
+  return <ReviewsManagement />;
 }
-
-
