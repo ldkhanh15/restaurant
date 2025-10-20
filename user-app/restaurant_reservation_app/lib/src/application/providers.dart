@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 import '../domain/models/booking.dart';
 import '../domain/models/table.dart';
 import '../domain/models/menu.dart';
@@ -14,7 +15,23 @@ import '../data/mock_data.dart';
 import '../data/repositories/user_repository.dart';
 import '../data/repositories/notification_repository.dart';
 import '../data/repositories/review_repository.dart';
+import '../data/services/voucher_app_user_service_app_user.dart';
+import '../data/services/blog_app_user_service.dart';
+import '../domain/models/blog.dart';
 import '../data/datasources/api_config.dart';
+import '../data/datasources/http_client_app_user.dart';
+import '../data/services/order_app_user_service_app_user.dart';
+
+// --- Core Service Providers ---
+
+/// Provides a singleton instance of [HttpClientAppUser] for the entire app.
+/// This ensures all API calls use the same client, which is configured with the auth token.
+final httpClientProvider = Provider<HttpClientAppUser>((ref) {
+  return HttpClientAppUser();
+});
+
+/// Provides the [VoucherAppUserService], injecting the authenticated http client.
+final voucherServiceProvider = Provider<VoucherAppUserService>((ref) => VoucherAppUserService(ref.watch(httpClientProvider)));
 
 // User Provider
 final userProvider = StateNotifierProvider<UserNotifier, AppUser?>((ref) =>
@@ -77,6 +94,13 @@ final eventsProvider = StateNotifierProvider<EventsNotifier, List<Event>>(
     (ref) => ApiConfig.baseUrl.isEmpty
         ? (EventsNotifier()..setEvents(MockData.mockEvents))
         : EventsNotifier());
+
+/// Blogs (FutureProvider) - fetch latest blog posts from backend
+final blogsProvider = FutureProvider<List<Blog>>((ref) async {
+  if (ApiConfig.baseUrl.isEmpty) return <Blog>[];
+  final svc = BlogAppUserService(ApiConfig.baseUrl);
+  return svc.fetchBlogs();
+});
 final eventBookingsProvider =
     StateNotifierProvider<EventBookingsNotifier, List<EventBooking>>((ref) =>
         ApiConfig.baseUrl.isEmpty
@@ -241,8 +265,42 @@ class OrderItemsNotifier extends StateNotifier<List<OrderItem>> {
 class OrderHistoryNotifier extends StateNotifier<List<Order>> {
   OrderHistoryNotifier() : super([]);
 
+  // Keep the last raw JSON response for debug purposes (not part of the exported state)
+  List<dynamic> _lastRawOrders = [];
+  List<dynamic> get lastRawOrders => _lastRawOrders;
+
   void setOrders(List<Order> orders) => state = orders;
   void addOrder(Order order) => state = [...state, order];
+
+  /// Fetch orders for current user from backend and populate state.
+  Future<void> fetchFromServer() async {
+    try {
+      // If no backend configured, do nothing (mock data already provided)
+      if (ApiConfig.baseUrl.isEmpty) return;
+      final raw = await OrderAppUserService.fetchOrdersForUser(page: 1, limit: 100);
+      // Debug: log the raw response length to help troubleshooting
+      try {
+        // ignore: avoid_print
+        print('[OrderHistoryNotifier] fetched raw orders length=${raw.length}');
+        // store raw for UI debug
+        _lastRawOrders = raw;
+        if (raw.isNotEmpty) {
+          try {
+            // Print the first raw order JSON for debugging
+            // ignore: avoid_print
+            print('[OrderHistoryNotifier] sample order JSON: ${jsonEncode(raw.first)}');
+          } catch (_) {}
+        }
+      } catch (_) {}
+      final orders = raw.map<Order>((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
+      state = orders;
+    } catch (e) {
+      // Log and rethrow so UI callers (like the Account screen) can surface the error.
+      // ignore: avoid_print
+      print('[OrderHistoryNotifier] fetch error: $e');
+      rethrow;
+    }
+  }
 }
 
 class EventsNotifier extends StateNotifier<List<Event>> {
@@ -342,6 +400,18 @@ class ChatMessagesNotifier extends StateNotifier<List<Map<String, dynamic>>> {
 
   void addMessage(Map<String, dynamic> message) => state = [...state, message];
   void clearMessages() => state = [];
+
+  /// Replace a temporary message (by `tempId`) with the server-backed message.
+  void replaceMessage(String tempId, Map<String, dynamic> message) {
+    state = state.map((m) => (m['id'] == tempId) ? message : m).toList();
+  }
+
+  /// Mark a message as failed to send (keeps other fields intact).
+  void markMessageFailed(String id) {
+    state = state
+        .map((m) => (m['id'] == id) ? {...m, 'status': 'failed'} : m)
+        .toList();
+  }
 }
 
 class IsTypingNotifier extends StateNotifier<bool> {
@@ -402,36 +472,83 @@ class ReviewsNotifier extends StateNotifier<List<Review>> {
 }
 
 // Voucher Providers
-final vouchersProvider = StateNotifierProvider<VouchersNotifier, List<Voucher>>(
-    (ref) => VouchersNotifier()..setVouchers(MockData.mockVouchers));
+final vouchersProvider = StateNotifierProvider<VouchersNotifier, VoucherState>((ref) {
+  // If no backend is configured, use mock data.
+  if (ApiConfig.baseUrl.isEmpty) {
+    final mockVouchers = MockData.mockVouchers;
+    return VouchersNotifier(initialState: VoucherState(
+      activeVouchers: mockVouchers.where((v) => v.isValid).toList(),
+      usedVouchers: mockVouchers.where((v) => v.status == VoucherStatus.used).toList(),
+      expiredVouchers: mockVouchers.where((v) => v.isExpired && v.status != VoucherStatus.used).toList(),
+    ), ref: ref);
+  }
+  return VouchersNotifier(initialState: const VoucherState(), ref: ref);
+});
 
-class VouchersNotifier extends StateNotifier<List<Voucher>> {
-  VouchersNotifier() : super([]);
+/// A FutureProvider that fetches user vouchers and handles loading/error states.
+/// The UI will watch this provider to show the correct state.
+final userVouchersFutureProvider = FutureProvider<void>((ref) async {
+  // This provider will trigger the fetch and its result (or error) will be available in the UI.
+  await ref.watch(vouchersProvider.notifier).fetchUserVouchers();
+});
 
-  void setVouchers(List<Voucher> vouchers) {
-    state = vouchers;
+class VouchersNotifier extends StateNotifier<VoucherState> {
+  VouchersNotifier({VoucherState? initialState, required this.ref}) : super(initialState ?? const VoucherState());
+
+  final Ref ref;
+
+  Future<void> fetchUserVouchers() async {
+    try {
+      // If using mock data, do nothing and let the initial state be used.
+      if (ApiConfig.baseUrl.isEmpty) {
+        // The provider is already initialized with mock data, so we are done.
+        return;
+      }
+
+      final allVouchers = await ref.read(voucherServiceProvider).fetchUserVouchers();
+      
+      // Phân loại voucher vào các danh sách tương ứng
+      final active = allVouchers.where((v) => v.isValid).toList();
+      final used = allVouchers.where((v) => v.status == VoucherStatus.used).toList();
+      // Voucher hết hạn là những voucher có ngày validUntil đã qua VÀ chưa được sử dụng
+      final expired = allVouchers.where((v) => v.isExpired && v.status != VoucherStatus.used).toList();
+
+      state = state.copyWith(
+        activeVouchers: active,
+        usedVouchers: used,
+        expiredVouchers: expired,
+      );
+    } catch (e) {
+      // If the token is invalid/expired, throw a specific error for the UI
+      // to handle, e.g., by showing a re-login prompt.
+      final msg = e.toString();
+      if (msg.contains('401') || msg.contains('Invalid or expired token')) {
+        // Throw a clearer exception for the UI to handle re-login prompt
+        throw Exception('Authentication required. Please login again.');
+      }
+
+      // Rethrow other errors to be handled by the UI
+      rethrow;
+    }
   }
 
   void addVoucher(Voucher voucher) {
-    state = [...state, voucher];
+    // Add the new voucher to the list of active vouchers
+    state = state.copyWith(
+      activeVouchers: [...state.activeVouchers, voucher],
+    );
   }
 
+  // This method is for local/mock data usage when no backend is connected.
   void useVoucher(String voucherId, String orderId) {
-    state = state
-        .map((voucher) => voucher.id == voucherId
-            ? voucher.copyWith(
-                status: VoucherStatus.used,
-                usedAt: DateTime.now(),
-                orderId: orderId,
-              )
-            : voucher)
-        .toList();
+    final voucherToUse = state.activeVouchers.firstWhere((v) => v.id == voucherId);
+    final updatedVoucher = voucherToUse.copyWith(status: VoucherStatus.used, usedAt: DateTime.now(), orderId: orderId);
+ 
+    state = state.copyWith(
+      activeVouchers: state.activeVouchers.where((v) => v.id != voucherId).toList(),
+      usedVouchers: [...state.usedVouchers, updatedVoucher],
+    );
   }
-
-  List<Voucher> get activeVouchers => state.where((v) => v.isValid).toList();
-  List<Voucher> get usedVouchers =>
-      state.where((v) => v.status == VoucherStatus.used).toList();
-  List<Voucher> get expiredVouchers => state.where((v) => v.isExpired).toList();
 }
 
 // --- Repository Providers ---

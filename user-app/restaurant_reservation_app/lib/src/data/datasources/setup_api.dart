@@ -11,9 +11,10 @@ import 'dart:io' show Platform;
 void setupLocalApi() {
   if (Platform.isAndroid) {
     // Android emulator -> host machine is 10.0.2.2
-    ApiConfig.baseUrl = 'http://10.0.2.2:3000';
+    // Backend in this workspace (be_restaurant) defaults to PORT=8000 during development.
+    ApiConfig.baseUrl = 'http://10.0.2.2:8000';
   } else {
     // iOS simulator, macOS, web on localhost etc.
-    ApiConfig.baseUrl = 'http://localhost:3000';
+    ApiConfig.baseUrl = 'http://localhost:8000';
   }
 }

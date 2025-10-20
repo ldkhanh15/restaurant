@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 import '../../../application/providers.dart';
 import '../../../domain/models/order.dart';
+import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../application/socket_manager.dart';
 
 class KitchenStatusScreen extends ConsumerStatefulWidget {
   const KitchenStatusScreen({super.key});
@@ -14,30 +17,79 @@ class _KitchenStatusScreenState extends ConsumerState<KitchenStatusScreen> {
   @override
   void initState() {
     super.initState();
-    // Simulate kitchen progress
-    _simulateKitchenProgress();
+    // Join order room using the global socket manager so realtime updates
+    // emitted to the order room will be received and providers updated.
+    try {
+      final current = ref.read(currentOrderProvider);
+      if (current != null) {
+        ref.read(orderSocketManagerProvider).joinOrder(current.id);
+      }
+    } catch (_) {}
   }
 
-  void _simulateKitchenProgress() {
-    final orderItems = ref.read(orderItemsProvider);
-    if (orderItems.isEmpty) return;
+  bool _isUpdating = false;
 
-    // Simulate progress every 10 seconds
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) {
-        final updatedItems = orderItems.map((item) {
-          if (item.kitchenStatus == KitchenStatus.pending) {
-            return item.copyWith(kitchenStatus: KitchenStatus.preparing);
-          } else if (item.kitchenStatus == KitchenStatus.preparing) {
-            return item.copyWith(kitchenStatus: KitchenStatus.ready);
+  Future<void> _setOrderStatus(String status) async {
+    final currentOrder = ref.read(currentOrderProvider);
+    if (currentOrder == null) return;
+    setState(() => _isUpdating = true);
+    try {
+      final updated = await OrderAppUserService.updateOrder(currentOrder.id, {'status': status});
+      // updated should be a Map representing the order
+  final updatedOrder = Order.fromJson(Map<String, dynamic>.from(updated));
+      ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+
+      // update order items if provided; parse defensively in case server returns JSON-string or wrapped object
+      try {
+        final rawItems = updated['items'];
+        List<OrderItem> parsedItems = [];
+        if (rawItems is List<dynamic>) {
+          parsedItems = rawItems.map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+        } else if (rawItems is String) {
+          try {
+            final decoded = jsonDecode(rawItems);
+            if (decoded is List<dynamic>) parsedItems = decoded.map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+            if (decoded is Map && decoded['data'] is List<dynamic>) parsedItems = (decoded['data'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+          } catch (_) {
+            parsedItems = [];
           }
-          return item;
-        }).toList();
+        } else if (rawItems is Map<String, dynamic>) {
+          if (rawItems['rows'] is List<dynamic>) parsedItems = (rawItems['rows'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+          if (rawItems['data'] is List<dynamic>) parsedItems = (rawItems['data'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+        }
 
-        ref.read(orderItemsProvider.notifier).setItems(updatedItems);
-        _simulateKitchenProgress();
+        if (parsedItems.isNotEmpty) {
+          ref.read(orderItemsProvider.notifier).setItems(parsedItems);
+        }
+      } catch (_) {
+        // ignore parse errors and keep local items
       }
-    });
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cập nhật trạng thái: $status')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể cập nhật trạng thái: $e')));
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  // Derive display state for items from the overall order status so the UI
+  // only changes when the server/order.status changes (no local simulation).
+  List<OrderItem> _deriveDisplayItems(List<OrderItem> items, Order? order) {
+    if (order == null) return items;
+    switch (order.status) {
+      case OrderStatus.waitingKitchenConfirmation:
+        return items.map((i) => i.copyWith(kitchenStatus: KitchenStatus.pending)).toList();
+      case OrderStatus.preparing:
+        return items.map((i) {
+          if (i.kitchenStatus == KitchenStatus.ready || i.kitchenStatus == KitchenStatus.served) return i;
+          return i.copyWith(kitchenStatus: KitchenStatus.preparing);
+        }).toList();
+      case OrderStatus.ready:
+        return items.map((i) => i.copyWith(kitchenStatus: KitchenStatus.ready)).toList();
+      default:
+        return items;
+    }
   }
 
   String _getStatusText(KitchenStatus status) {
@@ -120,9 +172,12 @@ class _KitchenStatusScreenState extends ConsumerState<KitchenStatusScreen> {
       );
     }
 
-    final overallProgress = _getOverallProgress(orderItems);
-    final estimatedTime = _getEstimatedTimeRemaining(orderItems);
-    final isComplete = _isOrderComplete(orderItems);
+    // Derive display items from order.status so UI reacts to server/state changes
+    final displayItems = _deriveDisplayItems(orderItems, currentOrder);
+
+    final overallProgress = _getOverallProgress(displayItems);
+    final estimatedTime = _getEstimatedTimeRemaining(displayItems);
+    final isComplete = _isOrderComplete(displayItems);
 
     return Scaffold(
       appBar: AppBar(
@@ -200,7 +255,7 @@ class _KitchenStatusScreenState extends ConsumerState<KitchenStatusScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ...orderItems.map((item) => Card(
+            ...displayItems.map((item) => Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: ClipRRect(
@@ -274,37 +329,101 @@ class _KitchenStatusScreenState extends ConsumerState<KitchenStatusScreen> {
                 ),
               ),
             ] else ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        // Mark all as served
-                        final updatedItems = orderItems.map((item) => 
-                          item.copyWith(kitchenStatus: KitchenStatus.served)
-                        ).toList();
-                        ref.read(orderItemsProvider.notifier).setItems(updatedItems);
-                      },
-                      icon: const Icon(Icons.done_all),
-                      label: const Text('Đánh dấu đã phục vụ'),
+              // Show kitchen-specific actions depending on order.status
+              if (_isUpdating) ...[
+                const Center(child: CircularProgressIndicator()),
+              ] else if (currentOrder.status == OrderStatus.waitingKitchenConfirmation) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _setOrderStatus('preparing'),
+                        icon: const Icon(Icons.restaurant),
+                        label: const Text('Bắt đầu chế biến'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        // Refresh status
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Làm mới'),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _setOrderStatus('cancelled'),
+                        icon: const Icon(Icons.cancel),
+                        label: const Text('Hủy đơn'),
+                      ),
                     ),
+                  ],
+                ),
+              ] else if (currentOrder.status == OrderStatus.preparing) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _setOrderStatus('ready'),
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('Hoàn tất lên món'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _setOrderStatus('cancelled'),
+                        icon: const Icon(Icons.cancel),
+                        label: const Text('Hủy đơn'),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (currentOrder.status == OrderStatus.ready) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/payment');
+                    },
+                    icon: const Icon(Icons.payment),
+                    label: const Text('Thanh toán'),
                   ),
-                ],
-              ),
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Mark all as served locally
+                          final updatedItems = orderItems.map((item) => 
+                            item.copyWith(kitchenStatus: KitchenStatus.served)
+                          ).toList();
+                          ref.read(orderItemsProvider.notifier).setItems(updatedItems);
+                        },
+                        icon: const Icon(Icons.done_all),
+                        label: const Text('Đánh dấu đã phục vụ'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // Refresh status
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Làm mới'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    try {
+      ref.read(orderSocketManagerProvider).dispose();
+    } catch (_) {}
+    super.dispose();
   }
 }

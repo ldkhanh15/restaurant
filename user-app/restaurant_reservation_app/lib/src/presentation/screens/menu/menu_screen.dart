@@ -6,6 +6,9 @@ import '../../../domain/models/menu.dart';
 import '../../../domain/models/booking.dart';
 import '../../widgets/menu_item_card.dart';
 import '../../widgets/cart_bottom_sheet.dart';
+import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../data/datasources/api_config.dart';
+import '../../../domain/models/order.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
   final Booking? booking;
@@ -19,6 +22,8 @@ class MenuScreen extends ConsumerStatefulWidget {
 class _MenuScreenState extends ConsumerState<MenuScreen> {
   String selectedCategory = 'appetizers';
   bool isOrderMode = false;
+  // When true show flattened list of all menu items; when false show by-category
+  bool showAllItems = true;
   String searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
@@ -82,53 +87,84 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       body: SafeArea(
         child: Column(
           children: [
-          // Category tabs
-          Container(
-            height: 50,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: menuCategories.length,
-              itemBuilder: (context, index) {
-                final category = menuCategories[index];
-                final isSelected = selectedCategory == category.id;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(category.name),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        selectedCategory = category.id;
-                      });
-                    },
-                  ),
-                );
-              },
+          // Toggle between 'All items' and 'By category'
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Hiển thị:'),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          showAllItems = true;
+                        });
+                      },
+                      child: Text(
+                        'Tất cả món',
+                        style: TextStyle(
+                          color: showAllItems ? Theme.of(context).colorScheme.primary : null,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          showAllItems = false;
+                        });
+                      },
+                      child: Text(
+                        'Theo danh mục',
+                        style: TextStyle(
+                          color: !showAllItems ? Theme.of(context).colorScheme.primary : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
           
           // Menu items
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-        itemCount: menuCategories
-          .firstWhere((cat) => cat.id == effectiveSelectedCategory)
-          .items.length,
-              itemBuilder: (context, index) {
-        final category = menuCategories
-          .firstWhere((cat) => cat.id == effectiveSelectedCategory);
-                final item = category.items[index];
-                return MenuItemCard(
-                  item: item,
-                  isOrderMode: widget.booking != null,
-                  onAddToCart: (item, quantity, customizations, specialNote) {
-                    _addToCart(item, quantity, customizations, specialNote);
-                  },
-                );
-              },
-            ),
+            child: showAllItems
+                ? ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: menuCategories.expand((c) => c.items).length,
+                    itemBuilder: (context, index) {
+                      final allItems = menuCategories.expand((c) => c.items).toList();
+                      final item = allItems[index];
+                      return MenuItemCard(
+                        item: item,
+                        isOrderMode: widget.booking != null,
+                        onAddToCart: (item, quantity, customizations, specialNote) {
+                          _addToCart(item, quantity, customizations, specialNote);
+                        },
+                      );
+                    },
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: menuCategories
+                        .firstWhere((cat) => cat.id == effectiveSelectedCategory)
+                        .items.length,
+                    itemBuilder: (context, index) {
+                      final category = menuCategories
+                          .firstWhere((cat) => cat.id == effectiveSelectedCategory);
+                      final item = category.items[index];
+                      return MenuItemCard(
+                        item: item,
+                        isOrderMode: widget.booking != null,
+                        onAddToCart: (item, quantity, customizations, specialNote) {
+                          _addToCart(item, quantity, customizations, specialNote);
+                        },
+                      );
+                    },
+                  ),
           ),
           ],
         ),
@@ -211,10 +247,53 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       isScrollControlled: true,
       builder: (context) => CartBottomSheet(
         booking: widget.booking!,
-        onProceedToOrder: () {
+        onProceedToOrder: () async {
           Navigator.pop(context);
-          // Navigate to order confirmation screen with booking passed
-          context.go('/order-confirmation', extra: widget.booking);
+          // Create order immediately with status 'pending' and set providers, then navigate to confirmation
+          try {
+            final cartItems = ref.read(cartItemsProvider);
+            if (cartItems.isEmpty) {
+              context.go('/order-confirmation', extra: widget.booking);
+              return;
+            }
+
+            // Build payload similar to OrderConfirmationScreen
+            final subtotal = ref.read(cartTotalProvider);
+            final serviceCharge = subtotal * 0.1;
+            final tax = (subtotal + serviceCharge) * 0.1;
+            final total = subtotal + serviceCharge + tax;
+
+            final payload = {
+              'reservation_id': widget.booking!.serverId ?? widget.booking!.id,
+              'table_id': widget.booking!.tableId.toString(),
+              'user_id': ref.read(userProvider)?.id ?? ApiConfig.currentUserId,
+              'total_amount': total,
+              'notes': null,
+              'status': 'pending',
+              'items': cartItems.map((item) => {
+                'dish_id': item.id,
+                'name': item.name,
+                'price': item.price,
+                'quantity': item.quantity,
+                'customizations': item.customizations,
+              }).toList(),
+            };
+
+            final created = await OrderAppUserService.createOrder(payload);
+            final serverOrder = Order.fromJson(Map<String, dynamic>.from(created));
+            ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+            ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+            // Clear cart after creating order locally
+            ref.read(cartItemsProvider.notifier).clearCart();
+
+            context.go('/order-confirmation', extra: widget.booking);
+          } catch (e) {
+            // If create fails, still navigate to confirmation so user can retry
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể tạo đơn: $e')));
+            context.go('/order-confirmation', extra: widget.booking);
+          }
         },
       ),
     );

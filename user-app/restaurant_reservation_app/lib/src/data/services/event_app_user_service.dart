@@ -12,4 +12,8 @@ class EventAppUserService {
   static Future<dynamic> createEventBooking(dynamic booking) async {
     return DataSourceAdapter.createEventBooking(booking);
   }
+
+  static Future<dynamic> createEventBookingForEvent(String eventId, dynamic booking) async {
+    return DataSourceAdapter.createEventBookingForEvent(eventId, booking);
+  }
 }

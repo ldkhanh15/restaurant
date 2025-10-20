@@ -5,6 +5,8 @@ import '../../../application/providers.dart';
 import '../../../domain/models/payment.dart';
 import '../../../domain/models/order.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../data/services/payment_app_user_service_app_user.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   const PaymentScreen({super.key});
@@ -114,72 +116,71 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       isProcessing = true;
     });
 
-    // Simulate payment processing
-    await Future.delayed(const Duration(seconds: 2));
-
     final currentOrder = ref.read(currentOrderProvider);
-    if (currentOrder != null) {
-      try {
-        // Gọi API mới để xử lý thanh toán
+    if (currentOrder == null) {
+      setState(() { isProcessing = false; });
+      return;
+    }
+
+    try {
+      // If user selected VNPay (or momo/banking mapped to vnpay on backend), call createVnpayPayment
+      if (selectedMethod == PaymentMethodType.momo || _getPaymentMethodString(selectedMethod!) == 'other' || _getPaymentMethodString(selectedMethod!) == 'momo') {
+        // For now, prefer VNPay flow via backend's /vnpay/create which will return a redirect_url
+        final resp = await PaymentAppUserService.createVnpayPayment(currentOrder.id.toString());
+        final redirect = resp['redirect_url'] as String?;
+        if (redirect != null && redirect.isNotEmpty) {
+          // Open in external browser
+          final uri = Uri.parse(redirect);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+
+          // Poll order status for up to 60 seconds
+          final start = DateTime.now();
+          while (DateTime.now().difference(start).inSeconds < 60) {
+            await Future.delayed(const Duration(seconds: 2));
+            try {
+              final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
+              if (fresh['payment_status'] == 'paid' || fresh['status'] == 'paid') {
+                // Update provider
+                final updatedOrder = currentOrder.copyWith(
+                  status: OrderStatus.paid,
+                  paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? 'momo'),
+                  paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? 'paid'),
+                );
+                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+                break;
+              }
+            } catch (_) {
+              // ignore polling errors
+            }
+          }
+        }
+      } else {
+        // For cash or other simple methods, call processOrderPayment API to mark paid
         final updatedOrderData = await OrderAppUserService.processOrderPayment(currentOrder.id.toString(), {
           'payment_status': 'paid',
           'payment_method': _getPaymentMethodString(selectedMethod!),
         });
 
-        // Cập nhật đối tượng Order hiện tại với dữ liệu mới từ server
         final updatedOrder = currentOrder.copyWith(
           status: OrderStatus.paid,
-          paymentMethod: _parsePaymentMethodType(updatedOrderData['payment_method']),
-          paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status']),
+          paymentMethod: _parsePaymentMethodType(updatedOrderData['payment_method'] ?? 'cash'),
+          paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status'] ?? 'paid'),
         );
         ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
-
-      } catch (e) {
-        // Nếu API lỗi, chỉ cập nhật trạng thái local để user tiếp tục
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi thanh toán: $e. Cập nhật tạm thời.')));
-        ref.read(currentOrderProvider.notifier).setOrder(
-          currentOrder.copyWith(status: OrderStatus.paid), // Cập nhật trạng thái là đã thanh toán
-        );
       }
-
-      setState(() {
-        isProcessing = false;
-      });
-
-      // If MoMo selected, show QR code dialog
-      if (selectedMethod == PaymentMethodType.momo) {
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Quét QR MoMo'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Ideally we would fetch QR image from backend; placeholder for now
-                Container(
-                  width: 200,
-                  height: 200,
-                  color: Colors.grey[200],
-                  child: const Center(child: Text('QR CODE\n(placeholder)')),
-                ),
-                const SizedBox(height: 12),
-                const Text('Mở app MoMo và quét mã QR để thanh toán'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Đóng'),
-              ),
-            ],
-          ),
-        );
-      }
-
-      if (mounted) {
-        context.go('/kitchen-status');
-      }
+    } catch (e) {
+      // If API errors, fallback to local update and notify user
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi thanh toán: $e. Cập nhật tạm thời.')));
+      ref.read(currentOrderProvider.notifier).setOrder(currentOrder.copyWith(status: OrderStatus.paid));
     }
+
+    setState(() {
+      isProcessing = false;
+    });
+
+    if (mounted) context.go('/kitchen-status');
   }
 
   @override

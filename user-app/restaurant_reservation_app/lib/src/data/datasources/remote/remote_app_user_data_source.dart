@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../http_client_app_user.dart';
+import '../api_config.dart';
 
 // This class will now be the single remote data source for all app_user APIs
 class RemoteAppUserDataSource {
@@ -17,7 +18,11 @@ class RemoteAppUserDataSource {
 
   Future<List<dynamic>> getMenuItems_app_user() async {
     final client = HttpClientAppUser();
-    final res = await client.get(_uri('/api/app_user/menu'));
+    final uri = _uri('/api/app_user/menu');
+    // debug: show the exact URI used for the request so we can verify port and host at runtime
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] GET menu uri=$uri');
+    final res = await client.get(uri);
     if (res.statusCode == 200) {
       final decoded = json.decode(res.body);
       if (decoded is List<dynamic>) return decoded;
@@ -78,6 +83,34 @@ class RemoteAppUserDataSource {
       throw Exception('Unexpected response shape when getting reservation by id');
     }
     throw Exception('Failed to load reservation: ${res.statusCode}');
+  }
+
+  Future<List<dynamic>> getReservationsByTableAndDate_app_user(String tableId, DateTime date) async {
+    final client = HttpClientAppUser();
+    // Send date as YYYY-MM-DD to avoid timezone ambiguity on the server
+    final dateOnly = date.toIso8601String().split('T').first;
+    final queryParams = {
+      'tableId': tableId,
+      'date': dateOnly,
+    };
+    final uri = _uri('/api/app_user/reservations/by-table-and-date', queryParams: queryParams);
+    // debug: show the exact URI being requested
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] GET reservations by table/date uri=$uri');
+    final res = await client.get(uri);
+    // debug: log status and body
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] response status=${res.statusCode} body=${res.body}');
+    if (res.statusCode == 200) {
+      final decoded = json.decode(res.body);
+      if (decoded is List<dynamic>) return decoded;
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['rows'] is List<dynamic>) return decoded['rows'] as List<dynamic>;
+        if (decoded['data'] is List<dynamic>) return decoded['data'] as List<dynamic>;
+      }
+      return [decoded];
+    }
+    throw Exception('Failed to load reservations by table and date: ${res.statusCode}');
   }
 
   Future<Map<String, dynamic>> createReservation_app_user(dynamic reservation) async {
@@ -161,6 +194,34 @@ class RemoteAppUserDataSource {
       return [decoded];
     }
     throw Exception('Failed to load available tables: ${res.statusCode}');
+  }
+
+  Future<List<dynamic>> getBlogs_app_user() async {
+    final client = HttpClientAppUser();
+    final res = await client.get(_uri('/api/app_user/blog'));
+    // ignore: avoid_print
+    // Debug: print status and a truncated body for diagnosis (avoid huge logs)
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] GET blogs uri=${_uri('/api/app_user/blog')} status=${res.statusCode} body=${res.body.length > 500 ? res.body.substring(0, 500) + "..." : res.body}');
+    if (res.statusCode == 200) {
+      final decoded = json.decode(res.body);
+      if (decoded is List<dynamic>) return decoded;
+      if (decoded is Map<String, dynamic>) {
+        // Common shapes handled by other controllers:
+        // - { rows: [...] }
+        // - { data: [...] }
+        // - { data: { data: [...], pagination: {...} } } (paginated result)
+        if (decoded['rows'] is List<dynamic>) return decoded['rows'] as List<dynamic>;
+        if (decoded['data'] is List<dynamic>) return decoded['data'] as List<dynamic>;
+        if (decoded['data'] is Map<String, dynamic>) {
+          final nested = decoded['data'] as Map<String, dynamic>;
+          if (nested['data'] is List<dynamic>) return nested['data'] as List<dynamic>;
+          if (nested['rows'] is List<dynamic>) return nested['rows'] as List<dynamic>;
+        }
+      }
+      return [decoded];
+    }
+    throw Exception('Failed to load blogs: ${res.statusCode}');
   }
 
   Future<Map<String, dynamic>> updateTableStatus_app_user(String id, String status) async {
@@ -268,12 +329,27 @@ Future<List<dynamic>> getNotifications_app_user({
   // Events
   Future<List<dynamic>> getEvents_app_user() async {
     final client = HttpClientAppUser();
-    final res = await client.get(_uri('/api/app_user/events'));
+    final uri = _uri('/api/app_user/events');
+    // debug: show exact URI and token summary
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] GET events uri=$uri tokenLen=${ApiConfig.authToken.length}');
+    final res = await client.get(uri);
+    // debug: log status and body
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] GET events status=${res.statusCode} body=${res.body}');
     if (res.statusCode == 200) {
       final decoded = json.decode(res.body);
       if (decoded is List<dynamic>) return decoded;
       if (decoded is Map<String, dynamic>) {
+        // direct pagination { rows, count }
         if (decoded['rows'] is List<dynamic>) return decoded['rows'] as List<dynamic>;
+        // wrapper { status, data: { rows, count } }
+        if (decoded['data'] is Map<String, dynamic>) {
+          final nested = decoded['data'] as Map<String, dynamic>;
+          if (nested['rows'] is List<dynamic>) return nested['rows'] as List<dynamic>;
+          if (nested['data'] is List<dynamic>) return nested['data'] as List<dynamic>;
+        }
+        // older shape: { data: [...] }
         if (decoded['data'] is List<dynamic>) return decoded['data'] as List<dynamic>;
       }
       return [];
@@ -308,6 +384,28 @@ Future<List<dynamic>> getNotifications_app_user({
       throw Exception('Unexpected response shape when creating event booking');
     }
     throw Exception('Failed to create event booking: ${res.statusCode}');
+  }
+
+  /// Create an event booking using nested event endpoint: POST /api/app_user/events/:eventId/bookings
+  Future<Map<String, dynamic>> createEventBookingForEvent_app_user(String eventId, dynamic booking) async {
+    final client = HttpClientAppUser();
+    final uri = _uri('/api/app_user/events/$eventId/bookings');
+    // debug
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] POST $uri payload=${json.encode(booking)}');
+    final res = await client.post(uri, body: json.encode(booking));
+    // debug
+    // ignore: avoid_print
+    print('[RemoteAppUserDataSource] response status=${res.statusCode} body=${res.body}');
+    if (res.statusCode == 201 || res.statusCode == 200) {
+      final decoded = json.decode(res.body);
+      if (decoded is Map<String, dynamic>) {
+        if (decoded.containsKey('data') && decoded['data'] is Map<String, dynamic>) return decoded['data'] as Map<String, dynamic>;
+        return decoded;
+      }
+      throw Exception('Unexpected response shape when creating event booking (for event)');
+    }
+    throw Exception('Failed to create event booking (for event): ${res.statusCode} ${res.body}');
   }
 
   // User Info
