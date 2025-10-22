@@ -25,6 +25,9 @@ const moduleNames: Record<string, string> = {
   notifications: "Trung tâm thông báo",
   reviews: "Đánh giá & khiếu nại",
   vouchers: "Quản lý voucher",
+  table:"Quản lý bàn/sơ đồ bàn",
+  supplier:"Quản lý nhà cung cấp",
+  event:"Quản lý sự kiện"
 }
 
 export function Header() {

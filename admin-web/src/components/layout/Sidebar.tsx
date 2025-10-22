@@ -21,6 +21,7 @@ import {
     CircleUserRound,
     Instagram as Restaurant,
     UtensilsCrossed,
+    Table,
 } from "lucide-react"
 
 const modules = [
@@ -30,6 +31,7 @@ const modules = [
     { id: "orders", label: "Đơn hàng", icon: ShoppingCart },
     { id: "reservations", label: "Đặt bàn", icon: Calendar },
     { id: "inventory", label: "Kho hàng", icon: Package },
+    { id: "table", label: "Bàn/Sơ đồ bàn", icon: Table },
     { id: "employees", label: "Nhân viên", icon: UserCheck },
     { id: "event", label: "Sự kiện", icon: CalendarCheck },
     { id: "blog", label: "Blog", icon: FileText },

@@ -7,7 +7,7 @@ interface TableAttributes {
   capacity: number
   deposit: number
   cancel_minutes: number
-  location?: string
+  location?: any
   status: "available" | "occupied" | "cleaning" | "reserved"
   panorama_urls?: any
   amenities?: any

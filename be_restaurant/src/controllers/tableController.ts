@@ -8,6 +8,23 @@ import { check } from "express-validator"
 
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (req.query.all === 'true') {
+        const result = await tableService.findAll({ order: [['created_at', 'ASC']] });
+        const data =
+        result?.rows && Array.isArray(result.rows)
+          ? result.rows.map((table: any) => table.toJSON())
+          : Array.isArray(result)
+          ? result.map((table: any) => table.toJSON())
+          : []
+  
+        const count = result?.count ?? data.length
+  
+        return res.status(200).json({
+          status: "success",
+          count,
+          data,
+        })
+    }
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
@@ -70,7 +87,7 @@ export const updateTable = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await tableService.delete(req.params.id)
+    await tableService.softDelete(req.params.id)
     res.json({ status: "success", message: "Table deleted successfully" })
   } catch (error) {
     next(error)
@@ -138,6 +155,25 @@ export const ungroupTables = async (req: Request, res: Response, next: NextFunct
   try {
     await tableGroupService.delete(req.params.id)
     res.json({ status: "success", message: "Table group deleted successfully" })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getTableGroup = async(req: Request, res: Response, next: NextFunction) => {
+  try {
+    console.log('here')
+    const tableGroups = await tableGroupService.getAllTableGroup();
+    res.status(200).json({ status: "success", data: tableGroups})
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getTableGroupById = async(req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tableGroup = await tableGroupService.getTableGroupById(req.params.id);
+    res.json({ status: "success", data: tableGroup})
   } catch (error) {
     next(error)
   }
