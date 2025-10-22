@@ -1,13 +1,13 @@
-"use client"
-import { useAuth } from "@/lib/auth"
-import { useRouter } from "@/lib/router"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { User, Clock } from "lucide-react"
+"use client";
+import { useAuth } from "@/lib/auth";
+import { useRouter } from "@/lib/router";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { User, Clock } from "lucide-react";
 
 export default function Header() {
-  const { user } = useAuth()
-  const { navigate } = useRouter()
+  const { user, isLoading } = useAuth();
+  const { navigate } = useRouter();
 
   return (
     <nav className="border-b border-border/50 bg-background/95 backdrop-blur-sm sticky top-0 z-50">
@@ -21,7 +21,9 @@ export default function Header() {
             >
               Maison Élégante
             </button>
-            <div className="ml-3 text-sm text-muted-foreground font-light">Fine Dining Experience</div>
+            <div className="ml-3 text-sm text-muted-foreground font-light">
+              Fine Dining Experience
+            </div>
           </div>
 
           {/* Navigation Links */}
@@ -61,10 +63,16 @@ export default function Header() {
           </div>
 
           {/* User Actions */}
-          <div className="flex items-center space-x-4">
-            {user ? (
+          <div className="flex items-center space-x-4 min-w-[300px] justify-end">
+            {isLoading ? (
+              <div className="h-8 w-24 bg-muted animate-pulse rounded-md" />
+            ) : user ? (
               <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("order-tracking")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("order-tracking")}
+                >
                   <Clock className="h-4 w-4" />
                 </Button>
                 <button
@@ -76,7 +84,10 @@ export default function Header() {
                   </div>
                   <div className="text-left hidden md:block">
                     <p className="text-sm font-medium">{user.full_name}</p>
-                    <Badge variant="secondary" className="bg-accent/20 text-accent text-xs">
+                    <Badge
+                      variant="secondary"
+                      className="bg-accent/20 text-accent text-xs"
+                    >
                       {user.ranking}
                     </Badge>
                   </div>
@@ -84,7 +95,11 @@ export default function Header() {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("login")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("login")}
+                >
                   Đăng Nhập
                 </Button>
                 <Button
@@ -100,5 +115,5 @@ export default function Header() {
         </div>
       </div>
     </nav>
-  )
+  );
 }

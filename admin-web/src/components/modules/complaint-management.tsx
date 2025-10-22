@@ -25,8 +25,8 @@ export function ComplaintManagement() {
   const fetchComplaint = async () => {
     try {
       const response = await complaintApi.getAllComplaints();
-      console.log("Fetched complaints:", response.data.data);
-      setComplaints(response.data.data);
+      console.log("Fetched complaints:", response.data);
+      setComplaints(response.data);
     } catch (error) {
       console.error("Error fetching complaints:", error);
     }
@@ -45,7 +45,6 @@ export function ComplaintManagement() {
       console.error("Error updating complaint:", error);
     }
   };
-
   console.log("Current complaints state:", complaints);
 
   const filteredComplaints = complaints.filter((complaint) => {

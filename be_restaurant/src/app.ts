@@ -55,6 +55,7 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+console.log("CORS_ORIGIN:", process.env.CORS_ORIGIN);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const swaggerDocument = YAML.load("./swagger.yaml");

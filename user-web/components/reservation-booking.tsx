@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -209,7 +209,7 @@ export default function ReservationBooking() {
   const [selectedFloor, setSelectedFloor] = useState("floor-1")
   const [showFloorPlan, setShowFloorPlan] = useState(false)
   const [reservationData, setReservationData] = useState<ReservationData>({
-    date: undefined,
+    date: new Date(),
     time: "",
     num_people: 2,
     customer_name: "Nguyễn Văn An",

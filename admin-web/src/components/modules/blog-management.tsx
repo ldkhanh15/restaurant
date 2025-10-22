@@ -57,58 +57,6 @@ interface BlogPost {
   tags: string[];
 }
 
-const mockBlogPosts: BlogPost[] = [
-  {
-    id: "1",
-    title: "Bí quyết nấu phở bò ngon như quán",
-    content:
-      "Phở bò là món ăn truyền thống của Việt Nam, được yêu thích bởi hương vị đậm đà và cách chế biến tinh tế...",
-    excerpt: "Khám phá bí quyết nấu nước dùng phở trong vắt, thơm ngon",
-    images: ["/placeholder.svg?key=blog1"],
-    status: "published",
-    author_id: "1",
-    author_name: "Bếp trưởng Minh",
-    published_at: "2024-03-15T10:00:00",
-    created_at: "2024-03-14T15:30:00",
-    updated_at: "2024-03-15T10:00:00",
-    views: 1250,
-    category: "Công thức",
-    tags: ["phở", "nước dùng", "bí quyết"],
-  },
-  {
-    id: "2",
-    title: "Thực đơn mùa xuân 2024",
-    content:
-      "Chào đón mùa xuân với những món ăn tươi mới, nhẹ nhàng và đầy màu sắc...",
-    excerpt: "Giới thiệu các món ăn mới trong thực đơn mùa xuân",
-    images: ["/placeholder.svg?key=blog2", "/placeholder.svg?key=blog3"],
-    status: "published",
-    author_id: "2",
-    author_name: "Quản lý Lan",
-    published_at: "2024-03-10T14:00:00",
-    created_at: "2024-03-08T09:15:00",
-    updated_at: "2024-03-10T14:00:00",
-    views: 890,
-    category: "Thực đơn",
-    tags: ["mùa xuân", "thực đơn mới", "món ăn"],
-  },
-  {
-    id: "3",
-    title: "Cách bảo quản nguyên liệu tươi ngon",
-    content:
-      "Việc bảo quản nguyên liệu đúng cách là yếu tố quan trọng để đảm bảo chất lượng món ăn...",
-    excerpt: "Hướng dẫn bảo quản nguyên liệu để giữ được độ tươi ngon",
-    images: [],
-    status: "draft",
-    author_id: "1",
-    author_name: "Bếp trưởng Minh",
-    created_at: "2024-03-18T11:20:00",
-    updated_at: "2024-03-19T16:45:00",
-    views: 0,
-    category: "Hướng dẫn",
-    tags: ["bảo quản", "nguyên liệu", "chất lượng"],
-  },
-];
 
 export function BlogManagement() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -533,3 +481,4 @@ export function BlogManagement() {
     </div>
   );
 }
+

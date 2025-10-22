@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 
-type Route =
+export type Route =
   | "home"
   | "login"
   | "register"
@@ -126,7 +126,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
 
     // Update browser URL
-    window.history.pushState({}, "", path)
+    // window.history.pushState({}, "", path)
+    window.location.href = path
 
     setCurrentRoute(route)
     setHistory((prev) => [...prev, route])

@@ -30,8 +30,8 @@ export function ReviewsManagement() {
   const fetchReviews = async () => {
     try {
       const response = await reviewApi.getAllReviews();
-      console.log("Fetched reviews 123:", response.data.data);
-      setReviews(response.data.data);
+      console.log("Fetched reviews 123:", response.data);
+      setReviews(response.data);
     } catch (error) {
       console.error("Error fetching reviews:", error);
     }

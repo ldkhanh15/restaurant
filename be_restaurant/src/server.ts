@@ -14,7 +14,7 @@ const startServer = async () => {
 
     // Sync database (use { force: true } to drop and recreate tables in development)
     // await sequelize.sync({ alter: true })
-    await sequelize.sync({ alter: true, logging: false });
+    await sequelize.sync({ alter: false, logging: false });
     // 🔥 Gọi seed
     //await runSeeds();
     //logger.info("Database synchronized");
@@ -22,6 +22,7 @@ const startServer = async () => {
     // Start server with Socket.IO
     const httpServer = createServer(app);
     initSocket(httpServer);
+    console.log("PORT:", PORT);
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
