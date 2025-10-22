@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../../application/socket_manager.dart';
+import '../../../data/datasources/api_config.dart';
 import '../../../domain/models/user.dart';
 import '../../../domain/models/order.dart';
+// ...existing imports...
 
 class AccountManagementScreen extends ConsumerStatefulWidget {
   const AccountManagementScreen({super.key});
@@ -15,6 +19,7 @@ class AccountManagementScreen extends ConsumerStatefulWidget {
 class _AccountManagementScreenState extends ConsumerState<AccountManagementScreen> {
   String activeTab = 'profile';
   bool isEditing = false;
+  bool _isLoadingOrders = false;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -30,6 +35,32 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fetch orders for the user so the Orders tab displays quickly
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (ApiConfig.baseUrl.isEmpty) return;
+      setState(() => _isLoadingOrders = true);
+      try {
+        await ref.read(orderHistoryProvider.notifier).fetchFromServer();
+        // Join socket rooms for each order so realtime updates are received
+        try {
+          final orders = ref.read(orderHistoryProvider);
+          for (final o in orders) {
+            try {
+              ref.read(orderSocketManagerProvider).joinOrder(o.id);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      } catch (e) {
+        // ignore errors for now
+      } finally {
+        if (mounted) setState(() => _isLoadingOrders = false);
+      }
+    });
+  }
+
   String _formatPrice(double price) {
     return '${price.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -39,8 +70,18 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+        return 'Chờ xử lý';
       case OrderStatus.created:
         return 'Đã tạo';
+      case OrderStatus.waitingPayment:
+        return 'Chờ thanh toán';
+      case OrderStatus.waitingKitchenConfirmation:
+        return 'Chờ xác nhận bếp';
+      case OrderStatus.preparing:
+        return 'Đang chế biến';
+      case OrderStatus.ready:
+        return 'Sẵn sàng';
       case OrderStatus.sentToKitchen:
         return 'Đã gửi bếp';
       case OrderStatus.paid:
@@ -54,8 +95,18 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+        return Colors.grey;
       case OrderStatus.created:
         return Colors.blue;
+      case OrderStatus.waitingPayment:
+        return Colors.orangeAccent;
+      case OrderStatus.waitingKitchenConfirmation:
+        return Colors.orange;
+      case OrderStatus.preparing:
+        return Colors.blueAccent;
+      case OrderStatus.ready:
+        return Colors.green;
       case OrderStatus.sentToKitchen:
         return Colors.orange;
       case OrderStatus.paid:
@@ -155,7 +206,34 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
                           borderRadius: BorderRadius.circular(6.0),
                         ),
                       ),
-                      onPressed: () => setState(() => activeTab = 'orders'),
+                      onPressed: () async {
+                        setState(() => activeTab = 'orders');
+                        // Trigger fetch from server when orders tab opens
+                        setState(() => _isLoadingOrders = true);
+                        try {
+                          await ref.read(orderHistoryProvider.notifier).fetchFromServer();
+                          // join order rooms for realtime updates
+                          try {
+                            final orders = ref.read(orderHistoryProvider);
+                            for (final o in orders) {
+                              try {
+                                ref.read(orderSocketManagerProvider).joinOrder(o.id);
+                              } catch (_) {}
+                            }
+                          } catch (_) {}
+                        } catch (e) {
+                          // Show a helpful message if unauthorized or network error
+                          final msg = e.toString();
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(msg),
+                            action: SnackBarAction(label: 'Đăng nhập', onPressed: () {
+                              context.go('/login');
+                            }),
+                          ));
+                        } finally {
+                          if (mounted) setState(() => _isLoadingOrders = false);
+                        }
+                      },
                       child: Text(
                         'Đơn hàng',
                         style: TextStyle(
@@ -413,12 +491,62 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
   }
 
   Widget _buildOrdersTab(List<Order> orders) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: orders.length,
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        return Card(
+    // Debug block showing API and auth state to help troubleshooting why orders may not load
+    final apiBase = ApiConfig.baseUrl;
+    final tokenLen = ApiConfig.authToken.length;
+    final currentUserId = ApiConfig.currentUserId;
+    final loggedInUser = ref.read(userProvider);
+    final loggedInUserId = loggedInUser?.id ?? '(not logged)';
+
+    Widget _debugCard() => Card(
+      color: Colors.grey[50],
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('API: ${apiBase.isEmpty ? '(not set)' : apiBase}', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('Token length: $tokenLen', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('ApiConfig.currentUserId: ${currentUserId.isEmpty ? '(empty)' : currentUserId}', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('Logged-in user id: $loggedInUserId', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+
+    // Show debug card while loading or above the list
+    if (_isLoadingOrders) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // Show all orders (previously we only showed paid orders which can hide many entries)
+    final displayedOrders = orders.toList();
+
+    if (displayedOrders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Text('Bạn chưa có đơn hàng', style: Theme.of(context).textTheme.bodyLarge),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: _debugCard(),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: displayedOrders.length,
+            itemBuilder: (context, index) {
+              final order = displayedOrders[index];
+              return Card(
           margin: const EdgeInsets.only(bottom: 16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -426,14 +554,18 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Đơn hàng #${order.id}',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Text(
+                        'Đơn hàng #${order.id}',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -449,6 +581,28 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.code),
+                      tooltip: 'Raw JSON',
+                      onPressed: () {
+                        final rawList = ref.read(orderHistoryProvider.notifier).lastRawOrders;
+                        final idx = ref.read(orderHistoryProvider).indexWhere((o) => o.id == order.id);
+                        final raw = (idx != -1 && idx < rawList.length) ? rawList[idx] : null;
+                        showDialog<void>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Raw order JSON'),
+                            content: SingleChildScrollView(
+                              child: Text(raw != null ? JsonEncoder.withIndent('  ').convert(raw) : 'Raw data not available'),
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -485,7 +639,10 @@ class _AccountManagementScreenState extends ConsumerState<AccountManagementScree
             ),
           ),
         );
-      },
+              },
+            ), // ListView.builder
+          ), // Expanded
+        ],
     );
   }
 

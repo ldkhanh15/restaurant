@@ -5,7 +5,7 @@ interface EventAttributes {
   id: string
   name: string
   description?: string
-  price?: number
+  price: number
   inclusions?: any
   decorations?: any
   created_at?: Date
@@ -18,7 +18,7 @@ class Event extends Model<EventAttributes, EventCreationAttributes> implements E
   public id!: string
   public name!: string
   public description?: string
-  public price?: number
+  public price!: number
   public inclusions?: any
   public decorations?: any
   public created_at?: Date

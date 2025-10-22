@@ -1,31 +1,38 @@
-import { DataTypes, Model, type Optional } from "sequelize"
-import sequelize from "../config/database"
+import { DataTypes, Model, type Optional } from "sequelize";
+import sequelize from "../config/database";
+import User from "./User";
+import OrderItem from "./OrderItem";
 
 interface ComplaintAttributes {
-  id: string
-  user_id?: string
-  order_id?: string
-  order_item_id?: string
-  description: string
-  status: "pending" | "approved" | "rejected"
-  resolution_notes?: string
-  created_at?: Date
-  updated_at?: Date
+  id: string;
+  user_id?: string;
+  order_id?: string;
+  order_item_id?: string;
+  description: string;
+  status: "pending" | "approved" | "rejected";
+  resolution_notes?: string;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
-interface ComplaintCreationAttributes extends Optional<ComplaintAttributes, "id" | "status"> { }
+interface ComplaintCreationAttributes
+  extends Optional<ComplaintAttributes, "id" | "status"> {}
 
-class Complaint extends Model<ComplaintAttributes, ComplaintCreationAttributes> implements ComplaintAttributes {
-  public id!: string
-  public user_id?: string
-  public order_id?: string
-  public order_item_id?: string
-  public description!: string
-  public status!: "pending" | "approved" | "rejected"
-  public resolution_notes?: string
-  public created_at?: Date
-  public updated_at?: Date
+class Complaint
+  extends Model<ComplaintAttributes, ComplaintCreationAttributes>
+  implements ComplaintAttributes
+{
+  public id!: string;
+  public user_id?: string;
+  public order_id?: string;
+  public order_item_id?: string;
+  public description!: string;
+  public status!: "pending" | "approved" | "rejected";
+  public resolution_notes?: string;
+  public created_at?: Date;
+  public updated_at?: Date;
 }
+
 
 Complaint.init(
   {
@@ -88,7 +95,7 @@ Complaint.init(
     timestamps: true,
     createdAt: "created_at",
     updatedAt: "updated_at",
-  },
-)
+  }
+);
 
-export default Complaint
+export default Complaint;

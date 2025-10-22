@@ -1,4 +1,5 @@
 import 'payment.dart';
+import 'dart:convert';
 
 enum KitchenStatus { pending, preparing, ready, served }
 
@@ -32,10 +33,24 @@ class OrderItem {
         name: json['name'] as String,
         price: (json['price'] as num).toDouble(),
         quantity: json['quantity'] as int,
-        customizations: (json['customizations'] as List<dynamic>?)
-                ?.map((e) => e as String)
-                .toList() ??
-            [],
+        customizations: (() {
+          final raw = json['customizations'];
+          if (raw == null) return <String>[];
+          try {
+            if (raw is List<dynamic>) return raw.map((e) => e.toString()).toList();
+            if (raw is String) {
+              try {
+                final decoded = jsonDecode(raw);
+                if (decoded is List<dynamic>) return decoded.map((e) => e.toString()).toList();
+                if (decoded is String) return decoded.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+              } catch (_) {
+                return raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+              }
+            }
+            if (raw is Map && raw['data'] is List<dynamic>) return (raw['data'] as List<dynamic>).map((e) => e.toString()).toList();
+          } catch (_) {}
+          return <String>[];
+        })(),
         specialNote: json['specialNote'] as String?,
         kitchenStatus: KitchenStatus.values.firstWhere(
             (e) => e.name == (json['kitchenStatus'] ?? json['kitchen_status']),
@@ -87,7 +102,7 @@ class OrderItem {
   double get totalPrice => price * quantity;
 }
 
-enum OrderStatus { created, sentToKitchen, paid, completed, cancelled }
+enum OrderStatus { pending, created, waitingPayment, sentToKitchen, waitingKitchenConfirmation, preparing, ready, paid, completed, cancelled }
 
 class Order {
   final String id;
@@ -120,17 +135,63 @@ class Order {
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
         id: json['id'].toString(),
-        bookingId: json['bookingId'].toString(),
-        items: (json['items'] as List<dynamic>)
-            .map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        subtotal: (json['subtotal'] as num).toDouble(),
-        serviceCharge: (json['serviceCharge'] as num).toDouble(),
-        tax: (json['tax'] as num).toDouble(),
-        total: (json['total'] as num).toDouble(),
-        status: OrderStatus.values.firstWhere((e) => e.name == json['status'], orElse: () => OrderStatus.created),
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        specialInstructions: json['specialInstructions'] as String?,
+    // bookingId may be provided as bookingId or reservation_id
+    bookingId: (json['bookingId'] ?? json['reservation_id'] ?? json['reservationId'] ?? '').toString(),
+    // items may be a List, a JSON-encoded String, or a wrapper object. Parse defensively.
+    items: (() {
+      final raw = json['items'];
+      if (raw == null) return <OrderItem>[];
+      try {
+        if (raw is List<dynamic>) {
+          return raw.map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+        }
+        if (raw is String) {
+          // try decode JSON string
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is List<dynamic>) return decoded.map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+            if (decoded is Map && decoded['data'] is List<dynamic>) return (decoded['data'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+          } catch (_) {
+            // fallback: no parseable list
+            return <OrderItem>[];
+          }
+        }
+        if (raw is Map<String, dynamic>) {
+          if (raw['rows'] is List<dynamic>) return (raw['rows'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+          if (raw['data'] is List<dynamic>) return (raw['data'] as List<dynamic>).map((e) => OrderItem.fromJson(e as Map<String, dynamic>)).toList();
+        }
+      } catch (_) {}
+      return <OrderItem>[];
+    })(),
+    // Map monetary fields from backend snake_case names if present
+    subtotal: (((json['subtotal'] ?? json['total_amount'] ?? json['totalAmount']) is num)
+        ? (json['subtotal'] ?? json['total_amount'] ?? json['totalAmount']) as num
+        : num.tryParse((json['subtotal'] ?? json['total_amount'] ?? json['totalAmount'] ?? '0').toString()) ?? 0)
+      .toDouble(),
+    serviceCharge: (((json['serviceCharge'] ?? json['service_charge']) is num)
+        ? (json['serviceCharge'] ?? json['service_charge']) as num
+        : num.tryParse((json['serviceCharge'] ?? json['service_charge'] ?? '0').toString()) ?? 0)
+      .toDouble(),
+    tax: (((json['tax'] ?? json['tax_amount']) is num)
+        ? (json['tax'] ?? json['tax_amount']) as num
+        : num.tryParse((json['tax'] ?? json['tax_amount'] ?? '0').toString()) ?? 0)
+      .toDouble(),
+    total: (((json['total'] ?? json['final_amount'] ?? json['finalAmount'] ?? json['total_amount']) is num)
+        ? (json['total'] ?? json['final_amount'] ?? json['finalAmount'] ?? json['total_amount']) as num
+        : num.tryParse((json['total'] ?? json['final_amount'] ?? json['finalAmount'] ?? json['total_amount'] ?? '0').toString()) ?? 0)
+      .toDouble(),
+    // Map backend statuses to local enum
+    status: _mapStatus((json['status'] ?? json['order_status'] ?? json['orderStatus'])?.toString()),
+    createdAt: (json['createdAt'] != null)
+      ? DateTime.parse(json['createdAt'] as String)
+      : (json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : DateTime.now()),
+    specialInstructions: (json['specialInstructions'] as String?) ?? (json['notes'] as String?),
+        paymentMethod: json.containsKey('paymentMethod')
+            ? (json['paymentMethod'] is String ? _parsePaymentMethod(json['paymentMethod']) : null)
+            : (json['payment_method'] != null ? _parsePaymentMethod(json['payment_method']) : null),
+        paymentStatus: json.containsKey('paymentStatus')
+            ? (json['paymentStatus'] is String ? _parsePaymentStatus(json['paymentStatus']) : null)
+            : (json['payment_status'] != null ? _parsePaymentStatus(json['payment_status']) : null),
       );
 
   Map<String, dynamic> toJson() => {
@@ -174,5 +235,72 @@ class Order {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
     );
+  }
+
+  static PaymentMethodType? _parsePaymentMethod(String? method) {
+    if (method == null) return null;
+    switch (method.toLowerCase()) {
+      case 'cash':
+        return PaymentMethodType.cash;
+      case 'card':
+        return PaymentMethodType.card;
+      case 'momo':
+        return PaymentMethodType.momo;
+      case 'banking':
+      case 'vnpay':
+        return PaymentMethodType.banking;
+      default:
+        return null;
+    }
+  }
+
+  static PaymentStatus? _parsePaymentStatus(String? status) {
+    if (status == null) return null;
+    switch (status.toLowerCase()) {
+      case 'paid':
+        return PaymentStatus.completed;
+      case 'pending':
+        return PaymentStatus.pending;
+      case 'processing':
+        return PaymentStatus.processing;
+      case 'failed':
+        return PaymentStatus.failed;
+      default:
+        return null;
+    }
+  }
+
+  static OrderStatus _mapStatus(String? raw) {
+    if (raw == null) return OrderStatus.created;
+    final s = raw.toLowerCase();
+    switch (s) {
+      case 'pending':
+        return OrderStatus.pending;
+      case 'created':
+        return OrderStatus.created;
+      case 'waiting_payment':
+      case 'waitingpayment':
+        return OrderStatus.waitingPayment;
+      case 'waiting_kitchen_confirmation':
+      case 'waitingkitchenconfirmation':
+        return OrderStatus.waitingKitchenConfirmation;
+      case 'preparing':
+        return OrderStatus.preparing;
+      case 'sent_to_kitchen':
+      case 'senttokitchen':
+        return OrderStatus.sentToKitchen;
+      case 'paid':
+        return OrderStatus.paid;
+      case 'ready':
+        return OrderStatus.ready;
+      case 'delivered':
+      case 'completed':
+        return OrderStatus.completed;
+      case 'cancelled':
+      case 'canceled':
+        return OrderStatus.cancelled;
+      default:
+        return OrderStatus.created;
+    }
   }
 }

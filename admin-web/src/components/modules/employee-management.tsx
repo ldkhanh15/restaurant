@@ -59,62 +59,14 @@ import {
 
 import { EMPLOYEE_POSITIONS } from "@/lib/constants";
 import { formatDateTimeVN } from "@/lib/utils";
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  phone: string;
-  role: "customer" | "employee" | "admin";
-  full_name: string;
-  ranking: "regular" | "vip" | "platinum";
-  points: number;
-  created_at: string;
-  deleted_at?: string;
-  preferences?: any;
-}
-
-interface Employee {
-  id: string;
-  user_id?: string;
-  position?: string;
-  face_image_url?: string;
-  created_at?: Date;
-  deleted_at?: Date | null;
-  user?: User;
-}
-
-interface EmployeeShift {
-  id: string;
-  employee_id?: string;
-  start_time: Date;
-  end_time: Date;
-  Employee?: Employee;
-}
-
-interface Attendance {
-  id: string;
-  employee_id?: string;
-  check_in_time?: Date;
-  check_out_time?: Date;
-  face_image_url?: string;
-  verified: boolean;
-  created_at?: Date;
-  Employee?: Employee;
-}
-
-interface Payroll {
-  id: string;
-  employee_id?: string;
-  period_start?: Date;
-  period_end?: Date;
-  hours_worked?: number;
-  base_pay?: number;
-  bonus?: number;
-  taxes?: number;
-  net_pay?: number;
-  advance_salary?: number;
-}
+import { set } from "date-fns";
+import { is, se } from "date-fns/locale";
+import { Employee } from "../../type/Employee";
+import { EmployeeShift } from "../../type/EmployeeShift";
+import { Attendance } from "../../type/Attendance";
+import { Payroll } from "../../type/Payroll";
+import { User } from "../../type/User";
+import { uploadImageToCloudinary } from "@/services/cloudinaryService";
 
 // Không sử dụng mockShifts nữa vì sẽ lấy dữ liệu từ API
 
@@ -139,6 +91,7 @@ export function EmployeeManagement() {
   );
   const [selectedAttendance, setSelectedAttendance] =
     useState<Attendance | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isShiftCreateDialogOpen, setIsShiftCreateDialogOpen] = useState(false);
@@ -152,8 +105,6 @@ export function EmployeeManagement() {
     useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingShifts, setIsLoadingShifts] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [shiftError, setShiftError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [shiftsCurrentPage, setShiftsCurrentPage] = useState(1);
@@ -168,22 +119,9 @@ export function EmployeeManagement() {
     fetchEmployees();
   }, [currentPage]);
 
-  // useEffect(() => {
-  //   if (payrolls.length === 0) {
-  //     fetchPayrollRecords();
-  //   }
-  // }, [payrolls]);
-
-  // useEffect(() => {
-  //   if (shifts.length === 0) {
-  //     fetchEmployeeShifts();
-  //   }
-  // }, [shifts]);
-
   // CRUD employees
   const fetchEmployees = async () => {
     setIsLoading(true);
-    setError(null);
     try {
       const response = await employeeApi.getAllEmployees(
         currentPage,
@@ -251,7 +189,6 @@ export function EmployeeManagement() {
       }
     } catch (err) {
       console.error("Failed to fetch employees:", err);
-      setError("Không thể tải danh sách nhân viên");
       toast({
         title: "Lỗi",
         description: "Không thể tải danh sách nhân viên",
@@ -304,19 +241,21 @@ export function EmployeeManagement() {
     }
   };
 
-  const handleCreateEmployee = async (employeeData: any) => {
+  const handleCreateEmployee = async (
+    employeeData: Partial<Employee> & { file?: File }
+  ) => {
     try {
-      // Chuyển đổi dữ liệu phù hợp với cấu trúc API mới
-      const newEmployeeData = {
+      let faceImageUrl: string | undefined;
+      if (employeeData.file instanceof File) {
+        faceImageUrl = await uploadImageToCloudinary(employeeData.file, "dish");
+      }
+      const newEmployee = {
         user_id: employeeData.user_id,
         position: employeeData.position,
-        face_image_url: employeeData.face_image_url,
+        face_image_url: faceImageUrl,
       };
 
-      // Tạo hoặc cập nhật người dùng nếu cần
-      // Tạm thời chưa xử lý trường hợp này
-
-      await employeeApi.createEmployee(newEmployeeData);
+      await employeeApi.createEmployee(newEmployee);
       setIsCreateDialogOpen(false);
       toast({
         title: "Thành công",
@@ -382,8 +321,8 @@ export function EmployeeManagement() {
   // CRUD shifts
 
   const fetchEmployeeShifts = async () => {
-    setIsLoadingShifts(true);
     setShiftError(null);
+    setIsLoading(true);
     try {
       const response = await employeeShiftApi.getAllEmployeeShifts(
         shiftsCurrentPage,
@@ -453,7 +392,7 @@ export function EmployeeManagement() {
         variant: "destructive",
       });
     } finally {
-      setIsLoadingShifts(false);
+      setIsLoading(false);
     }
   };
 
@@ -517,14 +456,16 @@ export function EmployeeManagement() {
       }
     }
   };
-
   //CRUD attendance
   const fetchAttendanceLogs = async () => {
+    setIsLoading(true);
     try {
       const response = await attendanceApi.getAllAttendanceLogs();
       if (response && response.data) {
         console.log("attendance call:", response.data.data);
         setAttendance(response.data.data);
+        setIsAttendanceEditDialogOpen(false);
+        setIsAttendanceCreateDialogOpen(false);
       } else {
         setAttendance([]);
       }
@@ -535,13 +476,16 @@ export function EmployeeManagement() {
         description: "Không thể tải danh sách nhật ký chấm công",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleCreateEmployeeAttendance = async (attendanceData: any) => {
     try {
       await attendanceApi.createAttendanceLog(attendanceData);
-      setIsCreateDialogOpen(false);
+      setIsAttendanceEditDialogOpen(false);
+      setIsAttendanceCreateDialogOpen(false);
       toast({
         title: "Thành công",
         description: "Đã thêm nhân viên mới",
@@ -574,6 +518,7 @@ export function EmployeeManagement() {
 
       await attendanceApi.updateAttendanceLog(id, updatedData);
       setIsAttendanceEditDialogOpen(false);
+      setIsAttendanceCreateDialogOpen(false);
       toast({
         title: "Thành công",
         description: "Đã cập nhật thông tin nhân viên",
@@ -611,6 +556,7 @@ export function EmployeeManagement() {
 
   //CRUD payroll
   const fetchPayrollRecords = async () => {
+    setIsLoading(true);
     try {
       const response = await payrollApi.getAllPayrollRecords();
       if (response && response.data) {
@@ -626,6 +572,8 @@ export function EmployeeManagement() {
         description: "Không thể tải danh sách bảng lương",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
   const handleCreatePayrollRecord = async (payrollData: any) => {
@@ -842,9 +790,9 @@ export function EmployeeManagement() {
               onOpenChange={(open) => {
                 setIsCreateDialogOpen(open);
                 if (open) {
-                  // Chỉ gọi API khi mở dialog
                   fetchUnassignedUsers();
                 }
+                setPreviewImage(null);
               }}
             >
               <DialogTrigger asChild>
@@ -858,12 +806,13 @@ export function EmployeeManagement() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
+
+                    console.log("formData:", formData);
                     // Cấu trúc dữ liệu mới chỉ yêu cầu user_id và position
                     const newEmployee = {
                       user_id: formData.get("user_id") as string, // ID là kiểu string trong API mới
                       position: formData.get("position") as string,
-                      face_image_url:
-                        (formData.get("face_image_url") as string) || undefined,
+                      file: formData.get("face_image_url") as File,
                     };
                     handleCreateEmployee(newEmployee);
                   }}
@@ -917,14 +866,34 @@ export function EmployeeManagement() {
                       </div>
                     </div>
 
+                    {/* 🖼️ Upload ảnh */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="grid gap-2">
-                        <Label htmlFor="face_image_url">URL Hình ảnh</Label>
+                        <Label htmlFor="face_image">Tải lên hình ảnh</Label>
                         <Input
-                          id="face_image_url"
+                          id="face_image"
                           name="face_image_url"
-                          placeholder="Nhập URL hình ảnh"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () =>
+                                setPreviewImage(reader.result as string);
+                              reader.readAsDataURL(file);
+                              console.log("Selected file:", file);
+                              console.log("reader:", reader);
+                            }
+                          }}
                         />
+                        {previewImage && (
+                          <img
+                            src={previewImage}
+                            alt="Xem trước hình ảnh"
+                            className="mt-2 max-h-48 rounded-md border"
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -950,11 +919,6 @@ export function EmployeeManagement() {
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <span className="ml-2">Đang tải dữ liệu...</span>
-                </div>
-              ) : error ? (
-                <div className="flex justify-center items-center py-8 text-destructive">
-                  <AlertCircle className="h-8 w-8 mr-2" />
-                  <span>{error}</span>
                 </div>
               ) : (
                 <>
@@ -1021,9 +985,15 @@ export function EmployeeManagement() {
                                   variant="ghost"
                                   size="sm"
                                   className="text-red-600 hover:text-red-800"
-                                  onClick={() =>
-                                    handleDeleteEmployee(employee.id)
-                                  }
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        "Bạn có chắc chắn muốn xóa nhân viên này?"
+                                      )
+                                    ) {
+                                      handleDeleteEmployee(employee.id);
+                                    }
+                                  }}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1115,10 +1085,13 @@ export function EmployeeManagement() {
                       // Chỉ cập nhật các trường thuộc về Employee
                       const updatedEmployee = {
                         position: formData.get("position") as string,
-                        face_image_url: selectedEmployee.face_image_url,
+                        face_image_url: formData.get("image_url") as string,
                         // Các trường khác cần được cập nhật thông qua API user
                       };
-
+                      console.log(
+                        "face_image_url:",
+                        updatedEmployee.face_image_url
+                      );
                       handleUpdateEmployee(
                         selectedEmployee.id,
                         updatedEmployee
@@ -1148,13 +1121,12 @@ export function EmployeeManagement() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="edit_phone">Số điện thoại</Label>
+                        <Label htmlFor="edit_phone">Image url</Label>
                         <Input
                           id="edit_phone"
-                          name="phone"
-                          defaultValue={selectedEmployee.user?.phone || ""}
+                          name="image_url"
+                          defaultValue={selectedEmployee.face_image_url || ""}
                           required
-                          disabled
                         />
                       </div>
                       <div className="grid gap-2">
@@ -1223,8 +1195,8 @@ export function EmployeeManagement() {
 
                     const newShift = {
                       employee_id: formData.get("employee_id") as string,
-                      check_in_time: new Date(startTime),
-                      check_out_time: new Date(endTime),
+                      start_time: new Date(startTime),
+                      end_time: new Date(endTime),
                     };
 
                     handleCreateShift(newShift);
@@ -1304,7 +1276,7 @@ export function EmployeeManagement() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingShifts ? (
+              {isLoading ? (
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <span className="ml-2">Đang tải dữ liệu...</span>
@@ -1373,7 +1345,10 @@ export function EmployeeManagement() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center">
+                          <TableCell
+                            colSpan={6}
+                            className="text-center py-8 text-muted-foreground"
+                          >
                             Không có ca làm việc nào
                           </TableCell>
                         </TableRow>
@@ -1683,8 +1658,8 @@ export function EmployeeManagement() {
                   <DialogFooter>
                     <Button type="submit">
                       {isAttendanceEditDialogOpen
-                        ? "Cập nhật ca làm việc"
-                        : "Thêm ca làm việc"}
+                        ? "Cập nhật chấm công"
+                        : "Thêm chấm công"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1700,81 +1675,102 @@ export function EmployeeManagement() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Nhân viên</TableHead>
-                    <TableHead>Giờ vào</TableHead>
-                    <TableHead>Giờ ra</TableHead>
-                    <TableHead>Xác thực</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {attendances.map((attendance) => (
-                    <TableRow key={attendance.id}>
-                      <TableCell>{attendance.id.slice(-4)}</TableCell>
-                      <TableCell className="font-medium">
-                        {employees.find((e) => e.id === attendance.employee_id)
-                          ?.user?.full_name || "Không xác định"}
-                      </TableCell>
-                      <TableCell>
-                        {attendance.check_in_time
-                          ? new Date(attendance.check_in_time).toLocaleString(
-                              "vi-VN"
-                            )
-                          : ""}
-                      </TableCell>
-                      <TableCell>
-                        {attendance.check_out_time ? (
-                          new Date(attendance.check_out_time).toLocaleString(
-                            "vi-VN"
-                          )
-                        ) : (
-                          <span className="text-muted-foreground">Chưa ra</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            attendance.verified
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }
-                        >
-                          {attendance.verified
-                            ? "Đã xác thực"
-                            : "Chưa xác thực"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedAttendance(attendance);
-                              setIsAttendanceEditDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleDeleteEmployeeAttendance(attendance.id)
-                            }
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2">Đang tải dữ liệu...</span>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Nhân viên</TableHead>
+                      <TableHead>Giờ vào</TableHead>
+                      <TableHead>Giờ ra</TableHead>
+                      <TableHead>Xác thực</TableHead>
+                      <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {attendances.length > 0 ? (
+                      attendances.map((attendance) => (
+                        <TableRow key={attendance.id}>
+                          <TableCell>{attendance.id.slice(-4)}</TableCell>
+                          <TableCell className="font-medium">
+                            {employees.find(
+                              (e) => e.id === attendance.employee_id
+                            )?.user?.full_name || "Không xác định"}
+                          </TableCell>
+                          <TableCell>
+                            {attendance.check_in_time
+                              ? new Date(
+                                  attendance.check_in_time
+                                ).toLocaleString("vi-VN")
+                              : ""}
+                          </TableCell>
+                          <TableCell>
+                            {attendance.check_out_time ? (
+                              new Date(
+                                attendance.check_out_time
+                              ).toLocaleString("vi-VN")
+                            ) : (
+                              <span className="text-muted-foreground">
+                                Chưa ra
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                attendance.verified
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }
+                            >
+                              {attendance.verified
+                                ? "Đã xác thực"
+                                : "Chưa xác thực"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAttendance(attendance);
+                                  setIsAttendanceEditDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteEmployeeAttendance(attendance.id)
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={8}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          Không có bản ghi chấm công nào
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -2041,99 +2037,122 @@ export function EmployeeManagement() {
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>Bảng lương tháng 3/2024</CardTitle>
+              <CardTitle>Bảng lương </CardTitle>
               <CardDescription>
                 Quản lý lương và thưởng nhân viên
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Employee name</TableHead>
-                    <TableHead>Period start</TableHead>
-                    <TableHead>Period end</TableHead>
-                    <TableHead>Hours worked</TableHead>
-                    <TableHead>Base pay</TableHead>
-                    <TableHead>Bonus</TableHead>
-                    <TableHead>Taxes</TableHead>
-                    <TableHead>Net pay</TableHead>
-                    <TableHead>Advance salary</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payrolls?.map((payroll) => (
-                    <TableRow key={payroll.id}>
-                      <TableCell className="font-medium">
-                        {payroll.id.slice(-4)}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {employees.find((e) => e.id === payroll.employee_id)
-                          ?.user?.full_name || "Không xác định"}
-                      </TableCell>
-                      <TableCell>
-                        {payroll.period_start ? (
-                          new Date(payroll.period_start).toLocaleString("vi-VN")
-                        ) : (
-                          <span className="text-muted-foreground">Chưa ra</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {payroll.period_end ? (
-                          new Date(payroll.period_end).toLocaleString("vi-VN")
-                        ) : (
-                          <span className="text-muted-foreground">Chưa ra</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {payroll?.hours_worked?.toLocaleString("vi-VN")}đ
-                      </TableCell>
-                      <TableCell>
-                        {payroll?.base_pay?.toLocaleString("vi-VN", {
-                          style: "currency",
-                          currency: "VND",
-                        })}
-                      </TableCell>
-                      <TableCell className="font-medium text-primary">
-                        {payroll?.bonus?.toLocaleString("vi-VN")}đ
-                      </TableCell>
-                      <TableCell>
-                        {payroll?.taxes?.toLocaleString("vi-VN")}đ
-                      </TableCell>
-                      <TableCell>
-                        {payroll?.net_pay?.toLocaleString("vi-VN")}đ
-                      </TableCell>
-                      <TableCell>
-                        {payroll?.advance_salary?.toLocaleString("vi-VN")}đ
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPayroll(payroll);
-                              setIsPayrollEditDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-800"
-                            onClick={() => handleDeletePayroll(payroll.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2">Đang tải dữ liệu...</span>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Employee name</TableHead>
+                      <TableHead>Period start</TableHead>
+                      <TableHead>Period end</TableHead>
+                      <TableHead>Hours worked</TableHead>
+                      <TableHead>Base pay</TableHead>
+                      <TableHead>Bonus</TableHead>
+                      <TableHead>Taxes</TableHead>
+                      <TableHead>Net pay</TableHead>
+                      <TableHead>Advance salary</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {payrolls.length > 0 ? (
+                      payrolls?.map((payroll) => (
+                        <TableRow key={payroll.id}>
+                          <TableCell className="font-medium">
+                            {payroll.id.slice(-4)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {employees.find((e) => e.id === payroll.employee_id)
+                              ?.user?.full_name || "Không xác định"}
+                          </TableCell>
+                          <TableCell>
+                            {payroll.period_start ? (
+                              new Date(payroll.period_start).toLocaleString(
+                                "vi-VN"
+                              )
+                            ) : (
+                              <span className="text-muted-foreground">
+                                Chưa ra
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {payroll.period_end ? (
+                              new Date(payroll.period_end).toLocaleString(
+                                "vi-VN"
+                              )
+                            ) : (
+                              <span className="text-muted-foreground">
+                                Chưa ra
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {payroll?.hours_worked?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell>
+                            {payroll?.base_pay?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell className="font-medium text-primary">
+                            {payroll?.bonus?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell>
+                            {payroll?.taxes?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell>
+                            {payroll?.net_pay?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell>
+                            {payroll?.advance_salary?.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedPayroll(payroll);
+                                  setIsPayrollEditDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-800"
+                                onClick={() => handleDeletePayroll(payroll.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={11}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          Không có bản ghi chấm công nào
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -25,6 +25,5 @@ export async function uploadMultipleImagesToCloudinary(files: File[], param: str
 
   const uploadPromises = files.map((file) => uploadImageToCloudinary(file, param))
   const urls = await Promise.all(uploadPromises)
-
   return urls;
 }

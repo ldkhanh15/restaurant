@@ -22,12 +22,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configure Gemini API (securely)
-genai.configure(
-    api_key=os.getenv("GOOGLE_API_KEY", "AIzaSyCeLmzAGwB1Pq-Z7TdkTNA4bZ00JfKlAsI")
-)
+genai.configure(api_key="GOOGLE_API_KEY")
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-BE_URL = os.getenv("BE_URL", "http://localhost:3000/api")  # Configurable backend URL
+BE_URL = os.getenv("BE_URL", "http://localhost:8000/api")  # Configurable backend URL
 
 # Restaurant Info
 RESTAURANT_NAME = "HIWELL"
@@ -39,45 +37,6 @@ PROMOTIONS = "Giảm 10% cho nhóm trên 5 người, giảm 20% đồ uống t�
 PAYMENTS = "Tiền mặt, thẻ tín dụng, chuyển khoản, ví điện tử (Momo, ZaloPay)."
 SERVICES = "Bãi đỗ xe miễn phí, WiFi tốc độ cao, khu vui chơi trẻ em, phòng riêng, karaoke, các hoạt động vui chơi, chỉ phục vụ tại chỗ (không ship)."
 DIRECTIONS = "Từ trung tâm Đà Nẵng, đi Nguyễn Tất Thành đến Liên Chiểu, rẽ phải vào Nguyễn Lương Bằng, nhà hàng bên trái sau 500m."
-
-
-# Helper Functions
-def fetch_menu():
-    try:
-        resp = requests.get(f"{BE_URL}/dishes", timeout=5)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logger.error(f"Error fetching menu: {str(e)}")
-        return []
-
-
-def fetch_tables(seats=1, date=None, time=None):
-    try:
-        if not date:
-            date = datetime.datetime.now().strftime("%Y-%m-%d")
-        if not time:
-            time = datetime.datetime.now().strftime("%H:%M")
-        resp = requests.get(
-            f"{BE_URL}/tables/available",
-            params={"seats": seats, "date": date, "time": time},
-            timeout=5,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logger.error(f"Error fetching tables: {str(e)}")
-        return []
-
-
-def fetch_reservations(user_id):
-    try:
-        resp = requests.get(f"{BE_URL}/users/{user_id}/reservations", timeout=5)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logger.error(f"Error fetching reservations: {str(e)}")
-        return []
 
 
 def format_reservation(info):
@@ -246,7 +205,7 @@ def chatbot_response(message, history, session_id, menu, tables, reservations):
 
     system_prompt = f"""You are a friendly, engaging chatbot for {RESTAURANT_NAME} restaurant. Respond in natural, lively Vietnamese, making conversations personalized and fun. Avoid robotic language. Use conversation history and session data to maintain context and ensure logical responses. If the user refers to previous topics (e.g., 'change my booking' or 'that cake'), use history to respond consistently.
 
-**IMPORTANT**: Your response must ALWAYS be a valid JSON object with the following structure, even for simple or informal inputs. Do not return plain text. Wrap the conversational response in the "response" field, starting with "**Khách**: <user input>".
+**IMPORTANT**: Your response must ALWAYS be a valid JSON object with the following structure, even for simple or informal inputs. Do not return plain text. Wrap the conversational response in the "response" field, starting with.
 
 Restaurant info:
 - Address: {ADDRESS}
@@ -293,7 +252,7 @@ Personalize responses using history. Ask for phone at end of booking/check if mi
 
 **Output Format**:
 {{
-  "response": "string starting with **Khách**: <user input>",
+  "response": "string",
   "next_step": "none" or "gather_event" or "gather_seats" or ...,
   "data_updates": {{}},
   "reservation_action": "none" or "save" or "update" or "cancel" or "check",
@@ -324,7 +283,7 @@ Personalize responses using history. Ask for phone at end of booking/check if mi
                     f"Gemini response missing required fields: {output_text}"
                 )
                 output = {
-                    "response": f"**Khách**: {text_message}\nXin lỗi, tôi gặp vấn đề khi xử lý yêu cầu. Hãy thử lại nhé!",
+                    "response": f"Xin lỗi, tôi gặp vấn đề khi xử lý yêu cầu. Hãy thử lại nhé!",
                     "next_step": "none",
                     "data_updates": {},
                     "reservation_action": "none",
@@ -333,7 +292,7 @@ Personalize responses using history. Ask for phone at end of booking/check if mi
         except json.JSONDecodeError:
             logger.warning(f"Gemini response is not valid JSON: {output_text}")
             output = {
-                "response": f"**Khách**: {text_message}\n{output_text}",
+                "response": f"{output_text}",
                 "next_step": "none",
                 "data_updates": {},
                 "reservation_action": "none",
@@ -344,14 +303,14 @@ Personalize responses using history. Ask for phone at end of booking/check if mi
         history.append(
             {
                 "role": "assistant",
-                "content": f"**Khách**: {text_message}\nXin lỗi, có lỗi xảy ra. Hãy thử lại nhé!",
+                "content": f"Xin lỗi, có lỗi xảy ra. Hãy thử lại nhé!",
             }
         )
         return history, "Xin lỗi, có lỗi xảy ra. Hãy thử lại nhé!", None, None
 
     resp = output.get(
         "response",
-        f"**Khách**: {text_message}\nXin lỗi, tôi không hiểu. Bạn có thể hỏi về đặt bàn, menu, hoặc dịch vụ không?",
+        f"Xin lỗi, tôi không hiểu. Bạn có thể hỏi về đặt bàn, menu, hoặc dịch vụ không?",
     )
     next_step = output.get("next_step", "none")
     updates = output.get("data_updates", {})

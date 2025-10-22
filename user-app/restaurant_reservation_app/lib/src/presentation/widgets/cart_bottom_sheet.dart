@@ -177,7 +177,7 @@ class CartBottomSheet extends ConsumerWidget {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: onProceedToOrder,
-                      child: const Text('Tiếp tục đặt món'),
+                      child: const Text('Xác nhận đặt món'),
                     ),
                   ),
                 ],

@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { usePathname } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { usePathname } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",
@@ -23,7 +23,8 @@ const moduleNames: Record<string, string> = {
   blog: "Quản lý blog",
   chat: "Hệ thống chat",
   notifications: "Trung tâm thông báo",
-  reviews: "Đánh giá & khiếu nại",
+  complaints: "Khiếu nại",
+  reviews: "Đánh giá",
   vouchers: "Quản lý voucher",
   table:"Quản lý bàn/sơ đồ bàn",
   supplier:"Quản lý nhà cung cấp",
@@ -31,9 +32,9 @@ const moduleNames: Record<string, string> = {
 }
 
 export function Header() {
-  const pathname = usePathname()
-  const current = pathname?.split("/")[1] || "dashboard"
-  const title = moduleNames[current] || "Tổng quan"
+  const pathname = usePathname();
+  const current = pathname?.split("/")[1] || "dashboard";
+  const title = moduleNames[current] || "Tổng quan";
 
   return (
     <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
@@ -62,7 +63,9 @@ export function Header() {
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">Admin User</p>
-                <p className="text-xs leading-none text-muted-foreground">admin@restaurant.com</p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  admin@restaurant.com
+                </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -83,9 +86,7 @@ export function Header() {
         </DropdownMenu>
       </div>
     </header>
-  )
+  );
 }
 
-export default Header
-
-
+export default Header;

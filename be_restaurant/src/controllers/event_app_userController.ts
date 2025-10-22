@@ -15,8 +15,19 @@ export const getAllEvents = async (req: Request, res: Response, next: NextFuncti
       order: [[sortBy, sortOrder]],
     })
 
-    const result = buildPaginationResult(rows, count, page, limit)
-    res.json({ status: "success", data: result })
+      // Use the service method that includes related details (e.g., bookings)
+      // so clients get richer event objects. The underlying service returns { rows, count }.
+      // Note: we intentionally ignore the previous call result and call the detailed version.
+      const detailed = await eventAppUserService.findAllWithDetails({
+        limit,
+        offset,
+        order: [[sortBy, sortOrder]],
+      })
+
+      const rowsWithDetails = detailed.rows
+      const countWithDetails = detailed.count
+      const result = buildPaginationResult(rowsWithDetails, countWithDetails, page, limit)
+      res.json({ status: "success", data: result })
   } catch (error) {
     next(error)
   }
@@ -84,10 +95,64 @@ export const cancelEventBooking = async (req: Request, res: Response, next: Next
   }
 }
 
+/**
+ * Lấy danh sách booking cho một sự kiện (thường dành cho admin/owner).
+ */
+export const getEventBookingsForEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const eventId = req.params.eventId
+    if (!eventId) throw new AppError("Event id is required", 400)
+
+    // reuse service findAllWithDetails and filter by event_id
+    const { rows, count } = await eventBookingAppUserService.findAllWithDetails({ where: { event_id: eventId } })
+    return res.json({ status: "success", data: { bookings: rows, total: count } })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * Tạo booking cho một sự kiện thông qua route nested /:eventId/bookings
+ */
+export const createEventBookingForEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      throw new AppError("Unauthorized", 401)
+    }
+
+    const eventId = req.params.eventId || req.body.eventId
+    const { numberOfTickets } = req.body
+    if (!eventId || !numberOfTickets) {
+      throw new AppError("eventId and numberOfTickets are required", 400)
+    }
+
+    const booking = await eventBookingAppUserService.createBooking({
+      userId: String(userId),
+      eventId,
+      numberOfTickets,
+    })
+
+    res.status(201).json({ status: "success", data: booking })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getUpcomingEvents = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Support optional pagination via query params
+    const { page = 1, limit = 0, sortBy = "created_at", sortOrder = "ASC" } = getPaginationParams(req.query)
+    if (limit > 0) {
+      const offset = (page - 1) * limit
+      // Use the detailed fetch and filter for upcoming by delegating to service logic
+      const rows = await eventAppUserService.findUpcomingEvents({ limit, offset, order: [[sortBy, sortOrder]] })
+      // findUpcomingEvents returns an array of rows (not paginated count), so return as list
+      return res.json({ status: "success", data: { events: rows } })
+    }
+
     const events = await eventAppUserService.findUpcomingEvents()
-    res.json({ status: "success", data: events })
+    res.json({ status: "success", data: { events } })
   } catch (error) {
     next(error)
   }
@@ -95,7 +160,7 @@ export const getUpcomingEvents = async (req: Request, res: Response, next: NextF
 
 export const getEventById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const event = await eventAppUserService.findById(req.params.id)
+    const event = await eventAppUserService.findByIdWithDetails(req.params.id)
     res.json({ status: "success", data: event })
   } catch (error) {
     next(error)
@@ -105,7 +170,7 @@ export const getEventById = async (req: Request, res: Response, next: NextFuncti
 export const getPastEvents = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const events = await eventAppUserService.findPastEvents()
-    res.json({ status: "success", data: events })
+    res.json({ status: "success", data: { events } })
   } catch (error) {
     next(error)
   }

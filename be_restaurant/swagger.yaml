@@ -1,0 +1,3767 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Backend API
+  description: |
+    API documentation for Restaurant Management System Backend.
+    
+    ## Authentication
+    This API uses JWT (JSON Web Token) for authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your_jwt_token>
+    ```
+    
+    ## User Roles
+    - **customer**: Regular customers
+    - **employee**: Restaurant staff
+    - **admin**: System administrators
+    
+    ## WebSocket Support
+    The API supports real-time communication via Socket.IO:
+    - `/notifications` - Notification events
+    - `/order` - Order management events  
+    - `/reservations` - Reservation events
+    - `/chat` - Chat event
+    
+  version: 1.0.0
+  contact:
+    name: Restaurant Backend Team
+    email: support@restaurant.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: https://api.restaurant.com/api
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Notification Module
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get all notifications with filters
+      description: Retrieve paginated list of notifications with optional filters
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          description: Filter by notification type
+          required: false
+          schema:
+            type: string
+            enum: [low_stock, reservation_confirm, promotion, order_created, order_updated, order_status_changed, reservation_created, reservation_updated, chat_message, support_request, payment_completed, other]
+        - name: is_read
+          in: query
+          description: Filter by read status
+          required: false
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Notification'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      tags:
+        - Notifications
+      summary: Create new notification
+      description: Create a new notification (admin/employee only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - content
+              properties:
+                type:
+                  type: string
+                  enum: [low_stock, reservation_confirm, promotion, order_created, order_updated, order_status_changed, reservation_created, reservation_updated, chat_message, support_request, payment_completed, other]
+                title:
+                  type: string
+                  maxLength: 200
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                user_id:
+                  type: string
+                  format: uuid
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Notification created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/{id}:
+    get:
+      tags:
+        - Notifications
+      summary: Get notification by ID
+      description: Retrieve a specific notification by its ID with related data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Notification'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Notifications
+      summary: Update notification
+      description: Update an existing notification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                data:
+                  type: object
+                is_read:
+                  type: boolean
+      responses:
+        '200':
+          description: Notification updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Notifications
+      summary: Delete notification
+      description: Delete a notification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Notification deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/unread/count:
+    get:
+      tags:
+        - Notifications
+      summary: Get unread notification count
+      description: Get the count of unread notifications for current user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/unread/list:
+    get:
+      tags:
+        - Notifications
+      summary: Get unread notifications
+      description: Get list of unread notifications for current user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/stats:
+    get:
+      tags:
+        - Notifications
+      summary: Get notification statistics
+      description: Get notification statistics (admin/employee only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/recent:
+    get:
+      tags:
+        - Notifications
+      summary: Get recent notifications
+      description: Get recent notifications (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of notifications to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/type/{type}:
+    get:
+      tags:
+        - Notifications
+      summary: Get notifications by type
+      description: Get notifications filtered by type (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [low_stock, reservation_confirm, promotion, order_created, order_updated, order_status_changed, reservation_created, reservation_updated, chat_message, support_request, payment_completed, other]
+        - name: limit
+          in: query
+          description: Number of notifications to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/{id}/read:
+    patch:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      description: Mark a specific notification as read
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/read-all:
+    patch:
+      tags:
+        - Notifications
+      summary: Mark all notifications as read
+      description: Mark all notifications as read for current user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/cleanup:
+    delete:
+      tags:
+        - Notifications
+      summary: Delete old notifications
+      description: Delete notifications older than specified days (admin/employee only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days_old:
+                  type: integer
+                  minimum: 1
+                  default: 30
+      responses:
+        '200':
+          description: Old notifications deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      deleted_count:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Order Module
+  /orders:
+    get:
+      tags:
+        - Orders
+      summary: Get all orders with filters
+      description: Retrieve paginated list of orders with optional filters (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          description: Filter by date
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          description: Filter by order status
+          required: false
+          schema:
+            type: string
+            enum: [pending, preparing, ready, delivered, paid, cancelled]
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: table_id
+          in: query
+          description: Filter by table ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            reservation:
+                              $ref: '#/components/schemas/Reservation'
+                            event:
+                              $ref: '#/components/schemas/Event'
+                            voucher:
+                              $ref: '#/components/schemas/Voucher'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                            payments:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Payment'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      tags:
+        - Orders
+      summary: Create new order
+      description: Create a new order
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - table_id
+              properties:
+                table_id:
+                  type: string
+                  format: uuid
+                  description: Table ID for the order
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders/{id}:
+    get:
+      tags:
+        - Orders
+      summary: Get order by ID
+      description: Retrieve a specific order by its ID with all related data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Order'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      table:
+                        $ref: '#/components/schemas/Table'
+                      tableGroup:
+                        $ref: '#/components/schemas/TableGroup'
+                      reservation:
+                        $ref: '#/components/schemas/Reservation'
+                      event:
+                        $ref: '#/components/schemas/Event'
+                      voucher:
+                        $ref: '#/components/schemas/Voucher'
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/OrderItem'
+                          properties:
+                            dish:
+                              $ref: '#/components/schemas/Dish'
+                      payments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Orders
+      summary: Update order
+      description: Update an existing order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Order updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/table/{tableId}:
+    get:
+      tags:
+        - Orders
+      summary: Get order by table
+      description: Retrieve order for a specific table
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by order status
+          required: false
+          schema:
+            type: string
+            enum: [pending, preparing, ready, delivered, paid, cancelled]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/status:
+    patch:
+      tags:
+        - Orders
+      summary: Update order status
+      description: Update the status of an order (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [pending, preparing, ready, delivered, paid, cancelled]
+      responses:
+        '200':
+          description: Order status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/items:
+    post:
+      tags:
+        - Orders
+      summary: Add item to order
+      description: Add a new item to an existing order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dish_id
+                - quantity
+              properties:
+                dish_id:
+                  type: string
+                  format: uuid
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Item added to order successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/items/{itemId}/quantity:
+    patch:
+      tags:
+        - Orders
+      summary: Update item quantity
+      description: Update the quantity of an order item
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - quantity
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Item quantity updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/items/{itemId}/status:
+    patch:
+      tags:
+        - Orders
+      summary: Update item status
+      description: Update the status of an order item (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [pending, completed]
+      responses:
+        '200':
+          description: Item status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/items/{itemId}:
+    delete:
+      tags:
+        - Orders
+      summary: Delete item
+      description: Delete an item from an order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Item deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/voucher:
+    post:
+      tags:
+        - Orders
+      summary: Apply voucher
+      description: Apply a voucher to an order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Voucher code
+      responses:
+        '200':
+          description: Voucher applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Orders
+      summary: Remove voucher
+      description: Remove voucher from an order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Voucher removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/merge:
+    post:
+      tags:
+        - Orders
+      summary: Merge orders
+      description: Merge two orders (admin/employee only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - source_order_id
+                - target_order_id
+              properties:
+                source_order_id:
+                  type: string
+                  format: uuid
+                target_order_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Orders merged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /orders/{id}/support:
+    post:
+      tags:
+        - Orders
+      summary: Request support
+      description: Request support for an order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Support request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/payment/request:
+    post:
+      tags:
+        - Orders
+      summary: Request payment
+      description: Request payment for an order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/stats/revenue:
+    get:
+      tags:
+        - Orders
+      summary: Get revenue statistics
+      description: Get revenue statistics for orders (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Revenue statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Reservation Module
+  /reservations:
+    get:
+      tags:
+        - Reservations
+      summary: Get all reservations with filters
+      description: Retrieve paginated list of reservations with optional filters (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          description: Filter by date
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          description: Filter by reservation status
+          required: false
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, no_show]
+        - name: table_id
+          in: query
+          description: Filter by table ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: query
+          description: Filter by event ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Reservation'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            event:
+                              $ref: '#/components/schemas/Event'
+                            orders:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/Order'
+                                properties:
+                                  items:
+                                    type: array
+                                    items:
+                                      allOf:
+                                        - $ref: '#/components/schemas/OrderItem'
+                                      properties:
+                                        dish:
+                                          $ref: '#/components/schemas/Dish'
+                            payments:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Payment'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      tags:
+        - Reservations
+      summary: Create new reservation
+      description: Create a new reservation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - table_id
+                - reservation_time
+                - num_people
+              properties:
+                table_id:
+                  type: string
+                  format: uuid
+                reservation_time:
+                  type: string
+                  format: date-time
+                duration_minutes:
+                  type: integer
+                  minimum: 30
+                  maximum: 480
+                  default: 90
+                num_people:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                preferences:
+                  type: object
+                event_id:
+                  type: string
+                  format: uuid
+                pre_order_items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      dish_id:
+                        type: string
+                        format: uuid
+                      quantity:
+                        type: integer
+                        minimum: 1
+      responses:
+        '201':
+          description: Reservation created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reservations/{id}:
+    get:
+      tags:
+        - Reservations
+      summary: Get reservation by ID
+      description: Retrieve a specific reservation by its ID with all related data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Reservation'
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      table:
+                        $ref: '#/components/schemas/Table'
+                      tableGroup:
+                        $ref: '#/components/schemas/TableGroup'
+                      event:
+                        $ref: '#/components/schemas/Event'
+                      orders:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                      payments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Reservations
+      summary: Update reservation
+      description: Update an existing reservation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_id:
+                  type: string
+                  format: uuid
+                reservation_time:
+                  type: string
+                  format: date-time
+                duration_minutes:
+                  type: integer
+                  minimum: 30
+                  maximum: 480
+                num_people:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                preferences:
+                  type: object
+                event_id:
+                  type: string
+                  format: uuid
+                pre_order_items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      dish_id:
+                        type: string
+                        format: uuid
+                      quantity:
+                        type: integer
+                        minimum: 1
+      responses:
+        '200':
+          description: Reservation updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Reservations
+      summary: Delete reservation
+      description: Delete a reservation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Reservation deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Reservation deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reservations/{id}/status:
+    patch:
+      tags:
+        - Reservations
+      summary: Update reservation status
+      description: Update the status of a reservation (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [pending, confirmed, cancelled, no_show]
+      responses:
+        '200':
+          description: Reservation status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reservations/{id}/checkin:
+    post:
+      tags:
+        - Reservations
+      summary: Check-in reservation
+      description: Check-in a reservation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Reservation checked in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Voucher Module
+  /vouchers/active:
+    get:
+      tags:
+        - Vouchers
+      summary: Get active vouchers
+      description: Get all active vouchers that are not expired (public endpoint)
+      security: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Voucher'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /vouchers:
+    get:
+      tags:
+        - Vouchers
+      summary: Get all vouchers
+      description: Retrieve paginated list of vouchers (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: sortBy
+          in: query
+          description: Sort by field
+          required: false
+          schema:
+            type: string
+            enum: [created_at, code, discount_type, value, expiry_date, max_uses, current_uses]
+            default: created_at
+        - name: sortOrder
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Voucher'
+                          properties:
+                            orders:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Order'
+                            usages:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/VoucherUsage'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      tags:
+        - Vouchers
+      summary: Create new voucher
+      description: Create a new voucher (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - discount_type
+                - value
+              properties:
+                code:
+                  type: string
+                  maxLength: 50
+                  example: "SAVE10"
+                discount_type:
+                  type: string
+                  enum: [percentage, fixed]
+                  example: percentage
+                value:
+                  type: number
+                  format: decimal
+                  example: 10.00
+                expiry_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2024-12-31"
+                max_uses:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  example: 100
+                min_order_value:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  example: 200000
+                active:
+                  type: boolean
+                  default: true
+                  example: true
+      responses:
+        '201':
+          description: Voucher created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Voucher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /vouchers/{id}:
+    get:
+      tags:
+        - Vouchers
+      summary: Get voucher by ID
+      description: Retrieve a specific voucher by its ID with usage statistics (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Voucher'
+                    properties:
+                      orders:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                      usages:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/VoucherUsage'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            order:
+                              $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Vouchers
+      summary: Update voucher
+      description: Update an existing voucher (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  maxLength: 50
+                  example: "SAVE15"
+                discount_type:
+                  type: string
+                  enum: [percentage, fixed]
+                  example: percentage
+                value:
+                  type: number
+                  format: decimal
+                  example: 15.00
+                expiry_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2024-12-31"
+                max_uses:
+                  type: integer
+                  minimum: 0
+                  example: 150
+                min_order_value:
+                  type: integer
+                  minimum: 0
+                  example: 300000
+                active:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Voucher updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Voucher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Vouchers
+      summary: Delete voucher
+      description: Delete a voucher (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Voucher deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: "Voucher deleted successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Payment Module
+  /payments:
+    get:
+      tags:
+        - Payments
+      summary: Get all payments
+      description: Retrieve paginated list of payments (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: method
+          in: query
+          description: Filter by payment method
+          required: false
+          schema:
+            type: string
+            enum: [cash, vnpay]
+        - name: status
+          in: query
+          description: Filter by payment status
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, failed]
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: start_date
+          in: query
+          description: Filter by start date
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: Filter by end date
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Payment'
+                      properties:
+                        order:
+                          allOf:
+                            - $ref: '#/components/schemas/Order'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            items:
+                              type: array
+                              items:
+                                allOf:
+                                  - $ref: '#/components/schemas/OrderItem'
+                                properties:
+                                  dish:
+                                    $ref: '#/components/schemas/Dish'
+                        reservation:
+                          allOf:
+                            - $ref: '#/components/schemas/Reservation'
+                          properties:
+                            user:
+                              $ref: '#/components/schemas/User'
+                            table:
+                              $ref: '#/components/schemas/Table'
+                            tableGroup:
+                              $ref: '#/components/schemas/TableGroup'
+                            event:
+                              $ref: '#/components/schemas/Event'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /payments/{id}:
+    get:
+      tags:
+        - Payments
+      summary: Get payment by ID
+      description: Retrieve a specific payment by its ID with related data (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/Payment'
+                    properties:
+                      order:
+                        allOf:
+                          - $ref: '#/components/schemas/Order'
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          table:
+                            $ref: '#/components/schemas/Table'
+                          tableGroup:
+                            $ref: '#/components/schemas/TableGroup'
+                          items:
+                            type: array
+                            items:
+                              allOf:
+                                - $ref: '#/components/schemas/OrderItem'
+                              properties:
+                                dish:
+                                  $ref: '#/components/schemas/Dish'
+                      reservation:
+                        allOf:
+                          - $ref: '#/components/schemas/Reservation'
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          table:
+                            $ref: '#/components/schemas/Table'
+                          tableGroup:
+                            $ref: '#/components/schemas/TableGroup'
+                          event:
+                            $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payments/vnpay/return:
+    get:
+      tags:
+        - Payments
+      summary: VNPay return URL
+      description: VNPay callback URL for payment return
+      security: []
+      parameters:
+        - name: vnp_TxnRef
+          in: query
+          description: Transaction reference
+          required: false
+          schema:
+            type: string
+        - name: vnp_ResponseCode
+          in: query
+          description: Response code from VNPay
+          required: false
+          schema:
+            type: string
+        - name: vnp_TransactionStatus
+          in: query
+          description: Transaction status
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to client URL
+        '400':
+          description: Invalid payment data
+
+  /payments/vnpay/ipn:
+    post:
+      tags:
+        - Payments
+      summary: VNPay IPN
+      description: VNPay Instant Payment Notification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vnp_TxnRef:
+                  type: string
+                vnp_ResponseCode:
+                  type: string
+                vnp_TransactionStatus:
+                  type: string
+      responses:
+        '200':
+          description: IPN processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RspCode:
+                    type: string
+                    example: "00"
+                  Message:
+                    type: string
+                    example: "Success"
+
+  /payments/stats/revenue:
+    get:
+      tags:
+        - Payments
+      summary: Get revenue statistics
+      description: Get revenue statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Revenue statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/orders:
+    get:
+      tags:
+        - Payments
+      summary: Get order statistics
+      description: Get order statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Order statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/reservations:
+    get:
+      tags:
+        - Payments
+      summary: Get reservation statistics
+      description: Get reservation statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Reservation statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/payments:
+    get:
+      tags:
+        - Payments
+      summary: Get payment statistics
+      description: Get payment statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Payment statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/tables:
+    get:
+      tags:
+        - Payments
+      summary: Get table revenue statistics
+      description: Get table revenue statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Table revenue statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/customers:
+    get:
+      tags:
+        - Payments
+      summary: Get customer spending statistics
+      description: Get customer spending statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Customer spending statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/daily:
+    get:
+      tags:
+        - Payments
+      summary: Get daily revenue statistics
+      description: Get daily revenue statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Daily revenue statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/monthly:
+    get:
+      tags:
+        - Payments
+      summary: Get monthly revenue statistics
+      description: Get monthly revenue statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Monthly revenue statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/dishes:
+    get:
+      tags:
+        - Payments
+      summary: Get dish statistics
+      description: Get dish statistics (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Dish statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/stats/dashboard:
+    get:
+      tags:
+        - Payments
+      summary: Get dashboard overview
+      description: Get comprehensive dashboard overview (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date for statistics
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Dashboard overview retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      revenue:
+                        type: object
+                      orders:
+                        type: object
+                      reservations:
+                        type: object
+                      payments:
+                        type: object
+                      top_tables:
+                        type: array
+                        items:
+                          type: object
+                      top_customers:
+                        type: array
+                        items:
+                          type: object
+                      top_dishes:
+                        type: array
+                        items:
+                          type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Chat Module
+  /chat/session:
+    post:
+      tags:
+        - Chat
+      summary: Create a new chat session
+      description: Create a new chat session for a user
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  enum: [web, app, zalo]
+                  default: web
+                  example: web
+                context:
+                  type: object
+                  nullable: true
+                  example: {}
+                botEnabled:
+                  type: boolean
+                  default: true
+                  example: true
+      responses:
+        '201':
+          description: Chat session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/sessions:
+    get:
+      tags:
+        - Chat
+      summary: Get user's chat sessions
+      description: Get all chat sessions for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ChatSession'
+                      properties:
+                        user:
+                          $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/sessions/all:
+    get:
+      tags:
+        - Chat
+      summary: Get all chat sessions (Admin only)
+      description: Get all chat sessions in the system (admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ChatSession'
+                      properties:
+                        user:
+                          $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /chat/sessions/{id}/messages:
+    get:
+      tags:
+        - Chat
+      summary: Get messages in a chat session
+      description: Get all messages in a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Chat
+      summary: Send a message in a chat session
+      description: Send a new message in a chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message_text
+              properties:
+                message_text:
+                  type: string
+                  example: "Hello, I need help with my order"
+                sender_type:
+                  type: string
+                  enum: [user, bot, human]
+                  default: user
+                  example: user
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatMessage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/enable-bot:
+    post:
+      tags:
+        - Chat
+      summary: Enable bot mode for a chat session
+      description: Enable chatbot mode for a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Bot mode enabled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/disable-bot:
+    post:
+      tags:
+        - Chat
+      summary: Disable bot mode for a chat session
+      description: Disable chatbot mode for a specific chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Bot mode disabled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Base schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+          type: string
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+84901234567"
+        role:
+          type: string
+          enum: [customer, employee, admin]
+          example: customer
+        full_name:
+          type: string
+          nullable: true
+          example: "John Doe"
+        preferences:
+          type: object
+          nullable: true
+        ranking:
+          type: string
+          enum: [regular, vip, platinum]
+          example: regular
+        points:
+          type: integer
+          example: 100
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        table_number:
+          type: string
+          example: "T001"
+        capacity:
+          type: integer
+          example: 4
+        deposit:
+          type: integer
+          example: 100000
+        cancel_minutes:
+          type: integer
+          example: 15
+        location:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum: [available, occupied, cleaning, reserved]
+          example: available
+        panorama_urls:
+          type: object
+          nullable: true
+        amenities:
+          type: object
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    TableGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        group_name:
+          type: string
+          example: "VIP Section"
+        table_ids:
+          type: object
+          example: ["table1", "table2", "table3"]
+        total_capacity:
+          type: integer
+          example: 12
+        deposit:
+          type: integer
+          example: 200000
+        cancel_minutes:
+          type: integer
+          example: 30
+        status:
+          type: string
+          enum: [available, occupied, cleaning, reserved]
+          example: available
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Dish:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Pho Bo"
+        description:
+          type: string
+          nullable: true
+          example: "Traditional Vietnamese beef noodle soup"
+        price:
+          type: number
+          format: decimal
+          example: 45000
+        category_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        media_urls:
+          type: object
+          nullable: true
+        is_best_seller:
+          type: boolean
+          example: true
+        seasonal:
+          type: boolean
+          example: false
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Voucher:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        code:
+          type: string
+          example: "SAVE10"
+        discount_type:
+          type: string
+          enum: [percentage, fixed]
+          example: percentage
+        value:
+          type: number
+          format: decimal
+          example: 10.00
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-12-31"
+        max_uses:
+          type: integer
+          example: 100
+        current_uses:
+          type: integer
+          example: 25
+        min_order_value:
+          type: integer
+          example: 200000
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Birthday Party Package"
+        description:
+          type: string
+          nullable: true
+          example: "Complete birthday celebration package"
+        price:
+          type: number
+          format: decimal
+          example: 2000000
+        inclusions:
+          type: object
+          nullable: true
+        decorations:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    VoucherUsage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        voucher_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        order_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        discount_amount:
+          type: number
+          format: decimal
+          example: 50000
+        used_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        dish_id:
+          type: string
+          format: uuid
+          nullable: true
+        quantity:
+          type: integer
+          example: 2
+        price:
+          type: number
+          format: decimal
+          example: 45000
+        customizations:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed]
+          example: pending
+        estimated_wait_time:
+          type: integer
+          nullable: true
+          example: 15
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-01T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    # Main schemas with relations
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          type: string
+          enum: [low_stock, reservation_confirm, promotion, order_created, order_updated, order_status_changed, reservation_created, reservation_updated, chat_message, support_request, payment_completed, other]
+        content:
+          type: string
+          example: "Your order has been created successfully"
+        title:
+          type: string
+          nullable: true
+          example: "Order Created"
+        data:
+          type: object
+          nullable: true
+        is_read:
+          type: boolean
+          default: false
+        sent_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        status:
+          type: string
+          enum: [sent, failed]
+          default: sent
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        reservation_id:
+          type: string
+          format: uuid
+          nullable: true
+        table_id:
+          type: string
+          format: uuid
+          nullable: true
+        table_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        voucher_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [pending, dining, waiting_payment, preparing, ready, delivered, paid, cancelled]
+          example: pending
+        total_amount:
+          type: number
+          format: decimal
+          example: 150.50
+        voucher_discount_amount:
+          type: number
+          format: decimal
+          nullable: true
+          example: 10.00
+        final_amount:
+          type: number
+          format: decimal
+          example: 140.50
+        event_fee:
+          type: number
+          format: decimal
+          nullable: true
+          example: 5.00
+        deposit_amount:
+          type: number
+          format: decimal
+          nullable: true
+          example: 20.00
+        customizations:
+          type: object
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+          example: "Extra spicy"
+        payment_status:
+          type: string
+          enum: [pending, paid, failed]
+          example: pending
+        payment_method:
+          type: string
+          enum: [zalopay, momo, cash, vnpay]
+          nullable: true
+          example: cash
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        table_id:
+          type: string
+          format: uuid
+          nullable: true
+        table_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        reservation_time:
+          type: string
+          format: date-time
+          example: "2024-01-01T19:00:00Z"
+        duration_minutes:
+          type: integer
+          example: 120
+        num_people:
+          type: integer
+          example: 4
+        preferences:
+          type: object
+          nullable: true
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_fee:
+          type: number
+          format: decimal
+          nullable: true
+          example: 10.00
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, no_show]
+          example: pending
+        timeout_minutes:
+          type: integer
+          example: 15
+        deposit_amount:
+          type: number
+          format: decimal
+          nullable: true
+          example: 50.00
+        pre_order_items:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        reservation_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: number
+          format: decimal
+          example: 150.50
+        method:
+          type: string
+          enum: [cash, vnpay]
+          example: cash
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          example: completed
+        transaction_id:
+          type: string
+          nullable: true
+          example: "TXN123456789"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 100
+        pages:
+          type: integer
+          example: 10
+
+    # Chat schemas
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        is_authenticated:
+          type: boolean
+          example: true
+        channel:
+          type: string
+          enum: [web, app, zalo]
+          example: web
+        context:
+          type: object
+          nullable: true
+          example: {}
+        start_time:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-01T01:00:00Z"
+        status:
+          type: string
+          enum: [active, closed]
+          example: active
+        handled_by:
+          type: string
+          enum: [bot, human]
+          example: bot
+        bot_enabled:
+          type: boolean
+          example: true
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        session_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        sender_type:
+          type: string
+          enum: [user, bot, human]
+          example: user
+        message_text:
+          type: string
+          example: "Hello, I need help with my order"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: "Error description"
+        code:
+          type: string
+          example: "ERROR_CODE"
+        details:
+          type: object
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            message: "Invalid input data"
+            code: "VALIDATION_ERROR"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            message: "Invalid or expired token"
+            code: "UNAUTHORIZED"
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            message: "Insufficient permissions"
+            code: "FORBIDDEN"
+
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            message: "Resource not found"
+            code: "NOT_FOUND"
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            message: "Internal server error"
+            code: "INTERNAL_ERROR"
+
+tags:
+  - name: Notifications
+    description: Notification management operations
+  - name: Orders
+    description: Order management operations
+  - name: Reservations
+    description: Reservation management operations
+  - name: Vouchers
+    description: Voucher management operations
+  - name: Payments
+    description: Payment and statistics operations
+  - name: Chat
+    description: Chat and messaging operations

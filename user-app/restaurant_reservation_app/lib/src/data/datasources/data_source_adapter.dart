@@ -41,6 +41,11 @@ class DataSourceAdapter {
     return _ensureRemote.getReservationById_app_user(id);
   }
 
+  static Future<List<dynamic>> getReservationsByTableAndDate(String tableId, DateTime date) async {
+    if (ApiConfig.baseUrl.isEmpty) return _mock.getReservationsByTableAndDate(tableId, date);
+    return _ensureRemote.getReservationsByTableAndDate_app_user(tableId, date);
+  }
+
   static Future<dynamic> createReservation(dynamic reservation) async {
     if (ApiConfig.baseUrl.isEmpty) return _mock.createReservation(reservation);
     return _ensureRemote.createReservation_app_user(reservation);
@@ -131,6 +136,11 @@ class DataSourceAdapter {
   static Future<dynamic> createEventBooking(dynamic booking) async {
     if (ApiConfig.baseUrl.isEmpty) return _mock.createEventBooking(booking);
     return _ensureRemote.createEventBooking_app_user(booking);
+  }
+
+  static Future<dynamic> createEventBookingForEvent(String eventId, dynamic booking) async {
+    if (ApiConfig.baseUrl.isEmpty) return _mock.createEventBooking(booking);
+    return _ensureRemote.createEventBookingForEvent_app_user(eventId, booking);
   }
 
   // User Info

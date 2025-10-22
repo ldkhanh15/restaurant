@@ -187,6 +187,23 @@ interface ReservationData {
   selected_services?: string[]
 }
 
+// Giả lập API để lấy các khung giờ đã được đặt
+const fetchBookedSlots = async (tableId: string, date: Date): Promise<string[]> => {
+  console.log(`Fetching booked slots for table ${tableId} on ${format(date, "yyyy-MM-dd")}`);
+  // Trong ứng dụng thực tế, bạn sẽ gọi API backend ở đây
+  // Ví dụ: const response = await apiClient.get(`/reservations/booked-slots?tableId=${tableId}&date=${format(date, "yyyy-MM-dd")}`);
+  // return response.data;
+
+  // Dữ liệu giả lập để minh họa
+  if (tableId === 'table-2') {
+    return ["18:00", "18:30", "19:00"]; // Bàn T2 đã được đặt vào các giờ này
+  }
+  if (tableId === 'table-4') {
+    return ["19:00", "19:30"]; // Bàn T4 đã được đặt vào các giờ này
+  }
+  return [];
+};
+
 export default function ReservationBooking() {
   const [step, setStep] = useState<"form" | "table-selection" | "confirmation" | "success">("form")
   const [selectedFloor, setSelectedFloor] = useState("floor-1")
@@ -204,6 +221,19 @@ export default function ReservationBooking() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [reservationId, setReservationId] = useState<string | null>(null)
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>(timeSlots);
+
+  // Effect để lọc các khung giờ khi ngày hoặc bàn được chọn thay đổi
+  useEffect(() => {
+    const filterTimeSlots = async () => {
+      if (reservationData.date && (reservationData.selected_table || reservationData.selected_group)) {
+        const tableOrGroupId = reservationData.selected_table || reservationData.selected_group!;
+        const bookedSlots = await fetchBookedSlots(tableOrGroupId, reservationData.date);
+        setAvailableTimeSlots(timeSlots.filter(slot => !bookedSlots.includes(slot)));
+      }
+    };
+    filterTimeSlots();
+  }, [reservationData.date, reservationData.selected_table, reservationData.selected_group]);
 
   const updateReservationData = (updates: Partial<ReservationData>) => {
     setReservationData((prev) => ({ ...prev, ...updates }))
@@ -492,9 +522,9 @@ export default function ReservationBooking() {
                         <SelectValue placeholder="Chọn giờ" />
                       </SelectTrigger>
                       <SelectContent>
-                        {timeSlots.map((time) => (
+                        {availableTimeSlots.map((time) => (
                           <SelectItem key={time} value={time}>
-                            {time}
+                            {time} {timeSlots.includes(time) ? '' : '(Đã đặt)'}
                           </SelectItem>
                         ))}
                       </SelectContent>

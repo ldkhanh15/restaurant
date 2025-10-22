@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express"
-import chatSessionService from "../services/chatSessionService"
+import chatSessionService from "../services/chatSession_app_userService"
+import chatMessageService from "../services/chatMessage_app_userService"
+import { getIO } from "../sockets"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 
 export const getAllChatSessions = async (req: Request, res: Response, next: NextFunction) => {
@@ -31,7 +33,19 @@ export const getChatSessionById = async (req: Request, res: Response, next: Next
 
 export const createChatSession = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const session = await chatSessionService.create(req.body)
+    // If user is authenticated, attach user and create/find active session
+    const userId = req.user?.id as string | undefined
+    const channel = (req.body.channel as any) ?? "app"
+    const context = req.body.context ?? {}
+
+    let session
+    if (userId) {
+      session = await chatSessionService.findOrCreateForUser(userId, channel, context)
+    } else {
+      // create anonymous session
+      session = await chatSessionService.create({ channel, context, is_authenticated: false })
+    }
+
     res.status(201).json({ status: "success", data: session })
   } catch (error) {
     next(error)

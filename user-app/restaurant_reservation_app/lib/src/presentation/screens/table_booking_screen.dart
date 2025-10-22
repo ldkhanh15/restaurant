@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
+import '../../application/socket_manager.dart';
+import '../../data/services/order_app_user_service_app_user.dart';
+import '../../domain/models/order.dart';
+import '../../domain/models/menu.dart';
 import '../../domain/models/booking.dart';
 import '../../domain/models/table.dart';
 import '../../domain/entities/reservation.dart' as ent_reservation;
@@ -11,6 +15,8 @@ import '../../data/repositories/reservation_repository_impl.dart';
 import '../../data/services/reservation_app_user_service_app_user.dart';
 import '../../data/services/table_app_user_service_app_user.dart';
 import '../../data/datasources/api_config.dart';
+import '../../data/services/app_user_initializer_app_user.dart';
+import 'package:intl/intl.dart';
 import '../../domain/usecases/create_reservation.dart';
 import '../widgets/table_card.dart';
 import '../widgets/booking_dialog.dart';
@@ -29,6 +35,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
   DiningTable? selectedTable;
   bool isBookingOpen = false;
   bool _isLoadingBookings = false;
+  bool _initialized = false;
 
 
   void handleBookTable(Booking newBooking) async {
@@ -143,7 +150,107 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
     }
   }
 
-  void onOrderFood(Booking booking) {
+  Future<void> onOrderFood(Booking booking) async {
+    // If there's an existing order for this booking, load its items into the cart and set current order
+    try {
+      // ignore: avoid_print
+      print('[TableBookingScreen] onOrderFood: fetching orders for booking=${booking.id} serverId=${booking.serverId}');
+      final raw = await OrderAppUserService.fetchOrdersForUser(page: 1, limit: 100);
+      // ignore: avoid_print
+      print('[TableBookingScreen] fetched raw orders=${raw.length}');
+      final orders = raw.map((e) => Order.fromJson(e as Map<String, dynamic>)).where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+      // ignore: avoid_print
+      print('[TableBookingScreen] matched orders=${orders.length}');
+      // Show a quick SnackBar so testers can see counts in the UI when reproducing the flow
+      if (mounted) {
+        try {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Tải orders: ${raw.length}, khớp: ${orders.length}')));
+        } catch (_) {}
+      }
+      if (orders.isNotEmpty) {
+        // Prefer an order that actually contains items; fallback to the first result
+        final last = orders.firstWhere((o) => o.items.isNotEmpty, orElse: () => orders.first);
+        // populate cart from order items
+        final cartNotifier = ref.read(cartItemsProvider.notifier);
+        cartNotifier.clearCart();
+        // ignore: avoid_print
+        print('[TableBookingScreen] populating cart from order id=${last.id} items=${last.items.length}');
+        for (final oi in last.items) {
+          final ci = CartItem(
+            id: oi.id.toString(),
+            name: oi.name,
+            price: oi.price,
+            quantity: oi.quantity,
+            image: oi.image,
+            customizations: oi.customizations,
+            specialNote: oi.specialNote,
+          );
+          cartNotifier.addItem(ci);
+          // ignore: avoid_print
+          print('[TableBookingScreen] added cart item id=${ci.id} name=${ci.name} qty=${ci.quantity}');
+        }
+        // set current order and order items providers
+        ref.read(currentOrderProvider.notifier).setOrder(last);
+        ref.read(orderItemsProvider.notifier).setItems(last.items);
+      }
+      else {
+        // Fallback: sometimes backend stores table_id/reservation_id in raw shape differently.
+        try {
+          Map<String, dynamic>? matchedRaw;
+          for (final e in raw) {
+            if (e is Map<String, dynamic>) {
+              final rid = (e['reservation_id'] ?? e['reservationId'] ?? e['reservation'] ?? '').toString();
+              final tid = (e['table_id'] ?? e['tableId'] ?? e['table'] ?? '').toString();
+              if (rid.isNotEmpty && (rid == booking.serverId || rid == booking.id)) {
+                matchedRaw = e;
+                // ignore: avoid_print
+                print('[TableBookingScreen] fallback matched by reservation_id=$rid');
+                break;
+              }
+              if (tid.isNotEmpty && tid == booking.tableId) {
+                matchedRaw = e;
+                // ignore: avoid_print
+                print('[TableBookingScreen] fallback matched by table_id=$tid');
+                break;
+              }
+            }
+          }
+          if (matchedRaw != null) {
+            final o = Order.fromJson(matchedRaw);
+            if (o.items.isNotEmpty) {
+              final cartNotifier = ref.read(cartItemsProvider.notifier);
+              cartNotifier.clearCart();
+              // ignore: avoid_print
+              print('[TableBookingScreen] populating cart from fallback order id=${o.id} items=${o.items.length}');
+              for (final oi in o.items) {
+                final ci = CartItem(
+                  id: oi.id.toString(),
+                  name: oi.name,
+                  price: oi.price,
+                  quantity: oi.quantity,
+                  image: oi.image,
+                  customizations: oi.customizations,
+                  specialNote: oi.specialNote,
+                );
+                cartNotifier.addItem(ci);
+                // ignore: avoid_print
+                print('[TableBookingScreen] added cart item (fallback) id=${ci.id} name=${ci.name} qty=${ci.quantity}');
+              }
+              ref.read(currentOrderProvider.notifier).setOrder(o);
+              ref.read(orderItemsProvider.notifier).setItems(o.items);
+            }
+          }
+        } catch (e) {
+          // ignore: avoid_print
+          print('[TableBookingScreen] fallback match error: $e');
+        }
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[TableBookingScreen] onOrderFood error: $e');
+    }
+
+    if (!mounted) return;
     context.go('/menu', extra: booking);
   }
 
@@ -155,9 +262,23 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
     try {
       // Fetch raw data to ensure correct parsing, bypassing the repository
       final reservationsRaw = await ReservationAppUserServiceAppUser.fetchReservations();
+      final availableTables = ref.read(tablesProvider);
       final fetched = reservationsRaw.map((r) {
         final map = r as Map<String, dynamic>;
         final tableMap = map['table'] as Map<String, dynamic>?;
+        final tableId = tableMap?['id']?.toString() ?? map['table_id']?.toString() ?? '';
+
+        String tableName;
+        if (tableMap != null) {
+          tableName = tableMap['table_number']?.toString() ?? 'Unknown Table';
+        } else {
+          try {
+            final table = availableTables.firstWhere((t) => t.id == tableId);
+            tableName = table.name;
+          } catch (e) {
+            tableName = 'Unknown Table';
+          }
+        }
 
         final reservationTime = (DateTime.tryParse(map['reservation_time'] ?? '') ?? DateTime.now()).toLocal();
         final statusString = (map['status'] ?? 'pending').toString();
@@ -169,8 +290,8 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         return Booking(
           id: map['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
           serverId: map['id']?.toString(),
-          tableId: tableMap?['id']?.toString() ?? '',
-          tableName: tableMap?['table_number']?.toString() ?? 'Unknown Table',
+          tableId: tableId,
+          tableName: tableName,
           date: reservationTime,
           time: TimeOfDay.fromDateTime(reservationTime).format(context),
           guests: (map['num_people'] is int) ? map['num_people'] as int : 1,
@@ -287,7 +408,139 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
     }
   }
 
+  Future<void> _openOrderDialog(Booking booking) async {
+    // Fetch orders for user and filter by booking id
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => FutureBuilder<List<dynamic>>(
+        future: OrderAppUserService.fetchOrdersForUser(page: 1, limit: 100),
+        builder: (c, snap) {
+          if (snap.connectionState == ConnectionState.waiting) return const Center(child: SizedBox(height: 120, child: Center(child: CircularProgressIndicator())));
+          if (snap.hasError) return AlertDialog(title: const Text('Lỗi'), content: Text('Không thể tải orders: ${snap.error}'), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Đóng'))]);
+          final raw = snap.data ?? [];
+          final orders = raw.map((e) => Order.fromJson(e as Map<String, dynamic>)).where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+
+          return AlertDialog(
+            title: Text('Order - ${booking.tableName}'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: orders.isEmpty
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                        children: [
+                        const Text('Chưa có order nào cho bàn này.'),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: () {
+                            // Close dialog then navigate to the menu screen so user can add items to cart
+                            Navigator.of(ctx).pop();
+                            context.go('/menu', extra: booking);
+                          },
+                          child: const Text('Gọi món'),
+                        )
+                      ],
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: orders.length,
+                      itemBuilder: (context, idx) {
+                        final o = orders[idx];
+                        return Card(
+                          child: ListTile(
+                            title: Text('Order #${o.id} - ${o.status.name}'),
+                            subtitle: Text('Tổng: ${o.total.toStringAsFixed(0)}đ - ${o.items.length} món'),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (val) async {
+                                if (val == 'goto') {
+                                  Navigator.of(ctx).pop();
+                                  // Set current order so the target screens can display it
+                                  try {
+                                    ref.read(currentOrderProvider.notifier).setOrder(o);
+                                    ref.read(orderItemsProvider.notifier).setItems(o.items);
+                                  } catch (_) {}
+                                  // Navigate to appropriate screen depending on order status
+                                  if (o.status == OrderStatus.pending) {
+                                    context.go('/order-confirmation', extra: booking);
+                                  } else if (o.status == OrderStatus.waitingKitchenConfirmation || o.status == OrderStatus.sentToKitchen || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) {
+                                    // For any kitchen-involved state, open the kitchen status screen
+                                    context.go('/kitchen-status');
+                                  } else {
+                                    // Default: open confirmation to view/edit
+                                    context.go('/order-confirmation', extra: booking);
+                                  }
+                                } else if (val == 'send') {
+                                  try {
+                                    final updated = await OrderAppUserService.sendToKitchen(o.id);
+                                    // optimistic notify: update providers
+                                    final updatedOrder = Order.fromJson(Map<String, dynamic>.from(updated));
+                                    try {
+                                      final list = ref.read(orderHistoryProvider);
+                                      final idx2 = list.indexWhere((it) => it.id == updatedOrder.id);
+                                      if (idx2 != -1) {
+                                        final copy = list.toList();
+                                        copy[idx2] = updatedOrder;
+                                        ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                                      } else {
+                                        ref.read(orderHistoryProvider.notifier).addOrder(updatedOrder);
+                                      }
+                                    } catch (_) {}
+                                    // inform user
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi tới bếp')));
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gửi tới bếp thất bại: $e')));
+                                  }
+                                } else if (val == 'follow') {
+                                  try {
+                                    // set current order so kitchen screen shows details immediately
+                                    ref.read(currentOrderProvider.notifier).setOrder(o);
+                                    ref.read(orderItemsProvider.notifier).setItems(o.items);
+                                  } catch (_) {}
+                                  try {
+                                    ref.read(orderSocketManagerProvider).joinOrder(o.id);
+                                  } catch (_) {}
+                                  Navigator.of(ctx).pop();
+                                  context.go('/kitchen-status');
+                                }
+                              },
+                              itemBuilder: (menuCtx) => [
+                                const PopupMenuItem(value: 'goto', child: Text('Mở order')),
+                                const PopupMenuItem(value: 'send', child: Text('Gửi tới bếp')),
+                                const PopupMenuItem(value: 'follow', child: Text('Theo dõi')),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Đóng')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
+  void initState() {
+    super.initState();
+    // Defer initializer until after first frame so context & ref are ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_initialized) {
+        _initialized = true;
+        try {
+          await initializeAppUserData_app_user(ref);
+          setState(() {});
+        } catch (e) {
+          // ignore: avoid_print
+          print('[TableBookingScreen] initializer failed: $e');
+        }
+      }
+    });
+  }
+
   Widget build(BuildContext context) {
     final availableTables = ref.watch(tablesProvider);
     final myBookings = ref.watch(bookingsProvider);
@@ -392,6 +645,27 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       body: Builder(
         builder: (context) {
           if (activeTab == "available") {
+            // If we're configured to use a remote API but haven't received tables yet,
+            // show a friendly loading / retry UI. This helps diagnose network/init issues.
+            if (availableTables.isEmpty && ApiConfig.baseUrl.isNotEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    const Text('Đang tải danh sách bàn...'),
+                    const SizedBox(height: 8),
+                    ElevatedButton(onPressed: () async {
+                      // Try to re-run the initializer which fetches and sets tables
+                      await initializeAppUserData_app_user(ref);
+                      setState(() {});
+                    }, child: const Text('Tải lại')),
+                  ],
+                ),
+              );
+            }
+
             return ListView.builder(
               padding: const EdgeInsets.all(16.0),
               itemCount: availableTables.length,
@@ -418,9 +692,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               },
             );
           } else if (activeTab == "myBookings") {
-            if (_isLoadingBookings) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            if (_isLoadingBookings) return const Center(child: CircularProgressIndicator());
 
             if (myBookings.isEmpty) {
               return Center(
@@ -429,10 +701,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                   children: [
                     const Text('Bạn chưa có đặt chỗ nào.'),
                     const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _loadBookingsFromServer,
-                      child: const Text('Tải lại'),
-                    ),
+                    ElevatedButton(onPressed: _loadBookingsFromServer, child: const Text('Tải lại')),
                   ],
                 ),
               );
@@ -443,92 +712,85 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               itemCount: myBookings.length,
               itemBuilder: (context, index) {
                 final booking = myBookings[index];
+
+                // combine date + time into a DateTime for comparisons
+                DateTime bookingDateTime;
+                try {
+                  final dt = booking.date;
+                  try {
+                    final parsed = DateFormat.Hm().parse(booking.time);
+                    bookingDateTime = DateTime(dt.year, dt.month, dt.day, parsed.hour, parsed.minute);
+                  } catch (_) {
+                    bookingDateTime = dt;
+                  }
+                } catch (_) {
+                  bookingDateTime = booking.date;
+                }
+
+                final now = DateTime.now();
+                final isPast = bookingDateTime.isBefore(now);
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 16.0),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          booking.tableName,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8.0),
-                        Row(
-                          children: [
-                            Icon(Icons.calendar_today, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${booking.date.day}/${booking.date.month}/${booking.date.year}',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(width: 16),
-                            Icon(Icons.access_time, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              booking.time,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(width: 16),
-                            Icon(Icons.people, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${booking.guests} người',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                        if (booking.notes != null && booking.notes!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              'Ghi chú: ${booking.notes}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
-                            ),
-                          ),
-                        const SizedBox(height: 16.0),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (booking.status == BookingStatus.confirmed ||
-                                booking.status == BookingStatus.seated) ...[
-                              ElevatedButton.icon(
-                                onPressed: () => onOrderFood(booking),
-                                icon: const Icon(Icons.restaurant_menu),
-                                label: const Text('Gọi món'),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  // If there is a current order for this booking, go to payment; otherwise go to menu to create one
-                                  final currentOrder = ref.read(currentOrderProvider);
-                                  if (currentOrder != null && currentOrder.bookingId == booking.id) {
-                                    context.go('/payment');
-                                  } else {
-                                    context.go('/menu', extra: booking);
-                                  }
-                                },
-                                icon: const Icon(Icons.payment),
-                                label: const Text('Thanh toán'),
-                              ),
+                  child: Opacity(
+                    opacity: isPast ? 0.6 : 1.0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: Text(booking.tableName, style: Theme.of(context).textTheme.titleMedium)),
+                              if (isPast)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant, borderRadius: BorderRadius.circular(8)),
+                                  child: Text('Đã qua', style: Theme.of(context).textTheme.bodySmall),
+                                ),
                             ],
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              onPressed: () => _handleEditBooking(booking),
-                              child: const Text('Chỉnh sửa'),
-                            ),
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              onPressed: () => _handleCancelBooking(booking),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Theme.of(context).colorScheme.error,
-                              ),
-                              child: const Text('Hủy đặt'),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                          const SizedBox(height: 8.0),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.calendar_today, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text('${booking.date.day}/${booking.date.month}/${booking.date.year}', style: Theme.of(context).textTheme.bodySmall),
+                              ]),
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.access_time, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text(booking.time, style: Theme.of(context).textTheme.bodySmall),
+                              ]),
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.people, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text('${booking.guests} người', style: Theme.of(context).textTheme.bodySmall),
+                              ]),
+                            ],
+                          ),
+                          if (booking.notes != null && booking.notes!.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8.0), child: Text('Ghi chú: ${booking.notes}', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic))),
+                          const SizedBox(height: 16.0),
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (!isPast)
+                                ElevatedButton.icon(onPressed: () => onOrderFood(booking), icon: const Icon(Icons.restaurant_menu), label: const Text('Gọi món')),
+                              if (!isPast)
+                                ElevatedButton.icon(onPressed: () => _openOrderDialog(booking), icon: const Icon(Icons.receipt_long), label: const Text('Order')),
+                              ElevatedButton.icon(onPressed: isPast ? null : () { final currentOrder = ref.read(currentOrderProvider); if (currentOrder != null && currentOrder.bookingId == booking.id) context.go('/payment'); else context.go('/menu', extra: booking); }, icon: const Icon(Icons.payment), label: const Text('Thanh toán')),
+                              OutlinedButton(onPressed: isPast ? null : () => _handleEditBooking(booking), child: const Text('Chỉnh sửa')),
+                              OutlinedButton(onPressed: isPast ? null : () => _handleCancelBooking(booking), style: OutlinedButton.styleFrom(foregroundColor: isPast ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.error), child: const Text('Hủy đặt')),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

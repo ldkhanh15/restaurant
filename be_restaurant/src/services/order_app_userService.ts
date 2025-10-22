@@ -7,6 +7,7 @@ import { Op, type FindOptions, type WhereOptions } from "sequelize"
 
 export const ORDER_ALLOWED_STATUSES = [
   "pending",
+  "waiting_kitchen_confirmation",
   "preparing",
   "ready",
   "delivered",

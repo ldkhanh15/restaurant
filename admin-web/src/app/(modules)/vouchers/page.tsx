@@ -1,7 +1,5 @@
-import { VoucherManagement } from "@/components/modules/voucher-management"
+import { VoucherManagementEnhanced } from "@/components/modules/voucher-management-enhanced";
 
 export default function Page() {
-    return <VoucherManagement />
+  return <VoucherManagementEnhanced />;
 }
-
-

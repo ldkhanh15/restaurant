@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../datasources/api_config.dart';
+import 'dart:io';
 import '../datasources/http_client_app_user.dart';
 import '../datasources/remote/remote_app_user_data_source.dart';
 import '../../domain/models/user.dart';
@@ -11,7 +12,11 @@ class AuthAppUserService {
     final url = Uri.parse('${ApiConfig.baseUrl}/api/auth/login');
     final client = HttpClientAppUser();
     try {
-      final resp = await client.post(url, body: jsonEncode({'email': email, 'password': password}));
+      final resp = await client.post(url, body: jsonEncode({
+        'email': email,
+        'password': password,
+        'role': 'customer' // Thêm vai trò 'customer' vào yêu cầu đăng nhập
+      }));
 
       // Debug: log response status and body (remove in production)
       // ignore: avoid_print
@@ -44,7 +49,19 @@ class AuthAppUserService {
           print(st);
           return null; // Could not fetch full profile
         }
+      } else {
+        // ignore: avoid_print
+        print('[AuthService] login failed with status code: ${resp.statusCode}');
+        // ignore: avoid_print
+        print('[AuthService] login response body: ${resp.body}');
+        return null;
       }
+    } on SocketException catch (e, st) {
+      // ignore: avoid_print
+      print('[AuthService] login error (SocketException): $e');
+      // ignore: avoid_print
+      print(st);
+      throw Exception('Không thể kết nối đến server. Vui lòng kiểm tra lại kết nối mạng và địa chỉ server. Lỗi: $e');
     } catch (e, st) {
       // ignore: avoid_print
       print('[AuthService] login error: $e');
@@ -53,8 +70,6 @@ class AuthAppUserService {
       // Return null for caller to handle (e.g., show UI error)
       return null;
     }
-
-    return null;
   }
 
   Future<Map<String, dynamic>?> signup(Map<String, dynamic> payload) async {
@@ -76,6 +91,18 @@ class AuthAppUserService {
           ApiConfig.currentUserId = data['user']['id'].toString();
         }
         return data as Map<String, dynamic>?;
+      } else {
+        // Log error response for debugging
+        // ignore: avoid_print
+        print('[AuthService] signup failed with status code: ${resp.statusCode}');
+        // ignore: avoid_print
+        print('[AuthService] signup response body: ${resp.body}');
+        // Try to decode and return for the UI to handle field-specific errors
+        try {
+          return jsonDecode(resp.body) as Map<String, dynamic>?;
+        } catch (_) {
+          return null;
+        }
       }
     } catch (e, st) {
       // ignore: avoid_print
@@ -84,7 +111,5 @@ class AuthAppUserService {
       print(st);
       return null;
     }
-
-    return null;
   }
 }

@@ -15,6 +15,12 @@ export const EMPLOYEE_DEPARTMENTS = [
   "Quản lý",
 ] as const;
 
+export const userRoles = [
+  { key: "customer", label: "Khách hàng" },
+  { key: "employee", label: "Nhân viên" },
+  { key: "admin", label: "Quản trị viên" },
+] as const;
+
 export type EmployeeDepartment = (typeof EMPLOYEE_DEPARTMENTS)[number];
 
 export const EMPLOYEE_STATUS = ["active", "inactive", "on_leave"] as const;

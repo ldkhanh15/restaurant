@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
 import '../../../domain/models/voucher.dart';
 import '../../../data/datasources/api_config.dart';
-import '../../../data/services/voucher_app_user_service_app_user.dart';
 
 class VoucherScreen extends ConsumerStatefulWidget {
   const VoucherScreen({super.key});
@@ -19,6 +19,8 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // The UI will automatically react to tab changes because it watches the provider.
+    // No need for a manual listener with setState.
   }
 
   @override
@@ -29,16 +31,16 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final vouchersNotifier = ref.watch(vouchersProvider.notifier);
-    final activeVouchers = vouchersNotifier.activeVouchers;
-    final usedVouchers = vouchersNotifier.usedVouchers;
-    final expiredVouchers = vouchersNotifier.expiredVouchers;
+    final vouchersState = ref.watch(vouchersProvider);
+    // Watch the FutureProvider to get the loading/error/data state
+    final fetchState = ref.watch(userVouchersFutureProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Voucher của tôi'),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true, // Cho phép các tab cuộn ngang nếu không đủ không gian
           tabs: [
             Tab(
               child: Row(
@@ -46,7 +48,7 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
                 children: [
                   const Icon(Icons.local_offer),
                   const SizedBox(width: 8),
-                  Text('Có thể dùng (${activeVouchers.length})'),
+                  Text('Có thể dùng (${vouchersState.activeVouchers.length})'),
                 ],
               ),
             ),
@@ -56,7 +58,7 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
                 children: [
                   const Icon(Icons.check_circle),
                   const SizedBox(width: 8),
-                  Text('Đã dùng (${usedVouchers.length})'),
+                  Text('Đã dùng (${vouchersState.usedVouchers.length})'),
                 ],
               ),
             ),
@@ -66,7 +68,7 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
                 children: [
                   const Icon(Icons.access_time),
                   const SizedBox(width: 8),
-                  Text('Hết hạn (${expiredVouchers.length})'),
+                  Text('Hết hạn (${vouchersState.expiredVouchers.length})'),
                 ],
               ),
             ),
@@ -74,14 +76,68 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
         ),
       ),
       body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildVoucherList(activeVouchers, VoucherStatus.active),
-          _buildVoucherList(usedVouchers, VoucherStatus.used),
-          _buildVoucherList(expiredVouchers, VoucherStatus.expired),
-        ],
-      ),
-    );
+          controller: _tabController,
+          children: fetchState.when(
+            loading: () => [
+              const Center(child: CircularProgressIndicator()),
+              const Center(child: CircularProgressIndicator()),
+              const Center(child: CircularProgressIndicator()),
+            ],
+            error: (error, stackTrace) {
+              debugPrint('Error fetching vouchers: $error');
+              final msg = error.toString();
+              final bool needsLogin = msg.contains('Authentication required') || msg.contains('401');
+
+              final errorWidget = Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        needsLogin ? 'Vui lòng đăng nhập lại để xem voucher' : 'Lỗi: Không thể tải voucher',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () async { final _ = await ref.refresh(userVouchersFutureProvider); },
+                          child: const Text('Thử lại'),
+                        ),
+                        const SizedBox(width: 8),
+                        if (needsLogin) ...[
+                          ElevatedButton(
+                            onPressed: () {
+                              // Clear user state and navigate to login
+                              ref.read(userProvider.notifier).clearUser();
+                              ApiConfig.authToken = '';
+                              // Use GoRouter to navigate to login
+                              // ignore: use_build_context_synchronously
+                              context.go('/login');
+                            },
+                            child: const Text('Đăng nhập'),
+                          ),
+                        ]
+                      ],
+                    )
+                  ],
+                ),
+              );
+              return [errorWidget, errorWidget, errorWidget];
+            },
+            data: (_) => [
+              _buildVoucherList(vouchersState.activeVouchers, VoucherStatus.active),
+              _buildVoucherList(vouchersState.usedVouchers, VoucherStatus.used),
+              _buildVoucherList(vouchersState.expiredVouchers, VoucherStatus.expired),
+            ],
+          )),
+      );
+    
   }
 
   Widget _buildVoucherList(List<Voucher> vouchers, VoucherStatus status) {
@@ -91,35 +147,35 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              status == VoucherStatus.active 
-                ? Icons.local_offer_outlined
-                : status == VoucherStatus.used
-                  ? Icons.check_circle_outline
-                  : Icons.access_time_outlined,
+              status == VoucherStatus.active
+                  ? Icons.local_offer_outlined
+                  : status == VoucherStatus.used
+                      ? Icons.check_circle_outline
+                      : Icons.access_time_outlined,
               size: 64,
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 16),
             Text(
-              status == VoucherStatus.active 
-                ? 'Chưa có voucher khả dụng'
-                : status == VoucherStatus.used
-                  ? 'Chưa sử dụng voucher nào'
-                  : 'Chưa có voucher hết hạn',
+              status == VoucherStatus.active
+                  ? 'Chưa có voucher khả dụng'
+                  : status == VoucherStatus.used
+                      ? 'Chưa sử dụng voucher nào'
+                      : 'Chưa có voucher hết hạn',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
-              status == VoucherStatus.active 
-                ? 'Tích điểm để đổi voucher hấp dẫn!'
-                : status == VoucherStatus.used
-                  ? 'Các voucher đã sử dụng sẽ hiển thị ở đây'
-                  : 'Các voucher hết hạn sẽ hiển thị ở đây',
+              status == VoucherStatus.active
+                  ? 'Tích điểm để đổi voucher hấp dẫn!'
+                  : status == VoucherStatus.used
+                      ? 'Các voucher đã sử dụng sẽ hiển thị ở đây'
+                      : 'Các voucher hết hạn sẽ hiển thị ở đây',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -137,7 +193,7 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
     );
   }
 
-  Widget _buildVoucherCard(Voucher voucher) {
+Widget _buildVoucherCard(Voucher voucher) {
     final isActive = voucher.status == VoucherStatus.active && voucher.isValid;
     final isUsed = voucher.status == VoucherStatus.used;
     final isExpired = voucher.isExpired || voucher.status == VoucherStatus.expired;
@@ -380,37 +436,33 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
             onPressed: () async {
               // In a real app, this would be used during checkout
               // For now, we'll just mark it as used with a mock order ID
-              // If ApiConfig.baseUrl is set, call backend to create a voucher usage and persist it
-                if (ApiConfig.baseUrl.isNotEmpty) {
-                final service = VoucherAppUserService();
-                try {
-                  final usage = await service.createVoucherUsage({
+              Navigator.pop(context); // Close dialog first
+              final messenger = ScaffoldMessenger.of(context);
+
+              if (ApiConfig.baseUrl.isNotEmpty) {
+                final service = ref.read(voucherServiceProvider);
+                  try {
+                  // Backend không có endpoint để "sử dụng" voucher,
+                  // logic này chỉ mang tính minh hoạ.
+                  // Trong ứng dụng thực tế, việc sử dụng voucher sẽ được xử lý
+                  // khi tạo đơn hàng.
+                  await service.createVoucherUsage({
                     'voucher_id': voucher.id,
                     'order_id': 'order_${DateTime.now().millisecondsSinceEpoch}',
                     'user_id': ref.read(userProvider)?.id,
                   });
 
-                  if (usage != null) {
-                    // Update local provider to mark voucher used
-                    ref.read(vouchersProvider.notifier).useVoucher(voucher.id, usage['order_id'] ?? 'order_${DateTime.now().millisecondsSinceEpoch}');
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voucher đã được áp dụng')));
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể sử dụng voucher')));
-                  }
+                  // Tải lại danh sách voucher từ backend để cập nhật trạng thái
+                  final _ = await ref.refresh(userVouchersFutureProvider);
+                  messenger.showSnackBar(SnackBar(content: Text('Đã áp dụng voucher "${voucher.name}"')));
                 } catch (e) {
-                  // Fallback to local behavior on error
-                  ref.read(vouchersProvider.notifier).useVoucher(voucher.id, 'mock_order_${DateTime.now().millisecondsSinceEpoch}');
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể kết nối server, voucher đã được áp dụng cục bộ')));
+                  messenger.showSnackBar(SnackBar(
+                      content: Text('Lỗi khi sử dụng voucher: ${e.toString()}')));
                 }
               } else {
                 ref.read(vouchersProvider.notifier).useVoucher(voucher.id, 'mock_order_${DateTime.now().millisecondsSinceEpoch}');
+                messenger.showSnackBar(SnackBar(content: Text('Đã sử dụng voucher (local) "${voucher.name}"')));
               }
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Đã sử dụng voucher "${voucher.name}"'),
-                ),
-              );
             },
             child: const Text('Sử dụng'),
           ),
@@ -419,4 +471,3 @@ class _VoucherScreenState extends ConsumerState<VoucherScreen> with SingleTicker
     );
   }
 }
-

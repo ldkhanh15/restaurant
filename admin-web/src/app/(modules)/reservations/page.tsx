@@ -1,7 +1,5 @@
-import { ReservationManagement } from "@/components/modules/reservation-management"
+import { ReservationManagementEnhanced } from "@/components/modules/reservation-management-enhanced";
 
 export default function Page() {
-    return <ReservationManagement />
+  return <ReservationManagementEnhanced />;
 }
-
-

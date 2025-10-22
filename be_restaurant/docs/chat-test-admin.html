@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - Chat Management</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .config-panel {
+      background: #f8f9fa;
+      padding: 20px;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .form-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .form-group label {
+      width: 120px;
+      font-weight: 500;
+      color: #495057;
+    }
+
+    .form-group input {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s;
+      margin-right: 10px;
+    }
+
+    .btn-primary {
+      background: #007bff;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-success {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #218838;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn-warning {
+      background: #ffc107;
+      color: #212529;
+    }
+
+    .btn-warning:hover {
+      background: #e0a800;
+    }
+
+    .btn-info {
+      background: #17a2b8;
+      color: white;
+    }
+
+    .btn-info:hover {
+      background: #138496;
+    }
+
+    .status {
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 300px 1fr 400px;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .sidebar-customers {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 15px;
+      height: fit-content;
+    }
+
+    .customers-list {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 15px;
+    }
+
+    .customer-item {
+      padding: 10px;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .customer-item:hover {
+      background: #e3f2fd;
+    }
+
+    .customer-item.active {
+      background: #bbdefb;
+      border-color: #2196f3;
+    }
+
+    .customer-item h4 {
+      margin: 0 0 5px 0;
+      color: #1976d2;
+    }
+
+    .customer-item p {
+      margin: 0;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .chat-panel {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-direction: column;
+      height: 700px;
+    }
+
+    .chat-header {
+      background: #f8f9fa;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-title {
+      font-weight: bold;
+      color: #495057;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #f8f9fa;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      padding: 10px 15px;
+      border-radius: 18px;
+      max-width: 70%;
+      word-wrap: break-word;
+    }
+
+    .message.user,
+    .message.staff {
+      background: #007bff;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 5px;
+    }
+
+    .message.bot {
+      background: white;
+      color: #495057;
+      border: 1px solid #e9ecef;
+      border-bottom-left-radius: 5px;
+    }
+
+    .message-time {
+      font-size: 11px;
+      opacity: 0.7;
+      margin-top: 5px;
+    }
+
+    .chat-input {
+      padding: 20px;
+      border-top: 1px solid #e9ecef;
+      display: flex;
+      gap: 10px;
+      background: white;
+    }
+
+    .chat-input select,
+    .chat-input input {
+      padding: 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 25px;
+      outline: none;
+      flex: 1;
+    }
+
+    .admin-panel {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 15px;
+    }
+
+    .session-controls {
+      margin-bottom: 20px;
+    }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .logs-panel {
+      background: #2c3e50;
+      color: #ecf0f1;
+      border-radius: 10px;
+      padding: 15px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 15px;
+    }
+
+    @media (max-width: 1200px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+
+      .chat-panel {
+        height: 600px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1><i class="fas fa-user-cog"></i> Admin Panel - Quản lý Chat</h1>
+    </div>
+
+    <div class="config-panel">
+      <div class="form-group">
+        <label><i class="fas fa-server"></i> Backend:</label>
+        <input id="baseUrl" type="url" value="http://localhost:8000/api" />
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-plug"></i> Socket:</label>
+        <input id="socketUrl" type="url" value="http://localhost:8000/chat" />
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-key"></i> Admin JWT:</label>
+        <input id="jwt" type="text" placeholder="Nhập Admin JWT" />
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button id="btnConnect" class="btn btn-primary">
+          <i class="fas fa-plug-circle"></i> Kết nối
+        </button>
+        <span id="connStatus" class="status disconnected">Ngắt kết nối</span>
+        <button id="btnRefreshCustomers" class="btn btn-info">
+          <i class="fas fa-sync"></i> Làm mới
+        </button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="sidebar-customers">
+        <h3><i class="fas fa-users"></i> Khách hàng</h3>
+        <div class="customers-list" id="customersList">
+          <div style="text-align:center; color:#999; padding:20px;">
+            <i class="fas fa-users" style="font-size:24px;"></i>
+            <p>Đang tải danh sách khách hàng...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-panel">
+        <div class="chat-header">
+          <div class="chat-title" id="chatTitle">Chọn khách hàng để xem chat</div>
+          <div>
+            <button id="btnLoadMessages" class="btn btn-warning" style="padding:5px 10px; font-size:12px;">
+              <i class="fas fa-sync"></i> Tải tin nhắn
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="messages">
+          <div style="text-align:center; color:#999; padding:40px;">
+            <i class="fas fa-comments" style="font-size:48px; margin-bottom:10px;"></i>
+            <p>Chọn một khách hàng để bắt đầu</p>
+          </div>
+        </div>
+
+        <div class="chat-input">
+          <select id="senderType">
+            <option value="human">Nhân viên</option>
+            <option value="bot">Bot</option>
+          </select>
+          <input id="msgText" type="text" placeholder="Nhập tin nhắn..." />
+          <button id="btnSend" class="btn btn-primary">
+            <i class="fas fa-paper-plane"></i> Gửi
+          </button>
+        </div>
+      </div>
+
+      <div class="admin-panel">
+        <h3><i class="fas fa-cog"></i> Quản lý Session</h3>
+        <div class="session-controls">
+          <div class="form-group">
+            <label>Session ID:</label>
+            <input id="sessionId" type="text" placeholder="Session ID" />
+          </div>
+          <div class="control-group">
+            <button id="btnJoin" class="btn btn-primary"><i class="fas fa-sign-in-alt"></i> Tham gia</button>
+            <button id="btnLeave" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i> Rời</button>
+          </div>
+          <div class="control-group">
+            <button id="btnEnableBot" class="btn btn-success"><i class="fas fa-robot"></i> Bật Bot</button>
+            <button id="btnDisableBot" class="btn btn-danger"><i class="fas fa-stop"></i> Tắt Bot</button>
+          </div>
+          <button id="btnListSessions" class="btn btn-warning" style="width:100%;">
+            <i class="fas fa-list"></i> Danh sách Sessions
+          </button>
+        </div>
+
+        <div class="logs-panel" id="logs"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    let socket = null;
+    let currentCustomer = null;
+
+    function log(message) {
+      const logs = $("logs");
+      const timestamp = new Date().toLocaleTimeString();
+      logs.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    function addMessage(message, type = 'bot') {
+      const messages = $("messages");
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message ${type}`;
+      msgDiv.innerHTML = `
+        ${message.text}
+        <div class="message-time">${new Date().toLocaleTimeString()}</div>
+      `;
+      messages.appendChild(msgDiv);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function clearMessages() {
+      $("messages").innerHTML = '';
+    }
+
+    function loadCustomers() {
+      // Giả lập dữ liệu khách hàng - thay bằng API call thực tế
+      const customers = [
+        { id: 'cust1', name: 'Nguyễn Văn A', email: 'a@example.com', sessions: ['session1', 'session2'] },
+        { id: 'cust2', name: 'Trần Thị B', email: 'b@example.com', sessions: ['session3'] },
+        { id: 'cust3', name: 'Lê Văn C', email: 'c@example.com', sessions: ['session4'] }
+      ];
+
+      const customersList = $("customersList");
+      customersList.innerHTML = '';
+
+      customers.forEach(customer => {
+        const customerDiv = document.createElement('div');
+        customerDiv.className = 'customer-item';
+        customerDiv.innerHTML = `
+          <h4>${customer.name}</h4>
+          <p>${customer.email}</p>
+          <p>Sessions: ${customer.sessions.length}</p>
+        `;
+        customerDiv.onclick = () => selectCustomer(customer);
+        customersList.appendChild(customerDiv);
+      });
+    }
+
+    function selectCustomer(customer) {
+      currentCustomer = customer;
+      document.querySelectorAll('.customer-item').forEach(item => item.classList.remove('active'));
+      event.target.closest('.customer-item').classList.add('active');
+
+      $("chatTitle").textContent = `${customer.name} - ${customer.email}`;
+      $("sessionId").value = customer.sessions[0] || '';
+      clearMessages();
+      log(`Selected customer: ${customer.name}`);
+
+      // Load messages for this customer
+      loadCustomerMessages(customer.id);
+    }
+
+    async function loadCustomerMessages(customerId) {
+      // Thay bằng API call thực tế để load messages của customer
+      log(`Loading messages for customer ${customerId}`);
+    }
+
+    function authHeader() {
+      const raw = $("jwt").value?.trim();
+      if (!raw) return {};
+      const token = raw.toLowerCase().startsWith("bearer ") ? raw.slice(7) : raw;
+      return { Authorization: `Bearer ${token}` };
+    }
+
+    async function api(path, options = {}) {
+      const base = $("baseUrl").value.replace(/\/$/, "");
+      const headers = {
+        "Content-Type": "application/json",
+        ...authHeader(),
+        ...(options.headers || {})
+      };
+      const res = await fetch(`${base}${path}`, { ...options, headers });
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = text;
+      }
+      if (!res.ok) throw new Error((data && data.message) || res.statusText);
+      return data;
+    }
+
+    // Socket connection
+    $("btnConnect").onclick = () => {
+      try {
+        const url = $("socketUrl").value;
+        const raw = $("jwt").value?.trim();
+        const token = raw?.toLowerCase().startsWith("bearer ") ? raw.slice(7) : raw;
+
+        socket = io(url, {
+          auth: token ? { token: `Bearer ${token}` } : {}
+        });
+
+        socket.on("connect", () => {
+          $("connStatus").textContent = "Đã kết nối";
+          $("connStatus").className = "status connected";
+          log("Socket connected successfully");
+        });
+
+        socket.on("disconnect", () => {
+          $("connStatus").textContent = "Ngắt kết nối";
+          $("connStatus").className = "status disconnected";
+          log("Socket disconnected");
+        });
+
+        socket.on("message:new", (msg) => {
+          addMessage({ text: `${msg.sender_type}: ${msg.message_text}` }, msg.sender_type);
+        });
+
+      } catch (e) {
+        log(`Socket error: ${e.message}`);
+      }
+    };
+
+    // Customer management
+    $("btnRefreshCustomers").onclick = () => {
+      loadCustomers();
+      log("Refreshed customers list");
+    };
+
+    // Session management
+    $("btnListSessions").onclick = async () => {
+      try {
+        const list = await api("/chat/sessions");
+        log(`Sessions: ${JSON.stringify(list)}`);
+      } catch (e) {
+        log(`List sessions failed: ${e.message}`);
+      }
+    };
+
+    $("btnJoin").onclick = () => {
+      const id = $("sessionId").value.trim();
+      if (!socket || !id) return log("Cần kết nối socket và Session ID");
+      socket.emit("joinSession", id);
+      log(`Joined room: session_${id}`);
+    };
+
+    $("btnLeave").onclick = () => {
+      const id = $("sessionId").value.trim();
+      if (!socket || !id) return log("Cần kết nối socket và Session ID");
+      socket.emit("leaveSession", id);
+      log(`Left room: session_${id}`);
+    };
+
+    $("btnEnableBot").onclick = async () => {
+      const id = $("sessionId").value.trim();
+      if (!id) return log("Vui lòng nhập Session ID");
+      try {
+        await api(`/chat/sessions/${id}/enable-bot`, { method: "POST" });
+        log("Bot enabled");
+      } catch (e) {
+        log(`Enable bot failed: ${e.message}`);
+      }
+    };
+
+    $("btnDisableBot").onclick = async () => {
+      const id = $("sessionId").value.trim();
+      if (!id) return log("Vui lòng nhập Session ID");
+      try {
+        await api(`/chat/sessions/${id}/disable-bot`, { method: "POST" });
+        log("Bot disabled");
+      } catch (e) {
+        log(`Disable bot failed: ${e.message}`);
+      }
+    };
+
+    $("btnLoadMessages").onclick = async () => {
+      const id = $("sessionId").value.trim();
+      if (!id) return log("Vui lòng nhập Session ID");
+      try {
+        const msgs = await api(`/chat/sessions/${id}/messages`);
+        clearMessages();
+        msgs.forEach(m => addMessage({ text: `${m.sender_type}: ${m.message_text}` }, m.sender_type));
+        log(`Loaded ${msgs.length} messages`);
+      } catch (e) {
+        log(`Load messages failed: ${e.message}`);
+      }
+    };
+
+    $("btnSend").onclick = async () => {
+      const id = $("sessionId").value.trim();
+      const text = $("msgText").value.trim();
+      const senderType = $("senderType").value;
+
+      if (!id || !text) return log("Cần Session ID và nội dung tin nhắn");
+
+      try {
+        const saved = await api(`/chat/sessions/${id}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ sender_type: senderType, message_text: text })
+        });
+        $("msgText").value = "";
+        addMessage({ text: text }, senderType === 'human' ? 'staff' : 'bot');
+        log(`Message sent as ${senderType}`);
+      } catch (e) {
+        log(`Send failed: ${e.message}`);
+      }
+    };
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadCustomers();
+    });
+
+    // Enter key to send
+    $("msgText").addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        $("btnSend").click();
+      }
+    });
+  </script>
+</body>
+
+</html>

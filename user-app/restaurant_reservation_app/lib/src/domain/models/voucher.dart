@@ -143,3 +143,28 @@ class Voucher {
   }
 }
 
+/// Represents the state for the voucher screen, including all categories of vouchers
+/// and the loading/error status.
+class VoucherState {
+  final List<Voucher> activeVouchers;
+  final List<Voucher> usedVouchers;
+  final List<Voucher> expiredVouchers;
+
+  const VoucherState({
+    this.activeVouchers = const [],
+    this.usedVouchers = const [],
+    this.expiredVouchers = const [],
+  });
+
+  VoucherState copyWith({
+    List<Voucher>? activeVouchers,
+    List<Voucher>? usedVouchers,
+    List<Voucher>? expiredVouchers,
+  }) {
+    return VoucherState(
+      activeVouchers: activeVouchers ?? this.activeVouchers,
+      usedVouchers: usedVouchers ?? this.usedVouchers,
+      expiredVouchers: expiredVouchers ?? this.expiredVouchers,
+    );
+  }
+}

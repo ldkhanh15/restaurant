@@ -2,9 +2,13 @@ import type { Request, Response, NextFunction } from "express"
 import sequelize from "../config/database"
 import Order from "../models/Order"
 import OrderItem from "../models/OrderItem"
+import Voucher from "../models/Voucher"
+import VoucherUsage from "../models/VoucherUsage"
 import { AppError } from "../middlewares/errorHandler"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 import orderAppUserService, { ORDER_ALLOWED_STATUSES } from "../services/order_app_userService"
+import { getIO } from "../sockets"
+import { orderEvents } from "../sockets/orderSocket"
 
 export const getAllOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -53,8 +57,14 @@ export const getOrdersByUser = async (req: Request, res: Response, next: NextFun
   try {
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
-    const userId = req.params.userId
+    // If no userId param provided, default to the authenticated user
+    const userId = req.params.userId ?? (req.user ? String(req.user.id) : undefined)
 
+    if (!userId) {
+      throw new AppError("User id required", 400)
+    }
+
+    // Customers can only fetch their own orders
     if (req.user?.role === "customer" && userId !== String(req.user.id)) {
       throw new AppError("Insufficient permissions", 403)
     }
@@ -159,17 +169,54 @@ export const createOrder = async (req: Request, res: Response, next: NextFunctio
   const transaction = await sequelize.transaction()
 
   try {
-    const { items, ...orderData } = req.body
+    const { items, voucher_code, ...orderData } = req.body as {
+      items: Array<{ dish_id: string; quantity: number; price: number; customizations?: any }>
+      voucher_code?: string
+      [key: string]: any
+    }
 
     let total_amount = 0
     for (const item of items) {
-      total_amount += item.price * item.quantity
+      total_amount += Number(item.price) * Number(item.quantity)
     }
+
+    let voucher_discount_amount = 0
+    let voucher: Voucher | null = null
+    if (voucher_code) {
+      voucher = await Voucher.findOne({ where: { code: voucher_code, active: true } })
+      if (!voucher) {
+        throw new AppError("Invalid voucher code", 400)
+      }
+      const now = new Date()
+      if (voucher.expiry_date && new Date(voucher.expiry_date) < now) {
+        throw new AppError("Voucher expired", 400)
+      }
+      if (voucher.max_uses && voucher.current_uses >= voucher.max_uses) {
+        throw new AppError("Voucher usage limit reached", 400)
+      }
+      if (voucher.min_order_value && total_amount < Number(voucher.min_order_value)) {
+        throw new AppError("Order does not meet voucher minimum value", 400)
+      }
+      // Calculate discount
+      if (voucher.discount_type === "percentage") {
+        voucher_discount_amount = Math.min(
+          Number(((total_amount * Number(voucher.value)) / 100).toFixed(2)),
+          Number(total_amount),
+        )
+      } else {
+        voucher_discount_amount = Math.min(Number(voucher.value), Number(total_amount))
+      }
+    }
+
+    const final_amount = Number((Number(total_amount) - Number(voucher_discount_amount)).toFixed(2))
 
     const order = await Order.create(
       {
         ...orderData,
         total_amount,
+        voucher_id: voucher ? voucher.id : undefined,
+        voucher_discount_amount,
+        final_amount,
       },
       { transaction },
     )
@@ -180,6 +227,18 @@ export const createOrder = async (req: Request, res: Response, next: NextFunctio
     }))
 
     await OrderItem.bulkCreate(orderItems, { transaction })
+
+    if (voucher) {
+      await VoucherUsage.create(
+        {
+          voucher_id: voucher.id,
+          order_id: order.id,
+          user_id: order.user_id,
+        },
+        { transaction },
+      )
+      await voucher.update({ current_uses: voucher.current_uses + 1 }, { transaction })
+    }
 
     await transaction.commit()
 
@@ -235,6 +294,27 @@ export const updateOrderStatus = async (req: Request, res: Response, next: NextF
 
     const updated = await Order.findByPk(id, { include: [{ model: OrderItem, as: "items" }] })
 
+    res.json({ status: "success", data: updated })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const sendOrderToKitchen = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id
+    const order = await Order.findByPk(id)
+    if (!order) throw new AppError("Order not found", 404)
+
+    // Customers can send to kitchen only for their own orders
+    if (req.user?.role === "customer" && order.user_id && order.user_id !== String(req.user.id)) {
+      throw new AppError("Insufficient permissions", 403)
+    }
+
+    // Set status to waiting_kitchen_confirmation
+    await order.update({ status: "waiting_kitchen_confirmation" })
+    const updated = await Order.findByPk(id, { include: [{ model: OrderItem, as: "items" }] })
+    try { orderEvents.orderStatusChanged(getIO(), updated) } catch {}
     res.json({ status: "success", data: updated })
   } catch (error) {
     next(error)

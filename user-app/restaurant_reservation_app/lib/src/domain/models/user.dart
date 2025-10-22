@@ -55,11 +55,18 @@ class AppUser {
         updatedAt: json['updated_at'] != null
             ? DateTime.tryParse(json['updated_at'] as String)
             : null,
-        loyaltyPoints: (json['loyalty_points'] ?? json['loyaltyPoints'] as int?) ?? 0,
+        // Accept multiple possible backend key names: loyalty_points, loyaltyPoints, points
+        loyaltyPoints: (() {
+          final v = json['loyalty_points'] ?? json['loyaltyPoints'] ?? json['points'];
+          if (v == null) return 0;
+          if (v is int) return v;
+          if (v is String) return int.tryParse(v) ?? 0;
+          return 0;
+        })(),
         totalOrders: (json['total_orders'] ?? json['totalOrders'] as int?) ?? 0,
         favoriteTable: (json['favorite_table'] ?? json['favoriteTable']) as String?,
-        membershipTier:
-            (json['membership_tier'] ?? json['membershipTier']) as String? ?? 'Regular',
+    // Accept backend 'membership_tier' or 'membershipTier' or 'ranking'
+    membershipTier: ((json['membership_tier'] ?? json['membershipTier'] ?? json['ranking']) as String?) ?? 'Regular',
       );
 
   Map<String, dynamic> toJson() => {
