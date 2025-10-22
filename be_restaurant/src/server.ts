@@ -16,8 +16,8 @@ const startServer = async () => {
     // await sequelize.sync({ alter: true })
     await sequelize.sync({ alter: true, logging: false });
     // 🔥 Gọi seed
-    await runSeeds();
-    logger.info("Database synchronized");
+    //await runSeeds();
+    //logger.info("Database synchronized");
 
     // Start server with Socket.IO
     const httpServer = createServer(app);
