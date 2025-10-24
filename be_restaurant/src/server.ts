@@ -14,10 +14,10 @@ const startServer = async () => {
 
     // Sync database (use { force: true } to drop and recreate tables in development)
     // await sequelize.sync({ alter: true })
-    await sequelize.sync({ alter: false, logging: false });
+    await sequelize.sync({ alter: true, logging: false });
     // 🔥 Gọi seed
-    //await runSeeds();
-    //logger.info("Database synchronized");
+    await runSeeds();
+    logger.info("Database synchronized");
 
     // Start server with Socket.IO
     const httpServer = createServer(app);

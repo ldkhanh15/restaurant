@@ -29,6 +29,7 @@ import blogPostRoutes from "./routes/blogPostRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
 import chatRoutes from "./routes/chatRoutes";
 import userBehaviorRoutes from "./routes/userBehaviorRoutes";
+import dashboardRoutes from "./routes/dashboardRoutes";
 
 // Import app_user routes
 import menuAppUserRoutes from "./routes/menu_app_userRoutes";
@@ -97,6 +98,7 @@ app.use("/api/blog", blogPostRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/recommendations", userBehaviorRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 
 // App user lightweight endpoints (mobile app)
