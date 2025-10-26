@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/app.dart';
 import 'dart:convert';
 import '../../../domain/models/booking.dart';
 import '../../../domain/models/order.dart';
@@ -188,6 +189,19 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
             ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
             ref.read(orderItemsProvider.notifier).setItems(updatedOrder.items);
 
+            // Sync into order history
+            try {
+              final list = ref.read(orderHistoryProvider);
+              final idx = list.indexWhere((o) => o.id == updatedOrder.id);
+              if (idx != -1) {
+                final copy = list.toList();
+                copy[idx] = updatedOrder;
+                ref.read(orderHistoryProvider.notifier).setOrders(copy);
+              } else {
+                ref.read(orderHistoryProvider.notifier).addOrder(updatedOrder);
+              }
+            } catch (_) {}
+
             // Join socket room for realtime updates
             try {
               ref.read(orderSocketManagerProvider).joinOrder(existingOrderId);
@@ -200,6 +214,19 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
               final serverOrder = _createOrderFromServerResponse(created, localOrder);
               ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
               ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+                // Sync into order history
+                try {
+                  final list = ref.read(orderHistoryProvider);
+                  final idx = list.indexWhere((o) => o.id == serverOrder.id);
+                  if (idx != -1) {
+                    final copy = list.toList();
+                    copy[idx] = serverOrder;
+                    ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                  } else {
+                    ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+                  }
+                } catch (_) {}
 
               final createdOrderId = created['id']?.toString() ?? serverOrder.id;
               try {
@@ -218,6 +245,19 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
           final serverOrder = _createOrderFromServerResponse(created, localOrder);
           ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
           ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+            // Sync into order history
+            try {
+              final list = ref.read(orderHistoryProvider);
+              final idx = list.indexWhere((o) => o.id == serverOrder.id);
+              if (idx != -1) {
+                final copy = list.toList();
+                copy[idx] = serverOrder;
+                ref.read(orderHistoryProvider.notifier).setOrders(copy);
+              } else {
+                ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+              }
+            } catch (_) {}
 
           final createdOrderId = created['id']?.toString() ?? serverOrder.id;
           try {
@@ -243,7 +283,15 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     } finally {
       ref.read(cartItemsProvider.notifier).clearCart();
       setState(() => _isConfirming = false);
-      if (mounted) context.go(navigateTo);
+      if (mounted) {
+        // Use the app-level router to ensure the top-level path is resolved
+        try {
+          appRouter.go(navigateTo);
+        } catch (_) {
+          // fallback to local context navigation if something goes wrong
+          context.go(navigateTo);
+        }
+      }
     }
   }
 
@@ -307,10 +355,23 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     final tax = (currentOrder != null) ? currentOrder.tax : (cartTotal + serviceCharge) * 0.1;
     final total = (currentOrder != null) ? currentOrder.total : cartTotal + serviceCharge + tax;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Xác nhận đơn hàng'),
-      ),
+    return WillPopScope(
+      onWillPop: () async {
+        // Intercept system back and always navigate to bookings list
+        context.go('/my-bookings');
+        return false; // we've handled navigation
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              // Always navigate back to the reservations list (Của tôi)
+              context.go('/my-bookings');
+            },
+          ),
+          title: const Text('Xác nhận đơn hàng'),
+        ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -531,7 +592,8 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
