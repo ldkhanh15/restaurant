@@ -12,6 +12,7 @@ import '../../../data/services/payment_app_user_service_app_user.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/leading_back_button.dart';
 import '../../../app/app.dart';
+import 'payment_success_screen.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final String? initialOrderId;
@@ -279,8 +280,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 appRouter.go('/payment-success', extra: updatedOrder);
                 return;
               } catch (_) {
-                context.go('/account?tab=orders');
-                return;
+                // Fallback: push the screen directly to avoid relying on router registration
+                try {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrder)));
+                  return;
+                } catch (__){
+                  context.go('/account?tab=orders');
+                  return;
+                }
               }
             }
           }
@@ -297,7 +304,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           try {
             appRouter.go('/payment-success', extra: updatedOrderFallback);
             return;
-          } catch (_) {}
+          } catch (_) {
+            try {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrderFallback)));
+              return;
+            } catch (__){ }
+          }
         }
       }
     }
