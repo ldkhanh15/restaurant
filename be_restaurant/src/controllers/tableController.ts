@@ -71,7 +71,7 @@ export const updateTable = async (req: Request, res: Response, next: NextFunctio
 export const deleteTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
     await tableService.delete(req.params.id)
-    res.json({ status: "success", message: "Table deleted successfully" })
+    res.json({ status: "success", message: "Table deleted successfully!" })
   } catch (error) {
     next(error)
   }
