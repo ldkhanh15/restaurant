@@ -10,6 +10,7 @@ import '../presentation/screens/menu/menu_screen.dart';
 import '../presentation/screens/order/order_confirmation_screen.dart';
 import '../presentation/screens/order/order_detail_screen.dart';
 import '../presentation/screens/payment/payment_screen.dart';
+import '../presentation/screens/payment/payment_success_screen.dart';
 import '../presentation/screens/kitchen/kitchen_status_screen.dart';
 import '../presentation/screens/events/event_booking_screen.dart';
 import '../presentation/screens/chat/customer_chat_screen.dart';
@@ -188,6 +189,13 @@ final _router = GoRouter(
   final finalAmount = extra != null ? (extra['finalAmount'] as num?)?.toDouble() : null;
   final subtotal = extra != null ? (extra['subtotal'] as num?)?.toDouble() : null;
         return PaymentScreen(initialOrderId: orderId, initialVoucherIds: voucherIds, initialDiscount: discount, initialFinalAmount: finalAmount, initialSubtotal: subtotal);
+      },
+    ),
+    GoRoute(
+      path: '/payment-success',
+      builder: (context, state) {
+        final order = state.extra as dynamic;
+        return PaymentSuccessScreen(order: order as dynamic);
       },
     ),
     GoRoute(
