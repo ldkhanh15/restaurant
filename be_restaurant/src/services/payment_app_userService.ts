@@ -45,8 +45,11 @@ class PaymentService {
      * @param clientIp - Client IP address
      * @returns VNPay payment URL
      */
-    generateVnpayRedirectUrl(order: Order, bankCode?: string, clientIp: string = "127.0.0.1"): string {
-        const amountVnd = Number(order.final_amount || order.total_amount)
+    /**
+     * Generate VNPay payment URL with optional amount override (in VND)
+     */
+    generateVnpayRedirectUrl(order: Order, bankCode?: string, clientIp: string = "127.0.0.1", amountOverride?: number): string {
+        const amountVnd = typeof amountOverride === 'number' ? amountOverride : Number(order.final_amount || order.total_amount)
         const txnRef = `ORDER_${order.id}_${Date.now()}`
         return this.buildVnpayUrl(amountVnd, `Thanh toan don hang ${order.id}`, txnRef, bankCode, clientIp)
     }

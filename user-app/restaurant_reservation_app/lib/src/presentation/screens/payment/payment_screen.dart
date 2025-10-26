@@ -2,14 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../../domain/models/voucher.dart' as domain_voucher;
 import '../../../domain/models/payment.dart';
 import '../../../domain/models/order.dart';
+import '../../../domain/models/booking.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../domain/models/notification.dart';
 import '../../../data/services/payment_app_user_service_app_user.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../widgets/leading_back_button.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
-  const PaymentScreen({super.key});
+  final String? initialOrderId;
+  final List<String>? initialVoucherIds;
+  final double? initialDiscount;
+  final double? initialFinalAmount;
+  final double? initialSubtotal;
+  const PaymentScreen({super.key, this.initialOrderId, this.initialVoucherIds, this.initialDiscount, this.initialFinalAmount, this.initialSubtotal});
 
   @override
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
@@ -19,12 +28,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethodType? selectedMethod;
   bool isProcessing = false;
   final TextEditingController _notesController = TextEditingController();
+  List<String>? _appliedVoucherIds;
 
 
   @override
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // If navigation supplied an initial voucher id, keep it locally.
+    _appliedVoucherIds = widget.initialVoucherIds;
+    // If an order id was supplied, we might want to fetch that order specifically.
+    // For now we rely on currentOrderProvider being set, but leave the id available.
+    // final initialOrderId = widget.initialOrderId;
+    if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+      // Ensure vouchers are loaded so we can calculate discount
+      Future.microtask(() async {
+        try {
+          await ref.read(vouchersProvider.notifier).fetchUserVouchers();
+        } catch (_) {}
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   String _formatPrice(double price) {
@@ -122,11 +151,42 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       return;
     }
 
+    // Compute applied vouchers and final total here so we can pass amount to backend calls
+    final voucherState = ref.read(vouchersProvider);
+    List<domain_voucher.Voucher> appliedVouchers = [];
+    if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+      final all = [...voucherState.activeVouchers, ...voucherState.usedVouchers, ...voucherState.expiredVouchers];
+      final idSet = _appliedVoucherIds!.toSet();
+      appliedVouchers = all.where((v) => idSet.contains(v.id)).cast<domain_voucher.Voucher>().toList();
+    }
+
+    double _calculateDiscountForSubtotal(double subtotal) {
+      if (appliedVouchers.isEmpty) return 0.0;
+      double fixed = 0.0;
+      double percentSum = 0.0;
+      for (final v in appliedVouchers) {
+        if (v.discountAmount != null) fixed += v.discountAmount!;
+        if (v.discountPercentage != null) percentSum += v.discountPercentage!;
+      }
+      final percentDiscount = subtotal * (percentSum / 100.0);
+      final total = fixed + percentDiscount;
+      return total.clamp(0, subtotal);
+    }
+
+    final discount = _calculateDiscountForSubtotal(currentOrder.subtotal);
+    final finalTotal = (currentOrder.total - discount).clamp(0.0, double.infinity);
+
     try {
       // If user selected VNPay (or momo/banking mapped to vnpay on backend), call createVnpayPayment
-      if (selectedMethod == PaymentMethodType.momo || _getPaymentMethodString(selectedMethod!) == 'other' || _getPaymentMethodString(selectedMethod!) == 'momo') {
+  // Only MoMo should use the VNPay redirect flow. Treat banking (transfer) as a simple method
+  // that uses the immediate processOrderPayment API to mark the order paid.
+  if (selectedMethod == PaymentMethodType.momo) {
         // For now, prefer VNPay flow via backend's /vnpay/create which will return a redirect_url
-        final resp = await PaymentAppUserService.createVnpayPayment(currentOrder.id.toString());
+        final resp = await PaymentAppUserService.createVnpayPayment(
+          currentOrder.id.toString(),
+          voucherIds: _appliedVoucherIds,
+          amount: finalTotal,
+        );
         final redirect = resp['redirect_url'] as String?;
         if (redirect != null && redirect.isNotEmpty) {
           // Open in external browser
@@ -161,6 +221,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         final updatedOrderData = await OrderAppUserService.processOrderPayment(currentOrder.id.toString(), {
           'payment_status': 'paid',
           'payment_method': _getPaymentMethodString(selectedMethod!),
+          if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) 'voucher_ids': _appliedVoucherIds,
+          'amount': finalTotal,
         });
 
         final updatedOrder = currentOrder.copyWith(
@@ -180,23 +242,107 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       isProcessing = false;
     });
 
-    if (mounted) context.go('/kitchen-status');
+    // After successful payment, create a local notification and navigate back to the order screen
+    try {
+      final updatedOrder = ref.read(currentOrderProvider);
+          if (updatedOrder != null) {
+  final user = ref.read(userProvider);
+  final userId = user != null ? user.id.toString() : null;
+        final notif = AppNotification(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          userId: userId,
+          type: NotificationType.other,
+          content: 'Đơn hàng #${updatedOrder.id} đã được thanh toán',
+          sentAt: DateTime.now(),
+          status: NotificationStatus.sent,
+        );
+        try {
+          ref.read(notificationsProvider.notifier).addNotification(notif);
+        } catch (_) {}
+
+        // Try to find the booking object to navigate to order-confirmation
+        final bookings = ref.read(bookingsProvider);
+        Booking? found;
+        try {
+          final matches = bookings.where((b) => b.id == updatedOrder.bookingId || b.serverId == updatedOrder.bookingId).toList();
+          if (matches.isNotEmpty) found = matches.first;
+        } catch (_) {}
+
+        if (!mounted) return;
+        if (found != null) {
+          final updatedOrder = ref.read(currentOrderProvider);
+          if (updatedOrder != null) {
+            // Navigate to account orders tab so user lands on their orders list.
+            if (mounted) context.go('/account?tab=orders');
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: if we have an updatedOrder but no Booking, navigate to kitchen if it's a kitchen state;
+    // otherwise fall back to account orders tab so user can find their order.
+    final updatedOrderFallback = ref.read(currentOrderProvider);
+    if (updatedOrderFallback != null) {
+      final kitchenStatuses = {
+        OrderStatus.waitingKitchenConfirmation,
+        OrderStatus.preparing,
+        OrderStatus.ready,
+        OrderStatus.sentToKitchen,
+      };
+      if (kitchenStatuses.contains(updatedOrderFallback.status)) {
+        if (mounted) context.go('/kitchen-status');
+        return;
+      }
+    }
+
+    if (mounted) context.go('/account?tab=orders');
   }
 
   @override
   Widget build(BuildContext context) {
   final currentOrder = ref.watch(currentOrderProvider);
+  final voucherState = ref.watch(vouchersProvider);
+
+  // Resolve applied vouchers from ids (search across categories)
+  List<domain_voucher.Voucher> appliedVouchers = [];
+  if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+    final all = [...voucherState.activeVouchers, ...voucherState.usedVouchers, ...voucherState.expiredVouchers];
+    final idSet = _appliedVoucherIds!.toSet();
+    appliedVouchers = all.where((v) => idSet.contains(v.id)).cast<domain_voucher.Voucher>().toList();
+  }
+
+  double _calculateDiscountLocal(double subtotal) {
+    if (appliedVouchers.isEmpty) return 0.0;
+    double fixed = 0.0;
+    double percentSum = 0.0;
+    for (final v in appliedVouchers) {
+      if (v.discountAmount != null) fixed += v.discountAmount!;
+      if (v.discountPercentage != null) percentSum += v.discountPercentage!;
+    }
+    final percentDiscount = subtotal * (percentSum / 100.0);
+    final total = fixed + percentDiscount;
+    return total.clamp(0, subtotal);
+  }
 
     if (currentOrder == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Thanh toán')),
+        appBar: AppBar(
+          leading: const LeadingBackButton(),
+          title: const Text('Thanh toán'),
+        ),
         body: const Center(
           child: Text('Không có đơn hàng để thanh toán'),
         ),
       );
     }
 
-    return Scaffold(
+  // Prefer initial values provided via navigation extras (from Confirm & Pay) to avoid mismatch
+  final subtotal = widget.initialSubtotal ?? currentOrder.subtotal;
+  final discount = widget.initialDiscount ?? _calculateDiscountLocal(subtotal);
+  final finalTotal = widget.initialFinalAmount ?? (currentOrder.total - discount).clamp(0.0, double.infinity);
+
+  return Scaffold(
       appBar: AppBar(
         title: const Text('Thanh toán'),
       ),
@@ -243,6 +389,29 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       ],
                     ),
                     const Divider(),
+                    if (appliedVouchers.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Voucher áp dụng:'),
+                          Text('${appliedVouchers.length}'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: appliedVouchers.map((v) => Chip(label: Text(v.code))).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Giảm:'),
+                          Text('-${_formatPrice(discount)}'),
+                        ],
+                      ),
+                      const Divider(),
+                    ],
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -253,7 +422,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           ),
                         ),
                         Text(
-                          _formatPrice(currentOrder.total),
+                          _formatPrice(finalTotal),
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
@@ -341,7 +510,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           Text('Đang xử lý...'),
                         ],
                       )
-                    : Text('Thanh toán ${_formatPrice(currentOrder.total)}'),
+                    : Text('Thanh toán ${_formatPrice(finalTotal)}'),
               ),
             ),
           ],

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express"
 import sequelize from "../config/database"
 import Order from "../models/Order"
 import OrderItem from "../models/OrderItem"
+import Dish from "../models/Dish"
 import Voucher from "../models/Voucher"
 import VoucherUsage from "../models/VoucherUsage"
 import { AppError } from "../middlewares/errorHandler"
@@ -119,10 +120,21 @@ export const getOrdersByStatus = async (req: Request, res: Response, next: NextF
 export const processOrderPayment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params
-    const { payment_method, payment_status } = req.body as {
-      payment_method: "zalopay" | "momo" | "cash"
+    let { payment_method, payment_status } = req.body as {
+      payment_method: string
       payment_status: "pending" | "paid" | "failed"
     }
+
+    // Normalize payment_method to supported enum values stored in DB
+    const normalizePaymentMethod = (m?: string) => {
+      if (!m) return 'cash'
+      const mm = String(m).toLowerCase()
+      if (mm === 'momo' || mm === 'zalopay' || mm === 'vnpay') return mm
+      // treat other/banking/card/other as cash for now
+      return 'cash'
+    }
+
+    payment_method = normalizePaymentMethod(payment_method)
 
     // Basic validation
     if (!payment_method || !payment_status) {
@@ -138,7 +150,7 @@ export const processOrderPayment = async (req: Request, res: Response, next: Nex
       throw new AppError("Insufficient permissions", 403)
     }
 
-    const updatedOrder = await orderAppUserService.processPayment(id, { payment_method, payment_status })
+  const updatedOrder = await orderAppUserService.processPayment(id, { payment_method: payment_method as "zalopay" | "momo" | "cash", payment_status })
     res.json({ status: "success", data: updatedOrder })
   } catch (error) {
     next(error)
@@ -169,14 +181,33 @@ export const createOrder = async (req: Request, res: Response, next: NextFunctio
   const transaction = await sequelize.transaction()
 
   try {
+    // Debug: log incoming items and voucher for tracing unexpected order contents
+    try {
+      console.log(`[Order] createOrder user=${req.user?.id} items=`, req.body?.items, "voucher_code=", req.body?.voucher_code)
+    } catch (e) {
+      console.log('[Order] createOrder - failed to log request body')
+    }
+
     const { items, voucher_code, ...orderData } = req.body as {
       items: Array<{ dish_id: string; quantity: number; price: number; customizations?: any }>
       voucher_code?: string
       [key: string]: any
     }
 
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new AppError("Order must contain at least one item", 400)
+    }
+
+    // Normalize item keys and compute total_amount. Also collect dish ids to validate FK.
+    const normalizedItems = items.map((it: any) => ({
+      dish_id: it.dish_id ?? it.dishId ?? it.id ?? null,
+      quantity: Number(it.quantity ?? it.qty ?? 1) || 1,
+      price: Number(it.price ?? it.unit_price ?? it.unitPrice ?? 0) || 0,
+      customizations: it.customizations ?? it.customization ?? null,
+    }))
+
     let total_amount = 0
-    for (const item of items) {
+    for (const item of normalizedItems) {
       total_amount += Number(item.price) * Number(item.quantity)
     }
 
@@ -226,7 +257,23 @@ export const createOrder = async (req: Request, res: Response, next: NextFunctio
       order_id: order.id,
     }))
 
-    await OrderItem.bulkCreate(orderItems, { transaction })
+    // Validate dish_id references exist. If a dish_id does not exist, set dish_id to null
+    const dishIds = Array.from(new Set(normalizedItems.map((i: any) => i.dish_id).filter(Boolean)))
+    let existingDishIds: string[] = []
+    if (dishIds.length > 0) {
+      const found = await Dish.findAll({ where: { id: dishIds } })
+      existingDishIds = found.map((d) => d.id)
+    }
+
+    const preparedOrderItems = normalizedItems.map((it: any) => ({
+      dish_id: existingDishIds.includes(it.dish_id) ? it.dish_id : null,
+      quantity: it.quantity,
+      price: it.price,
+      customizations: it.customizations,
+      order_id: order.id,
+    }))
+
+    await OrderItem.bulkCreate(preparedOrderItems, { transaction })
 
     if (voucher) {
       await VoucherUsage.create(

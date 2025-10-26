@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../app/app.dart';
 import '../../application/providers.dart';
+import '../widgets/app_bottom_navigation.dart';
+import '../widgets/main_navigation.dart';
 import '../../application/socket_manager.dart';
 import '../../data/services/order_app_user_service_app_user.dart';
 import '../../domain/models/order.dart';
-import '../../domain/models/menu.dart';
+// ...existing imports
 import '../../domain/models/booking.dart';
 import '../../domain/models/table.dart';
 import '../../domain/entities/reservation.dart' as ent_reservation;
@@ -21,6 +24,7 @@ import '../../domain/usecases/create_reservation.dart';
 import '../widgets/table_card.dart';
 import '../widgets/booking_dialog.dart';
 import 'table_map_screen.dart';
+import 'kitchen/kitchen_status_screen.dart';
 
 class TableBookingScreen extends ConsumerStatefulWidget {
   final String? initialTab;
@@ -37,15 +41,15 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
   bool _isLoadingBookings = false;
   bool _initialized = false;
 
-
   void handleBookTable(Booking newBooking) async {
-    // Try to persist booking to backend via CreateReservation usecase.
+    // debug: log when booking handler is invoked
+    // ignore: avoid_print
+    print('[TableBookingScreen] handleBookTable called with booking: ${newBooking.tableId} ${newBooking.date} ${newBooking.time}');
     try {
       final repo = ReservationRepositoryImpl();
       final usecase = CreateReservation(repo);
       final currentUser = ref.read(userProvider);
 
-      // Combine date and time correctly
       final timeParts = newBooking.time.split(':');
       final hour = int.tryParse(timeParts[0]) ?? 0;
       final minute = int.tryParse(timeParts[1]) ?? 0;
@@ -55,7 +59,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         newBooking.date.day,
         hour,
         minute,
-        ).toUtc(); // Convert to UTC before sending
+      ).toUtc();
 
       final reservation = ent_reservation.Reservation(
         id: '',
@@ -69,19 +73,13 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         dateTime: reservationDateTime,
         numberOfGuests: newBooking.guests,
       );
-      // debug: log reservation and current user id
-      // ignore: avoid_print
-      print('[TableBookingScreen] creating reservation, ApiConfig.currentUserId=${ApiConfig.currentUserId}');
-      // ignore: avoid_print
-      print('[TableBookingScreen] reservation payload dateTime=${reservation.dateTime.toIso8601String()} numberOfGuests=${reservation.numberOfGuests} table.id=${reservation.table.id}');
 
       final created = await usecase.call(reservation);
 
-      // Map created Reservation to Booking model expected by providers
       final createdBooking = Booking(
         id: created.id,
-  serverId: created.id.toString(),
-        tableId: created.table.id, // Already a string
+        serverId: created.id.toString(),
+        tableId: created.table.id,
         tableName: newBooking.tableName,
         date: DateTime(created.dateTime.year, created.dateTime.month, created.dateTime.day),
         time: '${created.dateTime.hour.toString().padLeft(2, '0')}:${created.dateTime.minute.toString().padLeft(2, '0')}',
@@ -93,11 +91,14 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         createdAt: DateTime.now(),
       );
 
-      // Update providers with server-backed booking
       ref.read(bookingsProvider.notifier).addBooking(createdBooking);
-      // Refresh bookings from server to get canonical ids/statuses
       await _loadBookingsFromServer();
-      // show success
+
+      // Ensure order history is fresh so paid orders show up in 'Của tôi'
+      try {
+        await ref.read(orderHistoryProvider.notifier).fetchFromServer();
+      } catch (_) {}
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đặt bàn thành công')));
       }
@@ -108,24 +109,17 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
         try {
           await TableAppUserServiceAppUser.updateTableStatus(selectedTable!.id.toString(), 'reserved');
         } catch (e) {
-          print('Failed to update table status on backend: $e');
+          debugPrint('updateTableStatus error: $e');
         }
       }
 
-      // Close dialog and navigate
       setState(() {
         isBookingOpen = false;
         selectedTable = null;
+        activeTab = 'myBookings';
       });
-
-      if (mounted) {
-        // After booking, switch to the 'myBookings' tab
-        setState(() => activeTab = "myBookings");
-        _loadBookingsFromServer();
-      }
+      _loadBookingsFromServer();
     } catch (e) {
-      // Fallback to local behavior if API call fails
-      // show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể tạo đặt chỗ: $e')));
       }
@@ -138,120 +132,56 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       setState(() {
         isBookingOpen = false;
         selectedTable = null;
+        activeTab = 'myBookings';
       });
-      // Attempt to refresh bookings; if API is unreachable this will silently fail
       try {
         await _loadBookingsFromServer();
-      } catch (_) {}
-      if (mounted) {
-        setState(() => activeTab = "myBookings");
-        _loadBookingsFromServer();
+      } catch (e) {
+        debugPrint('load bookings after create error: $e');
       }
     }
   }
 
   Future<void> onOrderFood(Booking booking) async {
-    // If there's an existing order for this booking, load its items into the cart and set current order
     try {
-      // ignore: avoid_print
-      print('[TableBookingScreen] onOrderFood: fetching orders for booking=${booking.id} serverId=${booking.serverId}');
       final raw = await OrderAppUserService.fetchOrdersForUser(page: 1, limit: 100);
-      // ignore: avoid_print
-      print('[TableBookingScreen] fetched raw orders=${raw.length}');
       final orders = raw.map((e) => Order.fromJson(e as Map<String, dynamic>)).where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
-      // ignore: avoid_print
-      print('[TableBookingScreen] matched orders=${orders.length}');
-      // Show a quick SnackBar so testers can see counts in the UI when reproducing the flow
-      if (mounted) {
-        try {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Tải orders: ${raw.length}, khớp: ${orders.length}')));
-        } catch (_) {}
-      }
-      if (orders.isNotEmpty) {
-        // Prefer an order that actually contains items; fallback to the first result
-        final last = orders.firstWhere((o) => o.items.isNotEmpty, orElse: () => orders.first);
-        // populate cart from order items
-        final cartNotifier = ref.read(cartItemsProvider.notifier);
-        cartNotifier.clearCart();
-        // ignore: avoid_print
-        print('[TableBookingScreen] populating cart from order id=${last.id} items=${last.items.length}');
-        for (final oi in last.items) {
-          final ci = CartItem(
-            id: oi.id.toString(),
-            name: oi.name,
-            price: oi.price,
-            quantity: oi.quantity,
-            image: oi.image,
-            customizations: oi.customizations,
-            specialNote: oi.specialNote,
-          );
-          cartNotifier.addItem(ci);
-          // ignore: avoid_print
-          print('[TableBookingScreen] added cart item id=${ci.id} name=${ci.name} qty=${ci.quantity}');
+        if (orders.isNotEmpty) {
+          // Do not auto-restore previous orders and do not prompt the user.
+          // The cart remains empty when opening the menu; users can use the 'Đặt lại' action
+          // in the order detail screen if they want to reorder.
+        } else {
+        Map<String, dynamic>? matchedRaw;
+        for (final e in raw) {
+          if (e is Map<String, dynamic>) {
+            final rid = (e['reservation_id'] ?? e['reservationId'] ?? e['reservation'] ?? '').toString();
+            final tid = (e['table_id'] ?? e['tableId'] ?? e['table'] ?? '').toString();
+            if (rid.isNotEmpty && (rid == booking.serverId || rid == booking.id)) {
+              matchedRaw = e;
+              break;
+            }
+            if (tid.isNotEmpty && tid == booking.tableId) {
+              matchedRaw = e;
+              break;
+            }
+          }
         }
-        // set current order and order items providers
-        ref.read(currentOrderProvider.notifier).setOrder(last);
-        ref.read(orderItemsProvider.notifier).setItems(last.items);
-      }
-      else {
-        // Fallback: sometimes backend stores table_id/reservation_id in raw shape differently.
-        try {
-          Map<String, dynamic>? matchedRaw;
-          for (final e in raw) {
-            if (e is Map<String, dynamic>) {
-              final rid = (e['reservation_id'] ?? e['reservationId'] ?? e['reservation'] ?? '').toString();
-              final tid = (e['table_id'] ?? e['tableId'] ?? e['table'] ?? '').toString();
-              if (rid.isNotEmpty && (rid == booking.serverId || rid == booking.id)) {
-                matchedRaw = e;
-                // ignore: avoid_print
-                print('[TableBookingScreen] fallback matched by reservation_id=$rid');
-                break;
-              }
-              if (tid.isNotEmpty && tid == booking.tableId) {
-                matchedRaw = e;
-                // ignore: avoid_print
-                print('[TableBookingScreen] fallback matched by table_id=$tid');
-                break;
-              }
-            }
-          }
-          if (matchedRaw != null) {
-            final o = Order.fromJson(matchedRaw);
-            if (o.items.isNotEmpty) {
-              final cartNotifier = ref.read(cartItemsProvider.notifier);
-              cartNotifier.clearCart();
-              // ignore: avoid_print
-              print('[TableBookingScreen] populating cart from fallback order id=${o.id} items=${o.items.length}');
-              for (final oi in o.items) {
-                final ci = CartItem(
-                  id: oi.id.toString(),
-                  name: oi.name,
-                  price: oi.price,
-                  quantity: oi.quantity,
-                  image: oi.image,
-                  customizations: oi.customizations,
-                  specialNote: oi.specialNote,
-                );
-                cartNotifier.addItem(ci);
-                // ignore: avoid_print
-                print('[TableBookingScreen] added cart item (fallback) id=${ci.id} name=${ci.name} qty=${ci.quantity}');
-              }
-              ref.read(currentOrderProvider.notifier).setOrder(o);
-              ref.read(orderItemsProvider.notifier).setItems(o.items);
-            }
-          }
-        } catch (e) {
-          // ignore: avoid_print
-          print('[TableBookingScreen] fallback match error: $e');
+        if (matchedRaw != null) {
+          // Found a matched order/reservation but we will NOT restore items automatically
+          // and we won't prompt the user. Keep the cart empty on entry.
         }
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('[TableBookingScreen] onOrderFood error: $e');
+      debugPrint('onOrderFood error: $e');
     }
 
-    if (!mounted) return;
-    context.go('/menu', extra: booking);
+  if (!mounted) return;
+  // Ensure cart starts empty when opening the menu from the bookings flow.
+  // Restoration of previous orders is still available via explicit dialogs above.
+  try {
+    ref.read(cartItemsProvider.notifier).clearCart();
+  } catch (_) {}
+  context.push('/menu', extra: booking);
   }
 
   Future<void> _loadBookingsFromServer() async {
@@ -260,7 +190,6 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       _isLoadingBookings = true;
     });
     try {
-      // Fetch raw data to ensure correct parsing, bypassing the repository
       final reservationsRaw = await ReservationAppUserServiceAppUser.fetchReservations();
       final availableTables = ref.read(tablesProvider);
       final fetched = reservationsRaw.map((r) {
@@ -293,7 +222,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
           tableId: tableId,
           tableName: tableName,
           date: reservationTime,
-          time: TimeOfDay.fromDateTime(reservationTime).format(context),
+          time: DateFormat.Hm().format(reservationTime),
           guests: (map['num_people'] is int) ? map['num_people'] as int : 1,
           status: status,
           location: tableMap?['location'] ?? 'N/A',
@@ -304,11 +233,9 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
 
       ref.read(bookingsProvider.notifier).setBookings(fetched);
     } catch (e) {
-      // debug error
-      // ignore: avoid_print
-      print('[TableBookingScreen] failed to load reservations: $e');
-      // keep existing bookings (maybe mock or previously created ones)
-    } finally {
+      debugPrint('loadBookings mapping error: $e');
+    }
+    finally {
       setState(() {
         _isLoadingBookings = false;
       });
@@ -316,7 +243,6 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
   }
 
   void _handleEditBooking(Booking booking) {
-    // Open BookingDialog pre-filled by setting selectedTable and isBookingOpen
     final table = DiningTable(
       id: booking.tableId,
       name: booking.tableName,
@@ -330,34 +256,28 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       selectedTable = table;
       isBookingOpen = true;
     });
-    // When dialog saves, call update
+
     void onUpdate(Booking updated) async {
       try {
-        // call backend update: prefer server-side reservation id (UUID) when available
-        final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty)
-            ? booking.serverId!
-            : booking.id.toString();
-      // Combine date and time correctly for update
-      final timeParts = updated.time.split(':');
-      final hour = int.tryParse(timeParts[0]) ?? 0;
-      final minute = int.tryParse(timeParts[1]) ?? 0;
-      final reservationDateTime = DateTime(
-        updated.date.year,
-        updated.date.month,
-        updated.date.day,
-        hour,
-        minute,
-      ).toUtc(); // Convert to UTC before sending
+        final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty) ? booking.serverId! : booking.id.toString();
+        final timeParts = updated.time.split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = int.tryParse(timeParts[1]) ?? 0;
+        final reservationDateTime = DateTime(
+          updated.date.year,
+          updated.date.month,
+          updated.date.day,
+          hour,
+          minute,
+        ).toUtc();
 
         final payload = {
-        'reservation_time': reservationDateTime.toIso8601String(),
-        'num_people': updated.guests,
+          'reservation_time': reservationDateTime.toIso8601String(),
+          'num_people': updated.guests,
         };
-  await ReservationAppUserServiceAppUser.updateReservation(idStr, payload);
-  final updatedBooking = updated;
-        ref.read(bookingsProvider.notifier).updateBooking(updatedBooking);
+        await ReservationAppUserServiceAppUser.updateReservation(idStr, payload);
+        ref.read(bookingsProvider.notifier).updateBooking(updated);
       } catch (e) {
-        // fallback: update local provider
         ref.read(bookingsProvider.notifier).updateBooking(updated);
       } finally {
         setState(() {
@@ -367,9 +287,6 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       }
     }
 
-    // show dialog via floatingActionButton (the widget will pick up editingBooking via constructor)
-    // we replace floatingActionButton temporarily by passing editingBooking and onUpdate when built
-    // To keep changes small, we store the onUpdate callback in state via a closure - using a simplistic approach: call showDialog
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -388,28 +305,25 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
   }
 
   void _handleCancelBooking(Booking booking) async {
-    // optimistic remove
     try {
-      // Prefer serverId (UUID) when present to delete the correct reservation on backend
-      final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty)
-          ? booking.serverId!
-          : booking.id.toString();
-  await ReservationAppUserServiceAppUser.cancelReservation(idStr);
-      // Update the booking in the provider with the new 'cancelled' status
+      final idStr = (booking.serverId != null && booking.serverId!.isNotEmpty) ? booking.serverId! : booking.id.toString();
+      await ReservationAppUserServiceAppUser.cancelReservation(idStr);
+      if (!mounted) return;
       final updatedBooking = Booking.fromReservation(
-        Booking.toReservation(booking), // Convert existing booking to reservation entity
+        Booking.toReservation(booking),
         context,
-      ).copyWith(status: BookingStatus.cancelled); // Create a new booking model with updated status
+      ).copyWith(status: BookingStatus.cancelled);
 
       ref.read(bookingsProvider.notifier).updateBooking(updatedBooking);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy đặt bàn')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hủy thất bại: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hủy thất bại: $e')));
+      }
     }
   }
 
   Future<void> _openOrderDialog(Booking booking) async {
-    // Fetch orders for user and filter by booking id
     showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -428,13 +342,17 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               child: orders.isEmpty
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
-                        children: [
+                      children: [
                         const Text('Chưa có order nào cho bàn này.'),
                         const SizedBox(height: 12),
                         ElevatedButton(
                           onPressed: () {
-                            // Close dialog then navigate to the menu screen so user can add items to cart
                             Navigator.of(ctx).pop();
+                            if (!mounted) return;
+                            // Clear cart so menu opens with an empty cart
+                            try {
+                              ref.read(cartItemsProvider.notifier).clearCart();
+                            } catch (_) {}
                             context.go('/menu', extra: booking);
                           },
                           child: const Text('Gọi món'),
@@ -454,25 +372,21 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                               onSelected: (val) async {
                                 if (val == 'goto') {
                                   Navigator.of(ctx).pop();
-                                  // Set current order so the target screens can display it
                                   try {
                                     ref.read(currentOrderProvider.notifier).setOrder(o);
                                     ref.read(orderItemsProvider.notifier).setItems(o.items);
                                   } catch (_) {}
-                                  // Navigate to appropriate screen depending on order status
                                   if (o.status == OrderStatus.pending) {
-                                    context.go('/order-confirmation', extra: booking);
+                                    appRouter.push('/order-confirmation', extra: booking);
                                   } else if (o.status == OrderStatus.waitingKitchenConfirmation || o.status == OrderStatus.sentToKitchen || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) {
-                                    // For any kitchen-involved state, open the kitchen status screen
-                                    context.go('/kitchen-status');
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => const KitchenStatusScreen()));
                                   } else {
-                                    // Default: open confirmation to view/edit
-                                    context.go('/order-confirmation', extra: booking);
+                                    appRouter.push('/order-confirmation', extra: booking);
                                   }
                                 } else if (val == 'send') {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   try {
                                     final updated = await OrderAppUserService.sendToKitchen(o.id);
-                                    // optimistic notify: update providers
                                     final updatedOrder = Order.fromJson(Map<String, dynamic>.from(updated));
                                     try {
                                       final list = ref.read(orderHistoryProvider);
@@ -484,23 +398,29 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                                       } else {
                                         ref.read(orderHistoryProvider.notifier).addOrder(updatedOrder);
                                       }
-                                    } catch (_) {}
-                                    // inform user
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi tới bếp')));
+                                    } catch (e) {
+                                      debugPrint('update order history error: $e');
+                                    }
+                                    if (!mounted) return;
+                                    messenger.showSnackBar(const SnackBar(content: Text('Đã gửi tới bếp')));
                                   } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gửi tới bếp thất bại: $e')));
+                                    messenger.showSnackBar(SnackBar(content: Text('Gửi tới bếp thất bại: $e')));
                                   }
                                 } else if (val == 'follow') {
                                   try {
-                                    // set current order so kitchen screen shows details immediately
                                     ref.read(currentOrderProvider.notifier).setOrder(o);
                                     ref.read(orderItemsProvider.notifier).setItems(o.items);
-                                  } catch (_) {}
+                                  } catch (e) {
+                                    debugPrint('set current order error: $e');
+                                  }
                                   try {
                                     ref.read(orderSocketManagerProvider).joinOrder(o.id);
-                                  } catch (_) {}
+                                  } catch (e) {
+                                    debugPrint('join order socket error: $e');
+                                  }
                                   Navigator.of(ctx).pop();
-                                  context.go('/kitchen-status');
+                                  if (!mounted) return;
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => const KitchenStatusScreen()));
                                 }
                               },
                               itemBuilder: (menuCtx) => [
@@ -523,10 +443,91 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
     );
   }
 
+  /// Find the most relevant order for [booking] (currentOrderProvider or orderHistory)
+  /// and navigate to the correct screen depending on its status.
+  Future<void> _openOrNavigateToOrder(Booking booking) async {
+    try {
+      // Prefer the currentOrder if it matches
+      final current = ref.read(currentOrderProvider);
+      Order? found;
+      if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) {
+        found = current;
+      }
+
+      // Fallback to cached order history
+      if (found == null) {
+        final list = ref.read(orderHistoryProvider);
+        final matches = list.where((o) => (o.bookingId == booking.id || o.bookingId == booking.serverId)).toList();
+        if (matches.isNotEmpty) found = matches.first;
+      }
+
+      // If still not found, try fetching from server once
+      if (found == null) {
+        try {
+          final raw = await OrderAppUserService.fetchOrdersForUser(page: 1, limit: 100);
+          final fetched = raw.map((e) => Order.fromJson(e as Map<String, dynamic>)).where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+          if (fetched.isNotEmpty) {
+            found = fetched.first;
+            // update provider cache
+            try {
+              ref.read(orderHistoryProvider.notifier).addOrder(found);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+
+      if (found != null) {
+        // Capture a non-null local order variable to avoid nullable access across awaits.
+  Order orderToUse = found;
+        // Try to fetch the freshest order details (may contain items) by id
+        try {
+          // Some cached orders may have empty items; fetch full details from server if possible
+          final detailedRaw = await OrderAppUserService.getOrderById(orderToUse.id);
+          try {
+            final detailed = Order.fromJson(Map<String, dynamic>.from(detailedRaw));
+            ref.read(currentOrderProvider.notifier).setOrder(detailed);
+            ref.read(orderItemsProvider.notifier).setItems(detailed.items);
+            orderToUse = detailed;
+          } catch (_) {
+            // fallback: use cached orderToUse
+            try {
+              ref.read(currentOrderProvider.notifier).setOrder(orderToUse);
+              ref.read(orderItemsProvider.notifier).setItems(orderToUse.items);
+            } catch (_) {}
+          }
+        } catch (e) {
+          // network failed: still attempt to set cached order so UI can at least show something
+          try {
+            ref.read(currentOrderProvider.notifier).setOrder(orderToUse);
+            ref.read(orderItemsProvider.notifier).setItems(orderToUse.items);
+          } catch (_) {}
+        }
+
+        // Navigate based on status
+        if (!mounted) return;
+        if (orderToUse.status == OrderStatus.pending) {
+          // Open order confirmation / details where user can view ordered items
+          appRouter.push('/order-confirmation', extra: booking);
+        } else if (orderToUse.status == OrderStatus.waitingKitchenConfirmation || orderToUse.status == OrderStatus.sentToKitchen || orderToUse.status == OrderStatus.preparing || orderToUse.status == OrderStatus.ready) {
+          // Go to kitchen status / tracking screen
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const KitchenStatusScreen()));
+        } else {
+          // default to order confirmation
+          appRouter.push('/order-confirmation', extra: booking);
+        }
+      } else {
+        // No order: open the order dialog to allow user to create one (same as Gọi món flow)
+        _openOrderDialog(booking);
+      }
+    } catch (e) {
+      // fallback: open dialog
+      _openOrderDialog(booking);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    // Defer initializer until after first frame so context & ref are ready.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_initialized) {
         _initialized = true;
@@ -534,18 +535,21 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
           await initializeAppUserData_app_user(ref);
           setState(() {});
         } catch (e) {
-          // ignore: avoid_print
-          print('[TableBookingScreen] initializer failed: $e');
+          debugPrint('initState initializeAppUserData error: $e');
         }
       }
     });
   }
 
+  @override
   Widget build(BuildContext context) {
     final availableTables = ref.watch(tablesProvider);
     final myBookings = ref.watch(bookingsProvider);
 
     return Scaffold(
+      bottomNavigationBar: (context.findAncestorWidgetOfExactType<MainNavigation>() == null)
+          ? const AppBottomNavigation(selectedIndex: 1)
+          : null,
       appBar: AppBar(
         title: const Text('Đặt bàn'),
         actions: [
@@ -559,9 +563,9 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48.0),
+          preferredSize: const Size.fromHeight(64),
           child: Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             child: Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceVariant,
@@ -572,9 +576,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                   Expanded(
                     child: TextButton(
                       style: TextButton.styleFrom(
-                        backgroundColor: activeTab == "available"
-                            ? Theme.of(context).colorScheme.background
-                            : Colors.transparent,
+                        backgroundColor: activeTab == "available" ? Theme.of(context).colorScheme.background : Colors.transparent,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(6.0),
                         ),
@@ -583,9 +585,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                       child: Text(
                         'Danh sách',
                         style: TextStyle(
-                          color: activeTab == "available"
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: activeTab == "available" ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -593,9 +593,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                   Expanded(
                     child: TextButton(
                       style: TextButton.styleFrom(
-                        backgroundColor: activeTab == "map"
-                            ? Theme.of(context).colorScheme.background
-                            : Colors.transparent,
+                        backgroundColor: activeTab == "map" ? Theme.of(context).colorScheme.background : Colors.transparent,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(6.0),
                         ),
@@ -604,9 +602,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                       child: Text(
                         'Sơ đồ',
                         style: TextStyle(
-                          color: activeTab == "map"
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: activeTab == "map" ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -614,24 +610,22 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                   Expanded(
                     child: TextButton(
                       style: TextButton.styleFrom(
-                        backgroundColor: activeTab == "myBookings"
-                            ? Theme.of(context).colorScheme.background
-                            : Colors.transparent,
+                        backgroundColor: activeTab == "myBookings" ? Theme.of(context).colorScheme.background : Colors.transparent,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(6.0),
                         ),
                       ),
-                      onPressed: () {
+                      onPressed: () async {
                         setState(() => activeTab = "myBookings");
-                        // load from server when viewing my bookings
+                        try {
+                          await ref.read(orderHistoryProvider.notifier).fetchFromServer();
+                        } catch (_) {}
                         _loadBookingsFromServer();
                       },
                       child: Text(
                         'Của tôi',
                         style: TextStyle(
-                          color: activeTab == "myBookings"
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: activeTab == "myBookings" ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -644,28 +638,24 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
       ),
       body: Builder(
         builder: (context) {
+          if (availableTables.isEmpty && ApiConfig.baseUrl.isNotEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  const Text('Đang tải danh sách bàn...'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(onPressed: () async {
+                    await initializeAppUserData_app_user(ref);
+                    setState(() {});
+                  }, child: const Text('Tải lại')),
+                ],
+              ),
+            );
+        }
           if (activeTab == "available") {
-            // If we're configured to use a remote API but haven't received tables yet,
-            // show a friendly loading / retry UI. This helps diagnose network/init issues.
-            if (availableTables.isEmpty && ApiConfig.baseUrl.isNotEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 12),
-                    const Text('Đang tải danh sách bàn...'),
-                    const SizedBox(height: 8),
-                    ElevatedButton(onPressed: () async {
-                      // Try to re-run the initializer which fetches and sets tables
-                      await initializeAppUserData_app_user(ref);
-                      setState(() {});
-                    }, child: const Text('Tải lại')),
-                  ],
-                ),
-              );
-            }
-
             return ListView.builder(
               padding: const EdgeInsets.all(16.0),
               itemCount: availableTables.length,
@@ -713,7 +703,6 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               itemBuilder: (context, index) {
                 final booking = myBookings[index];
 
-                // combine date + time into a DateTime for comparisons
                 DateTime bookingDateTime;
                 try {
                   final dt = booking.date;
@@ -780,13 +769,74 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              if (!isPast)
-                                ElevatedButton.icon(onPressed: () => onOrderFood(booking), icon: const Icon(Icons.restaurant_menu), label: const Text('Gọi món')),
-                              if (!isPast)
-                                ElevatedButton.icon(onPressed: () => _openOrderDialog(booking), icon: const Icon(Icons.receipt_long), label: const Text('Order')),
-                              ElevatedButton.icon(onPressed: isPast ? null : () { final currentOrder = ref.read(currentOrderProvider); if (currentOrder != null && currentOrder.bookingId == booking.id) context.go('/payment'); else context.go('/menu', extra: booking); }, icon: const Icon(Icons.payment), label: const Text('Thanh toán')),
-                              OutlinedButton(onPressed: isPast ? null : () => _handleEditBooking(booking), child: const Text('Chỉnh sửa')),
-                              OutlinedButton(onPressed: isPast ? null : () => _handleCancelBooking(booking), style: OutlinedButton.styleFrom(foregroundColor: isPast ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.error), child: const Text('Hủy đặt')),
+                              Builder(builder: (ctx) {
+                                final orders = ref.watch(orderHistoryProvider);
+                                final current = ref.watch(currentOrderProvider);
+
+                                // Find the most relevant order for this booking (current or history)
+                                Order? matched;
+                                if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
+                                if (matched == null) {
+                                  try {
+                                    final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+                                    if (matches.isNotEmpty) matched = matches.first;
+                                  } catch (_) {
+                                    matched = null;
+                                  }
+                                }
+
+                                final hasOrder = matched != null;
+                                final isPaid = matched != null && matched.status == OrderStatus.paid;
+
+                                if (!isPast) {
+                                  if (isPaid) {
+                                    // Show disabled green Paid button and disable edit/cancel
+                                    return ElevatedButton.icon(
+                                      onPressed: null,
+                                      icon: const Icon(Icons.check_circle, color: Colors.white),
+                                      label: const Text('Đã thanh toán'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        disabledBackgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+
+                                  return hasOrder
+                                      ? ElevatedButton.icon(onPressed: () => _openOrNavigateToOrder(booking), icon: const Icon(Icons.receipt_long), label: const Text('Order'))
+                                      : ElevatedButton.icon(onPressed: () => onOrderFood(booking), icon: const Icon(Icons.restaurant_menu), label: const Text('Gọi món'));
+                                }
+
+                                return const SizedBox.shrink();
+                              }),
+                              Builder(builder: (ctx2) {
+                                final orders = ref.watch(orderHistoryProvider);
+                                final current = ref.watch(currentOrderProvider);
+                                Order? matched;
+                                if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
+                                try {
+                                  final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+                                  if (matches.isNotEmpty) matched ??= matches.first;
+                                } catch (_) {}
+                                final isPaid = matched != null && matched.status == OrderStatus.paid;
+
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: isPaid ? null : () => _handleEditBooking(booking),
+                                      icon: const Icon(Icons.edit),
+                                      label: const Text('Sửa'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: isPaid ? null : () => _handleCancelBooking(booking),
+                                      icon: const Icon(Icons.close),
+                                      label: const Text('Hủy'),
+                                    ),
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                         ],
@@ -797,6 +847,7 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               },
             );
           }
+
           return const Center(child: Text("Chọn một tab"));
         },
       ),

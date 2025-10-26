@@ -304,8 +304,32 @@ class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
       final payload = {
         'rating': _rating,
         'comment': _commentController.text.trim(),
-        // optionally: 'type': 'review'
       };
+
+      // If available, attach a target so backend can infer `type` and avoid 400.
+      // Prefer current order's reservation/table context, then selected booking.
+      try {
+        final currentOrder = ref.read(currentOrderProvider);
+        final selectedBooking = ref.read(selectedBookingProvider);
+        if (currentOrder != null && (currentOrder.bookingId.isNotEmpty)) {
+          // backend treats reservation_id as order.reservation_id/table review target
+          payload['order_id'] = currentOrder.id;
+        } else if (selectedBooking != null && (selectedBooking.serverId != null && selectedBooking.serverId!.isNotEmpty)) {
+          payload['table_id'] = selectedBooking.tableId;
+        } else {
+          // Fallback: if the user has existing bookings, attach the most recent booking's table
+          try {
+            final allBookings = ref.read(bookingsProvider);
+            if (allBookings.isNotEmpty) {
+              final lastBooking = allBookings.last;
+              payload['table_id'] = lastBooking.tableId;
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đã đính kèm bàn gần đây (${lastBooking.tableName}) cho đánh giá')));
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
 
       final createdReview = await ref.read(reviewRepositoryProvider).createReview(payload);
 
@@ -320,8 +344,16 @@ class _WriteReviewDialogState extends ConsumerState<WriteReviewDialog> {
         ),
       );
     } catch (e) {
-      // Show error (attempt to use message if present)
-      final message = e is Exception ? e.toString() : 'Gửi đánh giá thất bại';
+      // Show error (attempt to parse known 400 message from backend)
+      String message = 'Gửi đánh giá thất bại';
+      try {
+        final err = e.toString();
+        if (err.contains('400')) {
+          message = 'Dữ liệu gửi thiếu: cần chọn mục review (bàn hoặc món)';
+        } else {
+          message = err;
+        }
+      } catch (_) {}
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi: $message'),

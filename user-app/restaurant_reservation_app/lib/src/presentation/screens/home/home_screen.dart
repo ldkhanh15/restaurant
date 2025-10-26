@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../widgets/app_bottom_navigation.dart';
+import '../../widgets/main_navigation.dart';
 import '../../../domain/models/event.dart';
 import '../../../domain/models/menu.dart';
 
@@ -538,6 +540,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
+  bottomNavigationBar: (context.findAncestorWidgetOfExactType<MainNavigation>() == null)
+      ? const AppBottomNavigation(selectedIndex: 0)
+      : null,
     );
   }
 

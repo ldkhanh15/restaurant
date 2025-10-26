@@ -21,6 +21,7 @@ import '../domain/models/blog.dart';
 import '../data/datasources/api_config.dart';
 import '../data/datasources/http_client_app_user.dart';
 import '../data/services/order_app_user_service_app_user.dart';
+import '../data/services/reservation_app_user_service_app_user.dart';
 
 // --- Core Service Providers ---
 
@@ -292,7 +293,60 @@ class OrderHistoryNotifier extends StateNotifier<List<Order>> {
           } catch (_) {}
         }
       } catch (_) {}
-      final orders = raw.map<Order>((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
+      var orders = raw.map<Order>((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
+
+      // Post-process: for orders that have empty items but reference a reservation id,
+      // try to fetch the reservation and synthesize items from reservation.pre_order_items
+      // so the UI (both past and current tabs) sees correct item counts/totals.
+      try {
+        final futures = <Future<void>>[];
+        for (var i = 0; i < orders.length; i++) {
+          final o = orders[i];
+          if (o.items.isEmpty) {
+            // try to find reservation id in the raw payload for this order
+            try {
+              final candidateRaw = raw.firstWhere((r) {
+                if (r is Map && (r['id']?.toString() == o.id || r['order_id']?.toString() == o.id)) return true;
+                // reservation wrapper
+                if (r is Map && r['reservation'] is Map) {
+                  final res = r['reservation'];
+                  final rid = res['id'] ?? res['reservation_id'] ?? res['bookingId'];
+                  return rid != null && rid.toString() == o.id;
+                }
+                return false;
+              }, orElse: () => null);
+
+              String? rid;
+              if (candidateRaw is Map) {
+                rid = candidateRaw['reservation_id']?.toString() ?? candidateRaw['reservationId']?.toString();
+                if (rid == null && candidateRaw['reservation'] is Map) {
+                  final rmap = candidateRaw['reservation'] as Map;
+                  rid = (rmap['id'] ?? rmap['reservation_id'] ?? rmap['bookingId'])?.toString();
+                }
+              }
+
+              if (rid != null && rid.isNotEmpty) {
+                // schedule a fetch and synthesis
+                futures.add(ReservationAppUserServiceAppUser.fetchReservationById(rid).then((resMap) {
+                  try {
+                    final po = resMap['pre_order_items'] ?? resMap['preOrderItems'] ?? (resMap['data'] is Map ? resMap['data']['pre_order_items'] : null);
+                    if (po != null) {
+                      final built = Order.buildFromPreOrder(po);
+                      if (built.isNotEmpty) {
+                        final subtotalComputed = built.fold<double>(0.0, (s, it) => s + it.price * it.quantity);
+                        final updated = orders[i].copyWith(items: built, subtotal: subtotalComputed, total: subtotalComputed + orders[i].serviceCharge + orders[i].tax);
+                        orders[i] = updated;
+                      }
+                    }
+                  } catch (_) {}
+                }).catchError((_) {}));
+              }
+            } catch (_) {}
+          }
+        }
+        if (futures.isNotEmpty) await Future.wait(futures);
+      } catch (_) {}
+
       state = orders;
     } catch (e) {
       // Log and rethrow so UI callers (like the Account screen) can surface the error.
@@ -336,6 +390,11 @@ class NotificationsNotifier extends StateNotifier<List<AppNotification>> {
 
   void markAllAsRead() {
     state = state.map((n) => n.copyWith(isRead: true)).toList();
+  }
+
+  /// Add a new notification to the list (local-only). New notifications are prepended.
+  void addNotification(AppNotification notification) {
+    state = [notification, ...state];
   }
 }
 
@@ -399,6 +458,17 @@ class ChatMessagesNotifier extends StateNotifier<List<Map<String, dynamic>>> {
   ChatMessagesNotifier() : super([]);
 
   void addMessage(Map<String, dynamic> message) => state = [...state, message];
+  
+  /// Add message only if an item with same id does not already exist.
+  void addMessageDedup(Map<String, dynamic> message) {
+    try {
+      final id = message['id'];
+      if (id != null && state.any((m) => m['id'] == id)) return;
+      state = [...state, message];
+    } catch (_) {
+      state = [...state, message];
+    }
+  }
   void clearMessages() => state = [];
 
   /// Replace a temporary message (by `tempId`) with the server-backed message.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../domain/models/blog.dart';
+import '../../widgets/leading_back_button.dart';
 
 class BlogDetailScreen extends StatelessWidget {
   final Blog? blog;
@@ -11,7 +12,10 @@ class BlogDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = blog;
     return Scaffold(
-      appBar: AppBar(title: Text(b?.title ?? 'Bài viết')),
+      appBar: AppBar(
+        leading: const LeadingBackButton(),
+        title: Text(b?.title ?? 'Bài viết'),
+      ),
       body: b == null
           ? const Center(child: Text('Không tìm thấy bài viết'))
           : SingleChildScrollView(

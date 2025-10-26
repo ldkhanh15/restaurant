@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../domain/models/menu.dart';
+import '../../widgets/leading_back_button.dart';
 
 class DishDetailScreen extends StatelessWidget {
   final MenuItem item;
@@ -34,6 +35,7 @@ class DishDetailScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 250.0,
             pinned: true,
+            leading: const LeadingBackButton(),
             flexibleSpace: FlexibleSpaceBar(
               title: Text(item.name, style: const TextStyle(fontSize: 16.0)),
               background: Image.network(

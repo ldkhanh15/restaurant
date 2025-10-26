@@ -18,6 +18,9 @@ class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
 
   @override
   void dispose() {
+    try {
+      _chatService?.disconnectSocket();
+    } catch (_) {}
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -80,15 +83,17 @@ class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
       // initialize chat service and session
       final client = ref.read(httpClientProvider);
       _chatService ??= ChatAppUserService(client);
-      try {
+        try {
         final session = await _chatService!.createOrGetSession();
         _sessionId = session['id'] as String?;
         if (_sessionId != null && _sessionId!.isNotEmpty) {
+          // Clear current messages to avoid duplicates when re-entering
+          ref.read(chatMessagesProvider.notifier).clearMessages();
           final msgs = await _chatService!.fetchMessages(_sessionId!);
-          // normalize and add to provider
+          // normalize and add to provider (deduplicated)
           for (final m in msgs) {
             try {
-              ref.read(chatMessagesProvider.notifier).addMessage({
+              ref.read(chatMessagesProvider.notifier).addMessageDedup({
                 'id': m['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
                 'text': m['message_text'] ?? m['text'] ?? '',
                 'isUser': (m['sender_type'] ?? 'user') == 'user',
@@ -101,7 +106,7 @@ class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
         if (_sessionId != null && _sessionId!.isNotEmpty) {
           _chatService!.connectSocket(sessionId: _sessionId!, onMessage: (payload) {
           try {
-            ref.read(chatMessagesProvider.notifier).addMessage({
+            ref.read(chatMessagesProvider.notifier).addMessageDedup({
               'id': payload['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
               'text': payload['message_text'] ?? payload['text'] ?? '',
               'isUser': (payload['sender_type'] ?? 'bot') == 'user',

@@ -8,16 +8,27 @@ class OrderAppUserService {
 
   static Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
     final client = HttpClientAppUser();
-    final res = await client.post(_uri(''), body: json.encode(payload));
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      final decoded = json.decode(res.body);
-      if (decoded is Map<String, dynamic>) {
-        if (decoded.containsKey('data') && decoded['data'] is Map<String, dynamic>) return decoded['data'] as Map<String, dynamic>;
-        return decoded;
+    final uri = _uri('');
+    try {
+      final res = await client.post(uri, body: json.encode(payload));
+      // debug log to help diagnose Not Found / 4xx/5xx from emulator
+      // ignore: avoid_print
+      print('[OrderAppUserService] createOrder uri=$uri status=${res.statusCode} body=${res.body}');
+
+      if (res.statusCode == 201 || res.statusCode == 200) {
+        final decoded = json.decode(res.body);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded.containsKey('data') && decoded['data'] is Map<String, dynamic>) return decoded['data'] as Map<String, dynamic>;
+          return decoded;
+        }
+        throw Exception('Unexpected response shape when creating order');
       }
-      throw Exception('Unexpected response shape when creating order');
+      throw Exception('Failed to create order: ${res.statusCode} ${res.body}');
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[OrderAppUserService] createOrder error: $e\n$st');
+      rethrow;
     }
-    throw Exception('Failed to create order: ${res.statusCode} ${res.body}');
   }
 
   static Future<Map<String, dynamic>> updateOrder(String id, Map<String, dynamic> payload) async {
