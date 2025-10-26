@@ -11,6 +11,7 @@ import '../../../domain/models/notification.dart';
 import '../../../data/services/payment_app_user_service_app_user.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/leading_back_button.dart';
+import '../../../app/app.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final String? initialOrderId;
@@ -242,7 +243,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       isProcessing = false;
     });
 
-    // After successful payment, create a local notification and navigate back to the order screen
+    // After successful payment, create a local notification and navigate to payment success screen
     try {
       final updatedOrder = ref.read(currentOrderProvider);
           if (updatedOrder != null) {
@@ -272,27 +273,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (found != null) {
           final updatedOrder = ref.read(currentOrderProvider);
           if (updatedOrder != null) {
-            // Navigate to account orders tab so user lands on their orders list.
-            if (mounted) context.go('/account?tab=orders');
-            return;
+            // Show payment success screen
+            if (mounted) {
+              try {
+                appRouter.go('/payment-success', extra: updatedOrder);
+                return;
+              } catch (_) {
+                context.go('/account?tab=orders');
+                return;
+              }
+            }
           }
         }
       }
     } catch (_) {}
 
-    // Fallback: if we have an updatedOrder but no Booking, navigate to kitchen if it's a kitchen state;
-    // otherwise fall back to account orders tab so user can find their order.
+    // If payment completed, show Payment Success screen. Otherwise fall back to orders list.
     final updatedOrderFallback = ref.read(currentOrderProvider);
     if (updatedOrderFallback != null) {
-      final kitchenStatuses = {
-        OrderStatus.waitingKitchenConfirmation,
-        OrderStatus.preparing,
-        OrderStatus.ready,
-        OrderStatus.sentToKitchen,
-      };
-      if (kitchenStatuses.contains(updatedOrderFallback.status)) {
-        if (mounted) context.go('/kitchen-status');
-        return;
+      // If order is paid, show payment success
+      if (updatedOrderFallback.paymentStatus == PaymentStatus.completed || updatedOrderFallback.status == OrderStatus.paid) {
+        if (mounted) {
+          try {
+            appRouter.go('/payment-success', extra: updatedOrderFallback);
+            return;
+          } catch (_) {}
+        }
       }
     }
 
