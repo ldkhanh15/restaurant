@@ -39,6 +39,11 @@ class _RestaurantReservationAppState extends ConsumerState<RestaurantReservation
   @override
   void initState() {
     super.initState();
+    // Debug: print registered routes so we can confirm the running build
+    // contains the '/order-confirmation' path.
+    // ignore: avoid_print
+    print('[Router] registered paths: $appRegisteredPaths');
+
     // Initialize app user data from backend if baseUrl is configured
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (ApiConfig.baseUrl.isNotEmpty) {
@@ -284,6 +289,11 @@ const List<String> appRegisteredPaths = [
   '/login',
   '/signup',
 ];
+
+// Debug: print registered paths at import time so the running app's logs show
+// which routes are available. Useful to confirm the build on device includes
+// the /order-confirmation route.
+// (Moved to initState to avoid top-level execution during import.)
 
 // A small page wrapper that immediately opens the modal popup and pops the
 // route when the modal is dismissed. This preserves existing navigation
