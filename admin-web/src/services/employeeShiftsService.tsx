@@ -25,43 +25,43 @@ const employeeShiftApi = {
     let url = `/shifts?page=${page}&limit=${limit}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    const response = await apiClient.get<ApiResponse<any>>(url);
+    const response = await apiClient.get(url);
     
-    return response.data;
+    return response;
   },
 
   // Employee Shifts
   getEmployeeShifts: async (page: number = 1, limit: number = 10) => {
-    const response = await apiClient.get<ApiResponse<any[]>>(
+    const response = await apiClient.get(
       `/shifts?page=${page}&limit=${limit}`
     );
-    return response.data;
+    return response;
   },
 
   getEmployeeShift: async (id: string) => {
-    const response = await apiClient.get<ApiResponse<any>>(`/shifts/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/shifts/${id}`);
+    return response;
   },
 
   createEmployeeShift: async (shiftData: any) => {
-    const response = await apiClient.post<ApiResponse<any>>(
+    const response = await apiClient.post(
       "/shifts",
       shiftData
     );
-    return response.data;
+    return response;
   },
 
   updateEmployeeShift: async (id: string, shiftData: any) => {
-    const response = await apiClient.put<ApiResponse<any>>(
+    const response = await apiClient.put(
       `/shifts/${id}`,
       shiftData
     );
-    return response.data;
+    return response;
   },
   
   deleteEmployeeShift: async (id: string) => {
-    const response = await apiClient.delete<ApiResponse<any>>(`/shifts/${id}`);
-    return response.data;
+    const response = await apiClient.delete(`/shifts/${id}`);
+    return response;
   },
 };
 

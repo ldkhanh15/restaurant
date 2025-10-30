@@ -132,15 +132,16 @@ export function EmployeeManagement() {
       // Adapt to the actual API response structure
       if (response && response.data) {
         // Check if data is directly an array
+        console.log("Employee fetch response:", response);
         if (Array.isArray(response.data)) {
           setEmployees(response.data);
-          if (response.pagination) {
-            setTotalPages(response.pagination.totalPages || 1);
-            setTotalEmployees(response.pagination.totalItems || 0);
-          } else {
-            setTotalPages(1);
-            setTotalEmployees(response.data.length);
-          }
+          // if (response.pagination) {
+          //   setTotalPages(response.pagination.totalPages || 1);
+          //   setTotalEmployees(response.pagination.totalItems || 0);
+          // } else {
+          //   setTotalPages(1);
+          //   setTotalEmployees(response.data.length);
+          // }
         }
         // Check if response follows the structure with items inside data object
         else if (typeof response.data === "object" && response.data !== null) {
@@ -460,10 +461,10 @@ export function EmployeeManagement() {
   const fetchAttendanceLogs = async () => {
     setIsLoading(true);
     try {
-      const response = await attendanceApi.getAllAttendanceLogs();
+      const { data: response } = await attendanceApi.getAllAttendanceLogs();
       if (response && response.data) {
-        console.log("attendance call:", response.data.data);
-        setAttendance(response.data.data);
+        console.log("attendance call:", response.data);
+        setAttendance(response.data);
         setIsAttendanceEditDialogOpen(false);
         setIsAttendanceCreateDialogOpen(false);
       } else {
@@ -558,10 +559,10 @@ export function EmployeeManagement() {
   const fetchPayrollRecords = async () => {
     setIsLoading(true);
     try {
-      const response = await payrollApi.getAllPayrollRecords();
+      const { data: response } = await payrollApi.getAllPayrollRecords();
       if (response && response.data) {
-        console.log("payroll call:", response.data.data);
-        setPayrolls(response.data.data);
+        console.log("payroll call:", response.data);
+        setPayrolls(response.data);
       } else {
         setPayrolls([]);
       }

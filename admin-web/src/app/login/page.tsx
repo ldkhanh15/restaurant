@@ -29,15 +29,16 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const response = await authService.login(formData);
-
-      if (response.data?.token) {
-        localStorage.setItem("token", response.data.token);
-        localStorage.setItem("user", JSON.stringify(response.data.user));
+      const { data: response } = await authService.login(formData);
+      // const response = await authService.login(formData);
+      console.log("Login response:", response);
+      if (response.token) {
+        localStorage.setItem("token", response.token);
+        localStorage.setItem("user", JSON.stringify(response.user));
 
         toast({
           title: "Đăng nhập thành công",
-          description: `Chào mừng ${response.data.user.username}!`,
+          description: `Chào mừng ${response.user.username}!`,
         });
 
         router.push("/");

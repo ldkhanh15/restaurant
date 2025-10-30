@@ -67,7 +67,7 @@ export function UserManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = users?.filter((user) => {
     const matchesSearch =
       user?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -89,8 +89,8 @@ export function UserManagement() {
   const fetchUsers = async () => {
     try {
       const response = await userApi.getAllUsers();
-      console.log("Fetched users:", response.data.data);
-      setUsers(response.data.data);
+      console.log("Fetched users:", response.data);
+      setUsers(response.data);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -358,7 +358,7 @@ export function UserManagement() {
         <CardHeader>
           <CardTitle>Danh sách người dùng</CardTitle>
           <CardDescription>
-            Quản lý thông tin người dùng trong hệ thống ({filteredUsers.length}{" "}
+            Quản lý thông tin người dùng trong hệ thống ({filteredUsers?.length}{" "}
             người dùng)
           </CardDescription>
         </CardHeader>
@@ -378,7 +378,7 @@ export function UserManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((user) => (
+              {filteredUsers?.map((user) => (
                 <TableRow
                   key={user.id}
                   className={user.deleted_at ? "opacity-50" : ""}
