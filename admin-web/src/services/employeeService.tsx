@@ -30,6 +30,8 @@ const employeeApi = {
     return response.data;
   },
 
+  getAllNoPaging: () => apiClient.get("/employees?all=true"),
+
   getEmployeeById: async (id: string) => {
     const response = await apiClient.get<ApiResponse<any>>(`/employees/${id}`);
     return response.data;

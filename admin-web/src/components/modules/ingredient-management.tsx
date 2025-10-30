@@ -86,7 +86,7 @@ export function IngredientManagement({
         toast.error("Lấy nguyên liệu thất bại")
         return
       }
-      setIngredients(response.data.data)
+      setIngredients(response as any)
     } catch (error) {
       toast.error("Lấy nguyên liệu thất bại")
     }

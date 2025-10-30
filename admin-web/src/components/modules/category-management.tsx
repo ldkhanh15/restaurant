@@ -83,9 +83,8 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
     setIsLoadingDishes(true)
     try {
       const response = await dishService.getDishesByCategoryId(categoryId)
-      console.log(response)
-      if (response.data?.data) {
-        setCategoryDishes(response.data.data)
+      if (response) {
+        setCategoryDishes(response as any)
       } else {
         setCategoryDishes([])
       }
@@ -100,12 +99,12 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
 
   const getCategories = async () => {
     try {
-      const categoriesResponse = await categoryService.getAll()
-      if (!categoriesResponse || !categoriesResponse.data) {
+      const categoriesResponse = await categoryService.getAllNoPaging()
+      if (!categoriesResponse) {
         toast.error("Lấy danh mục thất bại")
         return
       }
-      setCategories(categoriesResponse.data.data.data)
+      setCategories(categoriesResponse as any)
     } catch (error) {
       toast.error("Lấy danh mục thất bại")
     }

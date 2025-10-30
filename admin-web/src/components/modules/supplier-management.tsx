@@ -50,8 +50,8 @@ export function SupplierManagement() {
   const getSuppliers = async () => {
     try {
       const response = await supplierService.getAll()
-      if (response && response.status === 200) {
-        const data = response.data.data?.data || response.data.data
+      if (response && response.data) {
+        const data = response.data || response.data.data
         setSuppliers(Array.isArray(data) ? data : [])
       } else {
         toast.error("Lấy danh sách nhà cung cấp thất bại")

@@ -8,6 +8,8 @@ export const categoryService = {
     create: (data: any) => apiClient.post("/categories", data),
     update: (id: string, data: any) => apiClient.put(`/categories/${id}`, data),
     remove: (id: string) => apiClient.delete(`/categories/${id}`),
+    getAllNoPaging: () => apiClient.get("/categories?all=true")
+
 }
 
 export type Category = {

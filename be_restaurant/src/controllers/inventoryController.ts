@@ -4,7 +4,7 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 import logger from "../config/logger"
 import inventoryImportService from "../services/inventoryImportService"
 import Ingredient from "../models/Ingredient"
-import { Employee, InventoryImportIngredient, Supplier } from "../models"
+import { Employee, InventoryImportIngredient, Supplier, User } from "../models"
 import { json, Op, Sequelize, where } from "sequelize"
 
 
@@ -17,22 +17,6 @@ export const getAllInventoryImport = async (req: Request, res: Response, next: N
       limit,
       offset,
       order: [[sortBy, sortOrder]],
-      include: [
-        { model : Supplier, 
-          as:"supplier", 
-          where:{deleted_at: null},
-          required: true
-        },
-        { model : Employee, as:"employee"},
-        { 
-          model: InventoryImportIngredient, 
-          as: "ingredients",
-          include: [
-            { model: Ingredient, as: "ingredient", attributes: ["id", "name", "unit"] }
-          ],
-          attributes: ["quantity", "total_price"]
-        }
-      ],
     })
     
     const result = buildPaginationResult(rows, count, page, limit)
@@ -53,7 +37,16 @@ export const getInventoryById = async (req: Request, res: Response, next: NextFu
           where: { deleted_at: null },
           required: true
         },
-        { model: Employee, as: "employee" },
+        { model: Employee, as: "employee",
+          where: { deleted_at: null },
+          required: true,
+          include:[
+            {
+              model : User, as : "user",
+              attributes: ["full_name"]
+            }
+          ]
+        },
         {
           model: InventoryImportIngredient,
           as: "ingredients",

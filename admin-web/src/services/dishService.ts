@@ -1,9 +1,23 @@
 "use client"
 
 import apiClient from "./apiClient"
+import axios, { AxiosResponse } from 'axios'
+interface PaginationData {
+  currentPage: number
+  totalPages: number
+  total: number
+  itemsPerPage: number
+}
 
+interface ApiResponse<T> {
+  status: string
+  data: {
+    data: T[]
+    pagination: PaginationData
+  }
+}
 export const dishService = {
-    getAll: (params?: any) => apiClient.get("/dishes",{ params }),
+    getAll: (params: any) => apiClient.get('/dishes', { params }),
     getById: (id: string) => apiClient.get(`/dishes/${id}`),
     create: (data: any) => apiClient.post("/dishes", data),
     update: (id: string, data: any) => apiClient.put(`/dishes/${id}`, data),

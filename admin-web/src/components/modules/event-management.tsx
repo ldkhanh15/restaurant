@@ -33,8 +33,8 @@ interface Event {
   name: string
   description?: string
   price?: number
-  inclusions?: Record<string, string>
-  decorations?: Record<string, string>
+  inclusions?: Record<string, string | string[]>
+  decorations?: Record<string, string | string[]>
   created_at: string
   deleted_at?: string | null
 }
@@ -52,16 +52,16 @@ export function EventManagement() {
     name: "",
     description: "",
     price: "",
-    inclusions: {} as Record<string, string>,
-    decorations: {} as Record<string, string>,
+    inclusions: {} as Record<any, any>,
+    decorations: {} as Record<any, any>,
   })
 
   // 🔹 Load dữ liệu
   const getAllEvents = async () => {
     try {
-      const response = await eventService.getAll()
-      if (response && response.data.data) {
-        const data = response.data.data?.data || response.data.data
+      const response = await eventService.getAllNoPaging()
+      if (response) {
+        const data = response as any
         setEvents(Array.isArray(data) ? data : [])
       } else {
         toast.error("Lỗi khi tải dữ liệu sự kiện")
@@ -247,7 +247,7 @@ export function EventManagement() {
 
       {/* Inclusions */}
       <div className="grid gap-2">
-        <Label>Inclusions</Label>
+        <Label>Dịch vụ kèm theo</Label>
         {Object.entries(newEvent.inclusions).map(([key, value], index) => (
           <div key={index} className="flex gap-2 items-center">
             <Input
@@ -272,7 +272,7 @@ export function EventManagement() {
 
       {/* Decorations */}
       <div className="grid gap-2">
-        <Label>Decorations</Label>
+        <Label>Phụ kiện trang trí</Label>
         {Object.entries(newEvent.decorations).map(([key, value], index) => (
           <div key={index} className="flex gap-2 items-center">
             <Input
@@ -302,6 +302,29 @@ export function EventManagement() {
       </DialogFooter>
     </div>
   )
+
+  // 🔹 Hàm hiển thị danh sách key-value cho inclusions/decorations
+  const renderKeyValueList = (items: Record<string, string | string[]> | undefined) => {
+    if (!items || Object.keys(items).length === 0) {
+      return <p className="text-muted-foreground">Không có dữ liệu</p>
+    }
+    return (
+      <ul className="space-y-2">
+        {Object.entries(items).map(([key, value], index) => (
+          <li key={index} className="flex items-center gap-2">
+            <span className="font-semibold">{key}:</span>
+            <span>
+              {Array.isArray(value)
+                ? value.length > 0
+                  ? value.join(", ")
+                  : "Không có giá trị"
+                : value || "Không có giá trị"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -414,19 +437,15 @@ export function EventManagement() {
           {selectedEvent && (
             <div className="space-y-4">
               <p><b>Tên:</b> {selectedEvent.name}</p>
-              <p><b>Mô tả:</b> {selectedEvent.description}</p>
+              <p><b>Mô tả:</b> {selectedEvent.description || "Không có mô tả"}</p>
               <p><b>Giá:</b> {formatPrice(selectedEvent.price)}</p>
               <div>
-                <Label>Inclusions:</Label>
-                <pre className="bg-muted p-2 rounded text-sm overflow-auto max-h-40">
-                  {JSON.stringify(selectedEvent.inclusions, null, 2)}
-                </pre>
+                <Label><b>Dịch vụ kèm theo:</b></Label>
+                {renderKeyValueList(selectedEvent.inclusions)}
               </div>
               <div>
-                <Label>Decorations:</Label>
-                <pre className="bg-muted p-2 rounded text-sm overflow-auto max-h-40">
-                  {JSON.stringify(selectedEvent.decorations, null, 2)}
-                </pre>
+                <Label><b>Phụ kiện trang trí:</b></Label>
+                {renderKeyValueList(selectedEvent.decorations)}
               </div>
             </div>
           )}

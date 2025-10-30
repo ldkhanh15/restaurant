@@ -48,6 +48,7 @@ import blogPostAppUserRoutes from "./routes/blogPost_app_userRoutes";
 // Import models to initialize associations
 import "./models/index";
 import inventoryRoutes from "./routes/inventoryRoutes";
+import masterRoutes from "./routes/masterRoutes";
 
 dotenv.config();
 
@@ -96,6 +97,7 @@ app.use("/api/blog", blogPostRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/recommendations", userBehaviorRoutes);
+app.use("/api/master/restaurant", masterRoutes);
 
 
 // App user lightweight endpoints (mobile app)
