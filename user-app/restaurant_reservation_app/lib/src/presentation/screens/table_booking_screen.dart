@@ -40,6 +40,9 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
   bool isBookingOpen = false;
   bool _isLoadingBookings = false;
   bool _initialized = false;
+  // Filters for "Của tôi"
+  String bookingPeriodFilter = 'upcoming'; // 'upcoming' or 'past'
+  String bookingTypeFilter = 'all'; // 'all', 'call', 'order', 'paid'
 
   void handleBookTable(Booking newBooking) async {
     // debug: log when booking handler is invoked
@@ -684,6 +687,88 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
           } else if (activeTab == "myBookings") {
             if (_isLoadingBookings) return const Center(child: CircularProgressIndicator());
 
+            // Filters UI: Period (Past / Present & Future) and Type (Gọi món / Order / Thanh toán / Tất cả)
+            Widget _buildFilters() {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Period toggle
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingPeriodFilter == 'upcoming' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingPeriodFilter = 'upcoming'),
+                            child: Text('Hiện tại & tương lai', style: TextStyle(color: bookingPeriodFilter == 'upcoming' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingPeriodFilter == 'past' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingPeriodFilter = 'past'),
+                            child: Text('Quá khứ', style: TextStyle(color: bookingPeriodFilter == 'past' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Type filters
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingTypeFilter == 'all' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingTypeFilter = 'all'),
+                            child: Text('Tất cả', style: TextStyle(color: bookingTypeFilter == 'all' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingTypeFilter == 'call' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingTypeFilter = 'call'),
+                            child: Text('Gọi món', style: TextStyle(color: bookingTypeFilter == 'call' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingTypeFilter == 'order' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingTypeFilter = 'order'),
+                            child: Text('Order', style: TextStyle(color: bookingTypeFilter == 'order' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: bookingTypeFilter == 'paid' ? Theme.of(context).colorScheme.background : Colors.transparent,
+                            ),
+                            onPressed: () => setState(() => bookingTypeFilter = 'paid'),
+                            child: Text('Thanh toán', style: TextStyle(color: bookingTypeFilter == 'paid' ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // If no bookings, show placeholder
             if (myBookings.isEmpty) {
               return Center(
                 child: Column(
@@ -697,154 +782,200 @@ class _TableBookingScreenState extends ConsumerState<TableBookingScreen> {
               );
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: myBookings.length,
-              itemBuilder: (context, index) {
-                final booking = myBookings[index];
+            // Build filtered bookings list based on period and type filters
+            final orders = ref.watch(orderHistoryProvider);
+            final current = ref.watch(currentOrderProvider);
 
-                DateTime bookingDateTime;
+            final List bookingsFiltered = myBookings.where((booking) {
+              DateTime bookingDateTime;
+              try {
+                final dt = booking.date;
+                final parsed = DateFormat.Hm().parse(booking.time);
+                bookingDateTime = DateTime(dt.year, dt.month, dt.day, parsed.hour, parsed.minute);
+              } catch (_) {
+                bookingDateTime = booking.date;
+              }
+
+              final now = DateTime.now();
+              final isPast = bookingDateTime.isBefore(now);
+
+              if (bookingPeriodFilter == 'past' && !isPast) return false;
+              if (bookingPeriodFilter == 'upcoming' && isPast) return false;
+
+              Order? matched;
+              if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
+              if (matched == null) {
                 try {
-                  final dt = booking.date;
-                  try {
-                    final parsed = DateFormat.Hm().parse(booking.time);
-                    bookingDateTime = DateTime(dt.year, dt.month, dt.day, parsed.hour, parsed.minute);
-                  } catch (_) {
-                    bookingDateTime = dt;
-                  }
-                } catch (_) {
-                  bookingDateTime = booking.date;
-                }
+                  final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+                  if (matches.isNotEmpty) matched = matches.first;
+                } catch (_) {}
+              }
 
-                final now = DateTime.now();
-                final isPast = bookingDateTime.isBefore(now);
+              final hasOrder = matched != null;
+              final isPaid = matched != null && matched.status == OrderStatus.paid;
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 16.0),
-                  child: Opacity(
-                    opacity: isPast ? 0.6 : 1.0,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(child: Text(booking.tableName, style: Theme.of(context).textTheme.titleMedium)),
-                              if (isPast)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant, borderRadius: BorderRadius.circular(8)),
-                                  child: Text('Đã qua', style: Theme.of(context).textTheme.bodySmall),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8.0),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Row(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(Icons.calendar_today, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                const SizedBox(width: 4),
-                                Text('${booking.date.day}/${booking.date.month}/${booking.date.year}', style: Theme.of(context).textTheme.bodySmall),
-                              ]),
-                              Row(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(Icons.access_time, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                const SizedBox(width: 4),
-                                Text(booking.time, style: Theme.of(context).textTheme.bodySmall),
-                              ]),
-                              Row(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(Icons.people, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                const SizedBox(width: 4),
-                                Text('${booking.guests} người', style: Theme.of(context).textTheme.bodySmall),
-                              ]),
-                            ],
-                          ),
-                          if (booking.notes != null && booking.notes!.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8.0), child: Text('Ghi chú: ${booking.notes}', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic))),
-                          const SizedBox(height: 16.0),
-                          Wrap(
-                            alignment: WrapAlignment.end,
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              Builder(builder: (ctx) {
-                                final orders = ref.watch(orderHistoryProvider);
-                                final current = ref.watch(currentOrderProvider);
+              switch (bookingTypeFilter) {
+                case 'call':
+                  return !hasOrder;
+                case 'order':
+                  return hasOrder && !isPaid;
+                case 'paid':
+                  return isPaid;
+                case 'all':
+                default:
+                  return true;
+              }
+            }).toList();
 
-                                // Find the most relevant order for this booking (current or history)
-                                Order? matched;
-                                if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
-                                if (matched == null) {
-                                  try {
-                                    final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
-                                    if (matches.isNotEmpty) matched = matches.first;
-                                  } catch (_) {
-                                    matched = null;
-                                  }
-                                }
+            return Column(
+              children: [
+                _buildFilters(),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16.0),
+                    itemCount: bookingsFiltered.length,
+                    itemBuilder: (context, index) {
+                      final booking = bookingsFiltered[index];
 
-                                final hasOrder = matched != null;
-                                final isPaid = matched != null && matched.status == OrderStatus.paid;
+                      DateTime bookingDateTime;
+                      try {
+                        final dt = booking.date;
+                        final parsed = DateFormat.Hm().parse(booking.time);
+                        bookingDateTime = DateTime(dt.year, dt.month, dt.day, parsed.hour, parsed.minute);
+                      } catch (_) {
+                        bookingDateTime = booking.date;
+                      }
 
-                                if (!isPast) {
-                                  if (isPaid) {
-                                    // Show disabled green Paid button and disable edit/cancel
-                                    return ElevatedButton.icon(
-                                      onPressed: null,
-                                      icon: const Icon(Icons.check_circle, color: Colors.white),
-                                      label: const Text('Đã thanh toán'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green,
-                                        disabledBackgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
+                      final now = DateTime.now();
+                      final isPast = bookingDateTime.isBefore(now);
 
-                                  return hasOrder
-                                      ? ElevatedButton.icon(onPressed: () => _openOrNavigateToOrder(booking), icon: const Icon(Icons.receipt_long), label: const Text('Order'))
-                                      : ElevatedButton.icon(onPressed: () => onOrderFood(booking), icon: const Icon(Icons.restaurant_menu), label: const Text('Gọi món'));
-                                }
-
-                                return const SizedBox.shrink();
-                              }),
-                              Builder(builder: (ctx2) {
-                                final orders = ref.watch(orderHistoryProvider);
-                                final current = ref.watch(currentOrderProvider);
-                                Order? matched;
-                                if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
-                                try {
-                                  final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
-                                  if (matches.isNotEmpty) matched ??= matches.first;
-                                } catch (_) {}
-                                final isPaid = matched != null && matched.status == OrderStatus.paid;
-
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 16.0),
+                        child: Opacity(
+                          opacity: isPast ? 0.6 : 1.0,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    ElevatedButton.icon(
-                                      onPressed: isPaid ? null : () => _handleEditBooking(booking),
-                                      icon: const Icon(Icons.edit),
-                                      label: const Text('Sửa'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton.icon(
-                                      onPressed: isPaid ? null : () => _handleCancelBooking(booking),
-                                      icon: const Icon(Icons.close),
-                                      label: const Text('Hủy'),
-                                    ),
+                                    Expanded(child: Text(booking.tableName, style: Theme.of(context).textTheme.titleMedium)),
+                                    if (isPast)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant, borderRadius: BorderRadius.circular(8)),
+                                        child: Text('Đã qua', style: Theme.of(context).textTheme.bodySmall),
+                                      ),
                                   ],
-                                );
-                              }),
-                            ],
+                                ),
+                                const SizedBox(height: 8.0),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(Icons.calendar_today, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      const SizedBox(width: 4),
+                                      Text('${booking.date.day}/${booking.date.month}/${booking.date.year}', style: Theme.of(context).textTheme.bodySmall),
+                                    ]),
+                                    Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(Icons.access_time, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      const SizedBox(width: 4),
+                                      Text(booking.time, style: Theme.of(context).textTheme.bodySmall),
+                                    ]),
+                                    Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(Icons.people, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      const SizedBox(width: 4),
+                                      Text('${booking.guests} người', style: Theme.of(context).textTheme.bodySmall),
+                                    ]),
+                                  ],
+                                ),
+                                if (booking.notes != null && booking.notes!.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8.0), child: Text('Ghi chú: ${booking.notes}', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic))),
+                                const SizedBox(height: 16.0),
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    Builder(builder: (ctx) {
+                                      final orders = ref.watch(orderHistoryProvider);
+                                      final current = ref.watch(currentOrderProvider);
+
+                                      Order? matched;
+                                      if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
+                                      if (matched == null) {
+                                        try {
+                                          final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+                                          if (matches.isNotEmpty) matched = matches.first;
+                                        } catch (_) {
+                                          matched = null;
+                                        }
+                                      }
+
+                                      final hasOrder = matched != null;
+                                      final isPaid = matched != null && matched.status == OrderStatus.paid;
+
+                                      if (!isPast) {
+                                        if (isPaid) {
+                                          return ElevatedButton.icon(
+                                            onPressed: null,
+                                            icon: const Icon(Icons.check_circle, color: Colors.white),
+                                            label: const Text('Đã thanh toán'),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                              disabledBackgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+
+                                        return hasOrder
+                                            ? ElevatedButton.icon(onPressed: () => _openOrNavigateToOrder(booking), icon: const Icon(Icons.receipt_long), label: const Text('Order'))
+                                            : ElevatedButton.icon(onPressed: () => onOrderFood(booking), icon: const Icon(Icons.restaurant_menu), label: const Text('Gọi món'));
+                                      }
+
+                                      return const SizedBox.shrink();
+                                    }),
+                                    Builder(builder: (ctx2) {
+                                      final orders = ref.watch(orderHistoryProvider);
+                                      final current = ref.watch(currentOrderProvider);
+                                      Order? matched;
+                                      if (current != null && (current.bookingId == booking.id || current.bookingId == booking.serverId)) matched = current;
+                                      try {
+                                        final matches = orders.where((o) => o.bookingId == booking.id || o.bookingId == booking.serverId).toList();
+                                        if (matches.isNotEmpty) matched ??= matches.first;
+                                      } catch (_) {}
+                                      final isPaid = matched != null && matched.status == OrderStatus.paid;
+
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          ElevatedButton.icon(
+                                            onPressed: isPaid ? null : () => _handleEditBooking(booking),
+                                            icon: const Icon(Icons.edit),
+                                            label: const Text('Sửa'),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            onPressed: isPaid ? null : () => _handleCancelBooking(booking),
+                                            icon: const Icon(Icons.close),
+                                            label: const Text('Hủy'),
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             );
           }
 
