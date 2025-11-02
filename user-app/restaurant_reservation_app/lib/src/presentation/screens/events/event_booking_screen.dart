@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
 import '../../../domain/models/event.dart';
 import '../../../data/services/event_app_user_service.dart';
+import '../../widgets/leading_back_button.dart';
 
 class EventBookingScreen extends ConsumerStatefulWidget {
   const EventBookingScreen({super.key});
@@ -221,6 +222,7 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const LeadingBackButton(),
         title: const Text('Sự kiện'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48.0),

@@ -52,6 +52,13 @@ export const createReservation = async (
   next: NextFunction
 ) => {
   try {
+    // Debug: log incoming pre_order_items to help trace accidental pre-orders
+    try {
+      console.log(`[Reservation] createReservation user=${req.user?.id} pre_order_items=`, req.body?.pre_order_items)
+    } catch (e) {
+      console.log('[Reservation] createReservation - failed to log pre_order_items')
+    }
+
     const data = {
       ...req.body,
       user_id: req.user?.id,

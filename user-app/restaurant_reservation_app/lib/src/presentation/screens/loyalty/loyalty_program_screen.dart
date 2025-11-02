@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../widgets/app_bottom_navigation.dart';
+import '../../widgets/main_navigation.dart';
 import '../../../domain/models/loyalty.dart';
 import '../../../domain/models/voucher.dart';
 
@@ -16,12 +18,16 @@ class _LoyaltyProgramScreenState extends ConsumerState<LoyaltyProgramScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final loyaltyPoints = ref.watch(loyaltyPointsProvider);
-    final membershipTier = ref.watch(membershipTierProvider);
+  final user = ref.watch(userProvider);
+  final loyaltyPoints = (user?.loyaltyPoints ?? ref.watch(loyaltyPointsProvider)) ?? 0;
+  final membershipTier = (user?.membershipTier ?? ref.watch(membershipTierProvider)) as String;
     final rewards = ref.watch(rewardsProvider);
     final pointHistory = ref.watch(pointHistoryProvider);
 
     return Scaffold(
+      bottomNavigationBar: (context.findAncestorWidgetOfExactType<MainNavigation>() == null)
+          ? const AppBottomNavigation(selectedIndex: 3)
+          : null,
       appBar: AppBar(
         title: const Text('Chương trình thành viên'),
       ),
@@ -90,6 +96,95 @@ class _LoyaltyProgramScreenState extends ConsumerState<LoyaltyProgramScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+
+            // Tier policies section
+            Text(
+              'Chính sách thành viên',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Tier cards (dynamic, highlight current tier)
+            Column(
+              children: () {
+                final tiers = [
+                  {
+                    'name': 'Regular',
+                    'threshold': 0,
+                    'benefits': [
+                      'Nhanh chóng tạo tài khoản',
+                      'Không có ưu đãi đặc biệt',
+                    ]
+                  },
+                  {
+                    'name': 'VIP',
+                    'threshold': 1000,
+                    'benefits': [
+                      'Ưu đãi 5% cho một số mặt hàng',
+                      'Quà sinh nhật',
+                      'Ưu tiên đặt bàn',
+                    ]
+                  },
+                  {
+                    'name': 'Platinum',
+                    'threshold': 2500,
+                    'benefits': [
+                      'Ưu đãi 10% cho toàn bộ hóa đơn',
+                      'Quà tặng định kỳ',
+                      'Hỗ trợ khách hàng ưu tiên',
+                    ]
+                  }
+                ];
+
+                final List<Widget> widgets = [];
+                for (var i = 0; i < tiers.length; i++) {
+                  final t = tiers[i];
+                  final name = (t['name'] as String);
+                  final threshold = (t['threshold'] as int);
+                  final benefits = (t['benefits'] as List<String>);
+                  final isCurrent = name.toLowerCase() == membershipTier.toLowerCase();
+                  widgets.add(_buildTierCard(context, name, threshold, benefits, isCurrent: isCurrent, currentPoints: isCurrent ? loyaltyPoints : null));
+                  if (i != tiers.length - 1) widgets.add(const SizedBox(height: 8));
+                }
+                return widgets;
+              }(),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Earning rules and conditions
+            Text(
+              'Cách tích điểm & điều kiện lên hạng',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Cách tích điểm:', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    _buildBullet(context, '1 điểm cho mỗi 1.000₫ chi tiêu (ví dụ: chi 100.000₫ → 100 điểm).'),
+                    _buildBullet(context, 'Thưởng điểm nhân dịp sinh nhật (nếu cập nhật ngày sinh).'),
+                    _buildBullet(context, 'Chương trình khuyến mãi đặc biệt có thể nhân điểm x2/x3.'),
+                    const SizedBox(height: 12),
+                    Text('Điều kiện lên hạng:', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    _buildBullet(context, 'Từ Regular → VIP: đạt 1.000 điểm.'),
+                    _buildBullet(context, 'Từ VIP → Platinum: đạt 2.500 điểm.'),
+                    _buildBullet(context, 'Điểm tích lũy có thể có thời hạn; vui lòng kiểm tra điều khoản chi tiết.'),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 16),
 
             // Rewards section
@@ -376,5 +471,66 @@ class _LoyaltyProgramScreenState extends ConsumerState<LoyaltyProgramScreen> {
       case RewardCategory.upgrade:
         return VoucherType.upgrade;
     }
+  }
+
+  Widget _buildTierCard(BuildContext context, String name, int threshold, List<String> benefits, {bool isCurrent = false, int? currentPoints}) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isCurrent ? Theme.of(context).colorScheme.primary : _getTierColor(name),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(_getTierIcon(name), color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text('Hạng $name', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))),
+                      if (isCurrent)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text('${currentPoints ?? 0} điểm', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Yêu cầu: $threshold điểm', style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  ...benefits.map((b) => Text('• $b', style: Theme.of(context).textTheme.bodySmall)).toList(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBullet(BuildContext context, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(fontSize: 16)),
+          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
+        ],
+      ),
+    );
   }
 }

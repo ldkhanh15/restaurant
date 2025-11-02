@@ -18,6 +18,18 @@ router.post(
   paymentController.createVnpayPayment,
 )
 
+// Preview vouchers applied to an order (server-side calculation)
+router.post(
+  "/vnpay/preview",
+  authenticate,
+  [
+    body("order_id").isUUID().withMessage("order_id is required"),
+    body("voucher_ids").optional().isArray().withMessage("voucher_ids must be array of ids"),
+    validate,
+  ],
+  paymentController.previewVnpayCalculation,
+)
+
 // VNPay return URL (redirect from VNPay)
 router.get(
   "/vnpay/return",

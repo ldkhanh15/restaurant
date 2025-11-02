@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/app.dart';
 import '../../../domain/models/menu.dart';
 import '../../../domain/models/booking.dart';
 import '../../widgets/menu_item_card.dart';
 import '../../widgets/cart_bottom_sheet.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
 import '../../../data/datasources/api_config.dart';
+import '../../widgets/app_bottom_navigation.dart';
+import '../../widgets/main_navigation.dart';
 import '../../../domain/models/order.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
@@ -169,7 +172,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: widget.booking != null && cartItems.isNotEmpty
+      bottomNavigationBar: (widget.booking != null && cartItems.isNotEmpty)
           ? Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -213,7 +216,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                 ),
               ),
             )
-          : null,
+          : ((context.findAncestorWidgetOfExactType<MainNavigation>() == null)
+              ? const AppBottomNavigation(selectedIndex: 2)
+              : null),
     );
   }
 
@@ -253,7 +258,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           try {
             final cartItems = ref.read(cartItemsProvider);
             if (cartItems.isEmpty) {
-              context.go('/order-confirmation', extra: widget.booking);
+              appRouter.push('/order-confirmation', extra: widget.booking);
               return;
             }
 
@@ -279,20 +284,74 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
               }).toList(),
             };
 
-            final created = await OrderAppUserService.createOrder(payload);
-            final serverOrder = Order.fromJson(Map<String, dynamic>.from(created));
-            ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
-            ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+            // If there's an existing order (pending/created) for this booking, update it
+            final existingOrder = ref.read(currentOrderProvider);
+            if (existingOrder != null && (existingOrder.status == OrderStatus.pending || existingOrder.status == OrderStatus.created)) {
+              try {
+                final updated = await OrderAppUserService.updateOrder(existingOrder.id, payload);
+                final serverOrder = Order.fromJson(Map<String, dynamic>.from(updated));
+                ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+                ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+                // Sync into order history
+                try {
+                  final list = ref.read(orderHistoryProvider);
+                  final idx = list.indexWhere((o) => o.id == serverOrder.id);
+                  if (idx != -1) {
+                    final copy = list.toList();
+                    copy[idx] = serverOrder;
+                    ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                  } else {
+                    ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+                  }
+                } catch (_) {}
+              } catch (e) {
+                // fallback to create
+                final created = await OrderAppUserService.createOrder(payload);
+                final serverOrder = Order.fromJson(Map<String, dynamic>.from(created));
+                ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+                ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+                try {
+                  final list = ref.read(orderHistoryProvider);
+                  final idx = list.indexWhere((o) => o.id == serverOrder.id);
+                  if (idx != -1) {
+                    final copy = list.toList();
+                    copy[idx] = serverOrder;
+                    ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                  } else {
+                    ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+                  }
+                } catch (_) {}
+              }
+            } else {
+              final created = await OrderAppUserService.createOrder(payload);
+              final serverOrder = Order.fromJson(Map<String, dynamic>.from(created));
+              ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+              ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+              // Keep order history in sync so 'Của tôi' shows this order
+              try {
+                final list = ref.read(orderHistoryProvider);
+                final idx = list.indexWhere((o) => o.id == serverOrder.id);
+                if (idx != -1) {
+                  final copy = list.toList();
+                  copy[idx] = serverOrder;
+                  ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                } else {
+                  ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+                }
+              } catch (_) {}
+            }
 
             // Clear cart after creating order locally
             ref.read(cartItemsProvider.notifier).clearCart();
 
-            context.go('/order-confirmation', extra: widget.booking);
+            appRouter.push('/order-confirmation', extra: widget.booking);
           } catch (e) {
             // If create fails, still navigate to confirmation so user can retry
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể tạo đơn: $e')));
-            context.go('/order-confirmation', extra: widget.booking);
+            appRouter.push('/order-confirmation', extra: widget.booking);
           }
         },
       ),

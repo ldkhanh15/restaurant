@@ -44,6 +44,10 @@ import eventBookingAppUserRoutes from "./routes/eventBooking_app_userRoutes";
 import voucherAppUserRoutes from "./routes/voucher_app_userRoutes";
 import voucherUsageAppUserRoutes from "./routes/voucherUsage_app_userRoutes";
 import blogPostAppUserRoutes from "./routes/blogPost_app_userRoutes";
+import chatMessageAppUserRoutes from "./routes/chatMessage_app_userRoutes";
+import chatSessionAppUserRoutes from "./routes/chatSession_app_userRoutes";
+import loyaltyAppUserRoutes from "./routes/loyalty_app_userRoutes";
+import paymentAppUserRoutes from "./routes/payment_app_userRoutes";
 
 // Import models to initialize associations
 import "./models/index";
@@ -112,7 +116,12 @@ app.use("/api/app_user/notifications", notificationAppUserRoutes)
 app.use("/api/app_user/user", userAppUserRoutes)
 app.use("/api/app_user/events", eventAppUserRoutes)
 app.use("/api/app_user/vouchers", voucherAppUserRoutes)
+app.use("/api/app_user/payment", paymentAppUserRoutes)
 app.use("/api/app_user/blog", blogPostAppUserRoutes)
+// Chat endpoints for mobile/web app users
+app.use("/api/app_user/chat-messages", chatMessageAppUserRoutes)
+app.use("/api/app_user/chat-sessions", chatSessionAppUserRoutes)
+app.use("/api/app_user/loyalty", loyaltyAppUserRoutes)
 
 // Event bookings and voucher usages (endpoints used by mobile app)
 app.use("/api/app_user/event-bookings", eventBookingAppUserRoutes)

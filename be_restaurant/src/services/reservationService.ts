@@ -196,6 +196,7 @@ class ReservationService {
 
     // If VIP user, create order immediately
     if (isVip && data.pre_order_items && data.pre_order_items.length > 0) {
+      console.log(`[ReservationService] Creating order for VIP reservation user_id=${data.user_id} table_id=${data.table_id} reservation_temp=${/* temporary reservation id unknown yet */ ''} pre_order_items=`, data.pre_order_items)
       const order = await Order.create({
         user_id: data.user_id,
         table_id: data.table_id,
@@ -399,6 +400,7 @@ class ReservationService {
           order = existingOrder;
         } else {
           // Create new order
+          console.log(`[ReservationService] updateReservation creating new order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`, data.pre_order_items)
           order = await Order.create({
             user_id: reservation.user_id,
             table_id: reservation.table_id,
@@ -579,6 +581,7 @@ class ReservationService {
     // Create order with pre-order items if they exist
     const preOrderItems = reservation?.pre_order_items;
     if (preOrderItems && preOrderItems.length > 0) {
+      console.log(`[ReservationService] handleDepositPaymentSuccess creating order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`, preOrderItems)
       const order = await Order.create({
         user_id: reservation.user_id,
         table_id: reservation.table_id,

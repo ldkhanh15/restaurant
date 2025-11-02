@@ -151,6 +151,11 @@ Future<void> initializeUserDependentData_app_user(WidgetRef ref) async {
     // Fetch user profile
     final userProfile = await ref.read(userRepositoryProvider).getUserProfile();
     ref.read(userProvider.notifier).setUser(userProfile);
+    // Sync loyalty providers so UI shows actual points and tier
+    try {
+      ref.read(loyaltyPointsProvider.notifier).setPoints(userProfile.loyaltyPoints);
+  ref.read(membershipTierProvider.notifier).setTier(userProfile.membershipTier);
+    } catch (_) {}
 
     // Fetch user's notifications
     final notifications = await ref.read(notificationRepositoryProvider).getNotifications();

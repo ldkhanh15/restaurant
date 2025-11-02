@@ -15,6 +15,7 @@ import notificationService from "./notificationService";
 import paymentService from "./paymentService";
 import { getIO } from "../sockets";
 import { orderEvents } from "../sockets/orderSocket";
+import loyaltyService from "./loyalty_app_userService";
 import {
   validateOrderOverlap,
   validateTableGroupOrderOverlap,
@@ -582,6 +583,16 @@ class OrderService {
       orderEvents.paymentCompleted(getIO(), updatedOrder);
     } catch (error) {
       console.error("Failed to emit payment completed event:", error);
+    }
+
+    // Award loyalty points for this paid order (if associated with a user)
+    try {
+      const res = await loyaltyService.awardPointsForOrder(order);
+      if (res) {
+        console.info("[loyalty] awarded", res);
+      }
+    } catch (err) {
+      console.error("[loyalty] error awarding points:", err);
     }
 
     return updatedOrder;

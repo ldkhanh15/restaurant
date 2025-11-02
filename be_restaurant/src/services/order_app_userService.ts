@@ -70,6 +70,7 @@ class OrderService extends BaseService<Order> {
       where: { ...(options?.where || {}), status },
     })
   }
+  
 
   async searchOrders(search?: string, options?: FindOptions) {
     const where = this.buildSearchWhere(search)
