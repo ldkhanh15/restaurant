@@ -10,7 +10,6 @@ cloudinary.config({
 
 export default cloudinary
 
-// ======================== UPLOAD 1 ẢNH ========================
 export async function uploadImageToCloudinary(
   filePath: string,
   param: string
@@ -33,7 +32,6 @@ export async function uploadImageToCloudinary(
   }
 }
 
-// ======================== UPLOAD NHIỀU ẢNH ========================
 export async function uploadMultipleImagesToCloudinary(
   filePaths: string[],
   param: string

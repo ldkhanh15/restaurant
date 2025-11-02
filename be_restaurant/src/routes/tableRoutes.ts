@@ -1,6 +1,7 @@
 import { Router } from "express"
 import * as tableController from "../controllers/tableController"
 import { authenticate, authorize } from "../middlewares/auth"
+import upload from "../middlewares/upload"
 
 const router = Router()
 
@@ -13,8 +14,8 @@ router.delete("/table-group/:id", tableController.ungroupTables)
 router.get("/status/:status", tableController.getTablesByStatus)
 router.get("/", tableController.getAllTables)
 router.get("/:id", tableController.getTableById)
-router.post("/", tableController.createTable)
-router.put("/:id", tableController.updateTable)
+router.post("/", upload.array("panorama_files"), tableController.createTable)
+router.put("/:id", upload.array("panorama_files"), tableController.updateTable)
 router.delete("/:id", tableController.deleteTable)
 
 

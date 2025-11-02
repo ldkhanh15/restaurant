@@ -267,84 +267,96 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
     }
   }
 
+  // =================== CREATE: Gửi file về BE ===================
   const handleCreateDish = async () => {
     try {
-      const id = uuidv4()
-      const file = formData.media_urls[0] as File | undefined
+      const id = uuidv4(); 
+      const file = formData.media_urls?.[0] as File | undefined;
 
-      const formDataToSend = new FormData()
-      formDataToSend.append("id", id)
-      formDataToSend.append("name", formData.name)
-      formDataToSend.append("description", formData.description)
-      formDataToSend.append("price", formData.price.toString())
-      formDataToSend.append("category_id", formData.category_id)
-      formDataToSend.append("is_best_seller", formData.is_best_seller.toString())
-      formDataToSend.append("seasonal", formData.seasonal.toString())
-      formDataToSend.append("active", formData.active.toString())
+      const dishData = {
+        id,
+        name: formData.name,
+        description: formData.description,
+        price: formData.price,
+        category_id: formData.category_id,
+        media_file: file, // gửi file trực tiếp
+        is_best_seller: formData.is_best_seller,
+        seasonal: formData.seasonal,
+        active: formData.active,
+      };
+      const ingredientData = {
+        dish_id: id, 
+        ingredients: formData.ingredients.map(ing => ({
+          ingredient_id: ing.ingredient_id,
+          quantity: ing.quantity,
+        })),
+      };
 
-      if (file) {
-        formDataToSend.append("image", file) // gửi file ảnh
+      const formDataToSend = new FormData();
+      formDataToSend.append("dishData", JSON.stringify(dishData));
+      formDataToSend.append("ingredients", JSON.stringify(ingredientData));
+      formDataToSend.append("media_file", file as Blob);
+
+      const responseDish = await dishService.create(formDataToSend);
+   
+      if (!responseDish) {
+        toast.error("Lỗi khi thêm món ăn");
+        return;
       }
-
-      formData.ingredients.forEach((ing, index) => {
-        formDataToSend.append(`ingredients[${index}][ingredient_id]`, ing.ingredient_id)
-        formDataToSend.append(`ingredients[${index}][quantity]`, ing.quantity.toString())
-      })
-
-      const response = await dishService.create(formDataToSend)
-
-      if (!response || response.data.status === 'existed') {
-        toast.error(response?.data.message || "Lỗi khi thêm món ăn")
-        return
+      if(responseDish.status as any === 'existed')
+      {
+        toast.error(responseDish.message || 'Đã bị trùng tên món ăn');
+        return;
       }
-
-      getData()
-      setIsCreateDialogOpen(false)
-      resetForm()
-      toast.success("Tạo món ăn thành công")
-    } catch (error: any) {
-      console.error(error)
-      toast.error(error.response?.data?.message || "Tạo món ăn thất bại")
+      getData();
+      setIsCreateDialogOpen(false);
+      resetForm();
+      toast.success("Tạo món ăn thành công");
+    } catch (error) {
+      toast.error("Tạo món ăn thất bại");
     }
-  }
+  };
 
+  // =================== UPDATE: Gửi file nếu có thay đổi ===================
   const handleUpdateDish = async () => {
-    if (!selectedDish) return
+    if (selectedDish) {
+      try {
+        const firstMedia = formData.media_urls?.[0]
+        let media_file: File | undefined = undefined
+        let media_urls: string[] = []
 
-    try {
-      const formDataToSend = new FormData()
-      const currentImage = formData.media_urls[0]
+        if (firstMedia instanceof File) {
+          media_file = firstMedia
+        } else if (typeof firstMedia === "string") {
+          media_urls = [firstMedia]
+        }
 
-      formDataToSend.append("name", formData.name)
-      formDataToSend.append("description", formData.description)
-      formDataToSend.append("price", formData.price.toString())
-      formDataToSend.append("category_id", formData.category_id)
-      formDataToSend.append("is_best_seller", formData.is_best_seller.toString())
-      formDataToSend.append("seasonal", formData.seasonal.toString())
-      formDataToSend.append("active", formData.active.toString())
+        const updatePayload: any = {
+          name: formData.name,
+          description: formData.description,
+          price: formData.price,
+          category_id: formData.category_id,
+          is_best_seller: formData.is_best_seller,
+          seasonal: formData.seasonal,
+          active: formData.active,
+        }
 
-      // Gửi file mới nếu có
-      if (currentImage && currentImage instanceof File) {
-        formDataToSend.append("image", currentImage)
+        if (media_file) {
+          updatePayload.media_file = media_file
+        } else if (media_urls.length > 0) {
+          updatePayload.media_urls = media_urls
+        }
+
+        await dishService.update(selectedDish.id, updatePayload)
+        await dishService.importIngredients({ dishId: selectedDish.id, ingredients: formData.ingredients })
+
+        getData()
+        setIsEditDialogOpen(false)
+        resetForm()
+        toast.success("Cập nhật món ăn thành công")
+      } catch (error) {
+        toast.error("Cập nhật món ăn thất bại")
       }
-      // Gửi URL cũ nếu không thay đổi ảnh
-      else if (typeof currentImage === "string") {
-        formDataToSend.append("existing_image_url", currentImage)
-      }
-
-      formData.ingredients.forEach((ing, index) => {
-        formDataToSend.append(`ingredients[${index}][ingredient_id]`, ing.ingredient_id)
-        formDataToSend.append(`ingredients[${index}][quantity]`, ing.quantity.toString())
-      })
-
-      await dishService.update(selectedDish.id, formDataToSend)
-
-      getData()
-      setIsEditDialogOpen(false)
-      resetForm()
-      toast.success("Cập nhật món ăn thành công")
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || "Cập nhật món ăn thất bại")
     }
   }
 

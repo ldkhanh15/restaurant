@@ -5,7 +5,7 @@ export interface RestaurantAreaAttributes {
   id: string;
   name: string;                 
   area_size: number;       
-  shape_type: "square" | "rectangle" | "circle" | "polygon";             
+  shape_type: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram";             
   status: "active" | "maintenance" | "clean";
   created_at?: Date;
   updated_at?: Date;
@@ -22,7 +22,7 @@ class RestaurantArea
   public id!: string;
   public name!: string;
   public area_size!: number;
-  public shape_type!: "square" | "rectangle" | "circle" | "polygon";
+  public shape_type!: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram";
   public shape_points?: any;
   public floor_number?: number;
   public status!: "active" | "maintenance" | "clean";
@@ -48,7 +48,7 @@ RestaurantArea.init(
       comment: "Diện tích khu vực (m²)",
     },
     shape_type: {
-      type: DataTypes.ENUM("square", "rectangle", "circle", "polygon"),
+      type: DataTypes.ENUM("square", "rectangle", "circle", "polygon", "rhombus", "parallelogram"),
       allowNull: false,
       comment: "Hình dạng khu vực",
     },

@@ -30,7 +30,7 @@ interface RestaurantAreaAttributes {
   id: string
   name: string
   area_size: number
-  shape_type: "square" | "rectangle" | "circle" | "polygon"
+  shape_type: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram"
   status: "active" | "maintenance" | "clean"
   created_at?: Date
   updated_at?: Date
@@ -104,7 +104,7 @@ export function RestaurantAreaManagement() {
   const handleUpdateArea = async (id: string, data: Partial<RestaurantAreaAttributes>) => {
     try {
       const response = await masterService.update(id, data)
-      if (response && response.status === 200) {
+      if (response) {
         setArea((prev) => (prev ? { ...prev, ...data, updated_at: new Date() } : null))
         setIsEditAreaDialogOpen(false)
         toast.success("Đã cập nhật khu vực thành công")
@@ -197,7 +197,7 @@ export function RestaurantAreaManagement() {
               handleCreateArea({
                 name: formData.get("name") as string,
                 area_size: Number(formData.get("area_size")),
-                shape_type: formData.get("shape_type") as "square" | "rectangle" | "circle" | "polygon",
+                shape_type: formData.get("shape_type") as "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram",
                 status: formData.get("status") as "active" | "maintenance" | "clean",
               })
             }}
@@ -214,7 +214,6 @@ export function RestaurantAreaManagement() {
               <div className="grid gap-2">
                 <Label htmlFor="shape_type">Hình dạng</Label>
                 <Select name="shape_type" defaultValue="square">
-之中
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn hình dạng" />
                   </SelectTrigger>
@@ -223,6 +222,8 @@ export function RestaurantAreaManagement() {
                     <SelectItem value="rectangle">Chữ nhật</SelectItem>
                     <SelectItem value="circle">Tròn</SelectItem>
                     <SelectItem value="polygon">Đa giác</SelectItem>
+                    <SelectItem value="rhombus">Hình thoi</SelectItem>
+                    <SelectItem value="parallelogram">Bình hành</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -298,7 +299,7 @@ export function RestaurantAreaManagement() {
                 handleUpdateArea(selectedArea.id, {
                   name: formData.get("name") as string,
                   area_size: Number(formData.get("area_size")),
-                  shape_type: formData.get("shape_type") as "square" | "rectangle" | "circle" | "polygon",
+                  shape_type: formData.get("shape_type") as "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram",
                   status: formData.get("status") as "active" | "maintenance" | "clean",
                 })
               }}
@@ -319,11 +320,13 @@ export function RestaurantAreaManagement() {
                       <SelectValue placeholder="Chọn hình dạng" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="square">Vuông</SelectItem>
-                      <SelectItem value="rectangle">Chữ nhật</SelectItem>
-                      <SelectItem value="circle">Tròn</SelectItem>
-                      <SelectItem value="polygon">Đa giác</SelectItem>
-                    </SelectContent>
+                    <SelectItem value="square">Vuông</SelectItem>
+                    <SelectItem value="rectangle">Chữ nhật</SelectItem>
+                    <SelectItem value="circle">Tròn</SelectItem>
+                    <SelectItem value="polygon">Đa giác</SelectItem>
+                    <SelectItem value="rhombus">Hình thoi</SelectItem>
+                    <SelectItem value="parallelogram">Bình hành</SelectItem>
+                  </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">

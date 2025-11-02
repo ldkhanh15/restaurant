@@ -153,7 +153,7 @@ export function EventManagement() {
     }
 
     const response = await eventService.create(event)
-    if (!response || response.status !== 201) {
+    if (!response) {
       toast.error("Tạo sự kiện thất bại!")
       return
     }
@@ -190,7 +190,7 @@ export function EventManagement() {
     }
 
     const response = await eventService.update(selectedEvent.id, updatedEvent)
-    if (!response || response.status !== 200) {
+    if (!response) {
       toast.error("Cập nhật sự kiện thất bại!")
       return
     }
@@ -203,7 +203,7 @@ export function EventManagement() {
 
   const handleDeleteEvent = async (eventId: string) => {
     const response = await eventService.remove(eventId)
-    if (!response || response.status !== 200) {
+    if (!response) {
       toast.error("Xóa sự kiện thất bại!")
       return
     }

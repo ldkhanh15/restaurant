@@ -17,7 +17,7 @@ interface AreaDimensions {
  */
 export function calculateCanvasDimensions(
   areaSizeM2: number,
-  shapeType: "square" | "rectangle" | "circle" | "polygon",
+  shapeType: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram",
   pixelsPerMeter = 2,
 ): AreaDimensions {
   // Tính toán kích thước thực tế dựa trên diện tích
@@ -55,6 +55,31 @@ export function calculateCanvasDimensions(
       const lengthM = widthM * 1.5
       width = lengthM * pixelsPerMeter
       height = widthM * pixelsPerMeter
+      break
+    }
+
+    case "rhombus": {
+      // Diện tích hình thoi: A = (d1 * d2) / 2
+      // Giả sử tỷ lệ hai đường chéo là 1.2:1
+      // d2 = d1 / 1.2
+      // A = (d1 * d1 / 1.2) / 2 = d1² / 2.4
+      // d1 = √(A * 2.4)
+      const d1M = Math.sqrt(areaSizeM2 * 2.4)
+      const d2M = d1M / 1.2
+      width = d1M * pixelsPerMeter
+      height = d2M * pixelsPerMeter
+      break
+    }
+
+    case "parallelogram": {
+      // Diện tích hình bình hành: A = base * height
+      // Giả sử tỷ lệ base:height là 1.5:1
+      // A = base * (base / 1.5)
+      // base = √(A * 1.5)
+      const baseM = Math.sqrt(areaSizeM2 * 1.5)
+      const heightM = baseM / 1.5
+      width = baseM * pixelsPerMeter
+      height = heightM * pixelsPerMeter
       break
     }
 
@@ -96,7 +121,7 @@ export function calculateTableSize(canvasWidth: number, canvasHeight: number, nu
  * @param shapeType - Loại hình dạng
  * @returns CSS class string
  */
-export function getShapeClass(shapeType: "square" | "rectangle" | "circle" | "polygon"): string {
+export function getShapeClass(shapeType: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram"): string {
   switch (shapeType) {
     case "circle":
       return "rounded-full"
@@ -106,6 +131,9 @@ export function getShapeClass(shapeType: "square" | "rectangle" | "circle" | "po
       return "rounded-md"
     case "polygon":
       return "rounded-lg"
+    case "rhombus":
+    case "parallelogram":
+      return "rounded-md"
     default:
       return "rounded-md"
   }
@@ -119,7 +147,7 @@ export function getShapeClass(shapeType: "square" | "rectangle" | "circle" | "po
  * @returns SVG clip path ID
  */
 export function createShapeClipPath(
-  shapeType: "square" | "rectangle" | "circle" | "polygon",
+  shapeType: "square" | "rectangle" | "circle" | "polygon" | "rhombus" | "parallelogram",
   width: number,
   height: number,
 ): string {
@@ -158,6 +186,39 @@ export function createShapeClipPath(
         const y = centerY + radius * Math.sin(angle)
         points.push(`${x},${y}`)
       }
+
+      shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
+      shape.setAttribute("points", points.join(" "))
+      break
+    }
+
+    case "rhombus": {
+      // Hình thoi - 4 điểm xoay 45 độ
+      const centerX = width / 2
+      const centerY = height / 2
+      const halfWidth = width / 2
+      const halfHeight = height / 2
+      const points = [
+        `${centerX},${centerY - halfHeight}`, // Top
+        `${centerX + halfWidth},${centerY}`, // Right
+        `${centerX},${centerY + halfHeight}`, // Bottom
+        `${centerX - halfWidth},${centerY}`, // Left
+      ]
+
+      shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
+      shape.setAttribute("points", points.join(" "))
+      break
+    }
+
+    case "parallelogram": {
+      // Hình bình hành - có góc nghiêng
+      const skew = width * 0.1 // Độ nghiêng 10%
+      const points = [
+        `${skew},0`, // Top-left
+        `${width},0`, // Top-right
+        `${width - skew},${height}`, // Bottom-right
+        `0,${height}`, // Bottom-left
+      ]
 
       shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
       shape.setAttribute("points", points.join(" "))

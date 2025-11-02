@@ -191,92 +191,82 @@ export function TableManagement({
     return loc
   }
 
-  const handleCreateTable = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const handleCreateTable = async (form: HTMLFormElement) => {
     setIsSubmitting(true)
-
-    const formData = new FormData(e.currentTarget)
-    const loc = buildLocationFromForm(formData)
-
-    // Append data
-    formData.append("table_number", formData.get("table_number") as string)
-    formData.append("capacity", formData.get("capacity") as string)
-    formData.append("deposit", formData.get("deposit") as string)
-    formData.append("cancel_minutes", formData.get("cancel_minutes") as string)
-    formData.append("status", formData.get("status") as string)
-    if (formData.get("description")) formData.append("description", formData.get("description") as string)
-    if (loc) formData.append("location", JSON.stringify(loc))
-    formData.append("amenities", JSON.stringify(parseAmenitiesToObject(amenities)))
-
-    // Append files
-    panoramaFiles.forEach((file, index) => {
-      formData.append("panorama_files", file)
-    })
-
     try {
-      const response = await tableService.create(formData)
-      if (response && response.status === 201) {
-        const newTable = await response.data ?? response as any;
-        setTables((prev) => [...prev, { ...newTable, id: uuidv4(), created_at: new Date(), updated_at: new Date() }])
+      const formValues = new FormData(form)
+      const id = uuidv4()
+      const location = buildLocationFromForm(formValues)
+      const amenitiesObj = parseAmenitiesToObject(amenities)
+
+      const payload = new FormData()
+      payload.append("id", id)
+      payload.append("table_number", String(formValues.get("table_number") || ""))
+      payload.append("capacity", String(formValues.get("capacity") || "0"))
+      payload.append("deposit", String(formValues.get("deposit") || "0"))
+      payload.append("cancel_minutes", String(formValues.get("cancel_minutes") || "0"))
+      payload.append("status", String(formValues.get("status") || "available"))
+      payload.append("description", String(formValues.get("description") || ""))
+      if (location) payload.append("location", JSON.stringify(location))
+      payload.append("amenities", JSON.stringify(amenitiesObj))
+      // files
+      panoramaFiles.forEach((file) => payload.append("panorama_files", file))
+
+      const createdTable = await tableService.create(payload) as unknown as TableAttributes
+
+      if (createdTable && createdTable.id) {
+        setTables((prev) => [...prev, createdTable])
         setIsCreateTableDialogOpen(false)
-        resetForm()
+        setAmenities([])
+        setPanoramaFiles([])
+        setPanoramaPreviews([])
         toast.success("Đã thêm bàn thành công")
       } else {
         toast.error("Thêm bàn thất bại")
       }
-    } catch (err) {
-      toast.error("Lỗi khi thêm bàn")
+    } catch (err: any) {
+      toast.error(err?.message || "Lỗi khi thêm bàn")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleUpdateTable = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!selectedTable) return
+  const handleUpdateTable = async (id: string, form: HTMLFormElement) => {
     setIsSubmitting(true)
-
-    const formData = new FormData(e.currentTarget)
-    const loc = buildLocationFromForm(formData)
-
-    // Append data
-    formData.append("table_number", formData.get("table_number") as string)
-    formData.append("capacity", formData.get("capacity") as string)
-    formData.append("deposit", formData.get("deposit") as string)
-    formData.append("cancel_minutes", formData.get("cancel_minutes") as string)
-    formData.append("status", formData.get("status") as string)
-    if (formData.get("description")) formData.append("description", formData.get("description") as string)
-    if (loc) formData.append("location", JSON.stringify(loc))
-    formData.append("amenities", JSON.stringify(parseAmenitiesToObject(amenities)))
-
-    // Append new files
-    panoramaFiles.forEach((file) => {
-      formData.append("panorama_files", file)
-    })
-
-    currentUrls.forEach((url) => {
-      formData.append("existing_panorama_urls", url)
-    })
-
     try {
-      const response = await tableService.update(selectedTable.id, formData)
-      if (response && response.status === 200) {
-        const updatedTable = response.data ?? response as any;
-        setTables((prev) =>
-          prev.map((table) =>
-            table.id === selectedTable.id
-              ? { ...table, ...updatedTable, updated_at: new Date() }
-              : table
-          )
-        )
+      const formValues = new FormData(form)
+      const location = buildLocationFromForm(formValues)
+      const amenitiesObj = parseAmenitiesToObject(amenities)
+
+      const payload = new FormData()
+      payload.append("table_number", String(formValues.get("table_number") || ""))
+      payload.append("capacity", String(formValues.get("capacity") || "0"))
+      payload.append("deposit", String(formValues.get("deposit") || "0"))
+      payload.append("cancel_minutes", String(formValues.get("cancel_minutes") || "0"))
+      payload.append("status", String(formValues.get("status") || "available"))
+      payload.append("description", String(formValues.get("description") || ""))
+      if (location) payload.append("location", JSON.stringify(location))
+      payload.append("amenities", JSON.stringify(amenitiesObj))
+      if (currentUrls && currentUrls.length > 0) {
+        payload.append("panorama_urls", JSON.stringify(currentUrls))
+      }
+      panoramaFiles.forEach((file) => payload.append("panorama_files", file))
+
+      const updated = await tableService.update(id, payload) as unknown as TableAttributes
+
+      if (updated && updated.id) {
+        setTables((prev) => prev.map((t) => (t.id === id ? updated : t)))
         setIsEditTableDialogOpen(false)
-        resetForm()
+        setAmenities([])
+        setPanoramaFiles([])
+        setPanoramaPreviews([])
+        setCurrentUrls(updated.panorama_urls || [])
         toast.success("Đã cập nhật bàn thành công")
       } else {
         toast.error("Cập nhật bàn thất bại")
       }
-    } catch (err) {
-      toast.error("Lỗi khi cập nhật bàn")
+    } catch (err: any) {
+      toast.error(err?.message || "Lỗi khi cập nhật bàn")
     } finally {
       setIsSubmitting(false)
     }
@@ -292,7 +282,7 @@ export function TableManagement({
   const handleDeleteTable = async (id: string) => {
     try {
       const response = await tableService.remove(id)
-      if (response && response.status === 200) {
+      if (response) {
         setTables((prev) =>
           prev.map((table) => (table.id === id ? { ...table, deleted_at: new Date() } : table))
         )
@@ -376,7 +366,7 @@ export function TableManagement({
       </div>
 
       {/* --- Table Cards --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {filteredTables.map((table) => (
           <Card
             key={table.id}
@@ -490,7 +480,12 @@ export function TableManagement({
             <DialogTitle>Thêm bàn mới</DialogTitle>
             <DialogDescription>Thêm thông tin bàn mới vào hệ thống</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreateTable}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateTable(e.currentTarget);
+            }}
+          >
             <div className="grid grid-cols-2 gap-8 py-4">
               <div className="space-y-4">
                 <div className="grid gap-2">
@@ -747,7 +742,11 @@ export function TableManagement({
             <DialogTitle>Chỉnh sửa bàn</DialogTitle>
           </DialogHeader>
           {selectedTable && (
-            <form onSubmit={handleUpdateTable}>
+            <form onSubmit={(e) =>{
+              e.preventDefault()
+              handleUpdateTable(selectedTable.id, e.currentTarget)
+            }}
+            >
               <div className="grid grid-cols-2 gap-8 py-4">
                 <div className="space-y-4">
                   <div className="grid gap-2">
