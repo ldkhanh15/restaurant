@@ -41,6 +41,10 @@ class DishDetailScreen extends StatelessWidget {
               background: Image.network(
                 item.image,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(alignment: Alignment.center, child: SizedBox(width:48,height:48, child: CircularProgressIndicator(strokeWidth:3)));
+                },
                 errorBuilder: (context, error, stackTrace) {
                   return Container(
                     color: Colors.grey[300],
@@ -187,6 +191,10 @@ class _DishDetailContent extends StatelessWidget {
               Image.network(
                 item.image,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(alignment: Alignment.center, child: SizedBox(width:48,height:48, child: CircularProgressIndicator(strokeWidth:3)));
+                },
                 errorBuilder: (context, error, stackTrace) => Container(color: Colors.grey[300], child: const Icon(Icons.restaurant, size: 80)),
               ),
               Container(
