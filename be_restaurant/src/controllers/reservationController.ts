@@ -31,6 +31,39 @@ export const getAllReservations = async (
   }
 };
 
+export const getMyReservations = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ status: "error", message: "Unauthorized" });
+    }
+
+    const { page = 1, limit = 10, ...filters } = getPaginationParams(req.query);
+
+    // Only return reservations for the authenticated user
+    const result = await reservationService.getAllReservations({
+      ...filters,
+      user_id: userId, // Force filter by current user
+      page,
+      limit,
+    });
+
+    const paginatedResult = buildPaginationResult(
+      result.rows,
+      result.count,
+      page,
+      limit
+    );
+    res.json({ status: "success", data: paginatedResult });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getReservationById = async (
   req: Request,
   res: Response,
@@ -112,6 +145,23 @@ export const checkInReservation = async (
   try {
     const result = await reservationService.checkInReservation(req.params.id);
     res.json({ status: "success", data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const cancelReservation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { reason } = req.body;
+    const reservation = await reservationService.cancelReservation(
+      req.params.id,
+      reason
+    );
+    res.json({ status: "success", data: reservation });
   } catch (error) {
     next(error);
   }

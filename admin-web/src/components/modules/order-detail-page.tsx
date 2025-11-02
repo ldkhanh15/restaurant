@@ -112,7 +112,6 @@ interface OrderItem {
 
 interface Order {
   id: string;
-  order_number?: string;
   user_id: string;
   reservation_id?: string;
   table_id?: string;
@@ -271,10 +270,11 @@ function OrderDetailPage({ orderId }: OrderDetailPageProps) {
   const loadOrderDetails = async () => {
     setIsLoading(true);
     try {
-      const response = await orderService.getOrderDetailsForChat(orderId);
-      if (response.data?.data) {
-        setOrder(response.data.data);
-      }
+      // const response = await orderService.getOrderDetailsForChat(orderId);
+      // console.log(response);
+      // if (response) {
+      //   setOrder(response);
+      // }
     } catch (error) {
       console.error("Failed to load order details:", error);
       toast({
@@ -599,7 +599,7 @@ function OrderDetailPage({ orderId }: OrderDetailPageProps) {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">
-              Đơn hàng #{order.order_number || order.id.slice(0, 8)}
+              Đơn hàng #{order.id.slice(0, 8)}
             </h1>
             <div className="flex items-center gap-2 mt-2">
               <Badge className={getStatusColor(order.status)}>
@@ -992,7 +992,7 @@ function OrderDetailPage({ orderId }: OrderDetailPageProps) {
           <DialogHeader>
             <DialogTitle>Thanh toán đơn hàng</DialogTitle>
             <DialogDescription>
-              Xử lý thanh toán cho đơn hàng #{order.order_number}
+              Xử lý thanh toán cho đơn hàng #{order.id.slice(0, 8)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1054,7 +1054,7 @@ function OrderDetailPage({ orderId }: OrderDetailPageProps) {
           <DialogHeader>
             <DialogTitle>Đổi bàn</DialogTitle>
             <DialogDescription>
-              Chọn bàn mới cho đơn hàng #{order.order_number}
+              Chọn bàn mới cho đơn hàng #{order.id.slice(0, 8)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1102,7 +1102,7 @@ function OrderDetailPage({ orderId }: OrderDetailPageProps) {
           <DialogHeader>
             <DialogTitle>Thêm món ăn</DialogTitle>
             <DialogDescription>
-              Thêm món ăn mới vào đơn hàng #{order.order_number}
+              Thêm món ăn mới vào đơn hàng #{order.id.slice(0, 8)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

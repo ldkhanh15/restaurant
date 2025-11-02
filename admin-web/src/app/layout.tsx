@@ -7,6 +7,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import AuthGate from "@/components/shared/AuthGate";
 import { ToastContainer } from "react-toastify";
+import { WebSocketProvider } from "@/providers/WebSocketProvider";
 
 export const metadata: Metadata = {
   title: "My Restaurant Dashboard",
@@ -24,15 +25,17 @@ export default function RootLayout({
       <body
         className={`font-sans ${GeistSans.variable} ${GeistMono.variable} h-full`}
       >
-        <AuthGate>
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden h-full">
-              <Header />
-              <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <WebSocketProvider>
+          <AuthGate>
+            <div className="flex h-screen bg-background">
+              <Sidebar />
+              <div className="flex-1 flex flex-col overflow-hidden h-full">
+                <Header />
+                <main className="flex-1 overflow-y-auto p-6">{children}</main>
+              </div>
             </div>
-          </div>
-        </AuthGate>
+          </AuthGate>
+        </WebSocketProvider>
         <ToastContainer
           position="bottom-right"
           autoClose={2000}

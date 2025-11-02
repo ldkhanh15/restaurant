@@ -60,3 +60,14 @@ export const authorize = (
     next();
   };
 };
+
+
+export const getUserByToken = (token: string) => {
+  try {
+
+    const decoded = verifyToken(token);
+    return decoded;
+  } catch (error) {
+    throw new AppError("Invalid or expired token", 401);
+  }
+};

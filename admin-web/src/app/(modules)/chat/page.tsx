@@ -1,5 +1,5 @@
-import { ChatFlow } from "@/components/chat/ChatFlow";
+import { ChatSystem } from "@/components/modules/chat-system";
 
 export default function Page() {
-  return <ChatFlow />;
+  return <ChatSystem />;
 }

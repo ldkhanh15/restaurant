@@ -8,7 +8,20 @@ const router = Router();
 
 router.use(authenticate);
 
-// Get all orders with filters
+// Get my orders (user-specific, requires auth only)
+router.get(
+  "/my-orders",
+  [
+    query("date").optional().isISO8601().withMessage("Invalid date format"),
+    query("status")
+      .optional()
+      .isIn(["pending", "dining", "paid", "waiting_payment", "cancelled"]),
+    validate,
+  ],
+  orderController.getMyOrders
+);
+
+// Get all orders with filters (admin/employee only)
 router.get(
   "/",
   authorize("admin", "employee"),
@@ -18,9 +31,9 @@ router.get(
       .optional()
       .isIn([
         "pending",
-        "preparing",
-        "ready",
-        "delivered",
+        "dining",
+        "paid",
+        "waiting_payment",
         "paid",
         "cancelled",
       ]),
@@ -32,7 +45,11 @@ router.get(
 );
 
 // Get order by ID
-router.get("/:id", [param("id").isUUID().withMessage("Invalid order ID"), validate], orderController.getOrderById);
+router.get(
+  "/:id",
+  [param("id").isUUID().withMessage("Invalid order ID"), validate],
+  orderController.getOrderById
+);
 
 // Get order by table
 router.get(
@@ -53,14 +70,10 @@ router.get(
   orderController.getOrderByTable
 );
 
-
 // Create new order
 router.post(
   "/",
-  [
-    body("table_id").isUUID().withMessage("Invalid table ID"),
-    validate,
-  ],
+  [body("table_id").isUUID().withMessage("Invalid table ID"), validate],
   orderController.createOrder
 );
 
@@ -82,7 +95,7 @@ router.patch(
   [
     param("id").isUUID().withMessage("Invalid order ID"),
     body("status")
-      .isIn(["pending", "preparing", "ready", "delivered", "paid", "cancelled"])
+      .isIn(["pending", "paid", "dining", "waiting_payment", "cancelled"])
       .withMessage("Invalid status"),
     validate,
   ],
@@ -123,7 +136,7 @@ router.patch(
   [
     param("itemId").isUUID().withMessage("Invalid item ID"),
     body("status")
-      .isIn(["pending","completed","preparing","ready"])
+      .isIn(["pending", "completed", "preparing", "ready"])
       .withMessage("Invalid item status"),
     validate,
   ],
@@ -160,7 +173,11 @@ router.post(
 );
 
 // Request support
-router.post("/:id/support", [param("id").isUUID().withMessage("Invalid order ID"), validate], orderController.requestSupport);
+router.post(
+  "/:id/support",
+  [param("id").isUUID().withMessage("Invalid order ID"), validate],
+  orderController.requestSupport
+);
 
 // Request payment
 router.post(
@@ -173,12 +190,35 @@ router.post(
 router.get(
   "/stats/revenue",
   authorize("admin", "employee"),
-  [
-    query("start_date").isISO8601().withMessage("Invalid start date"),
-    query("end_date").isISO8601().withMessage("Invalid end date"),
-    validate,
-  ],
   orderController.getRevenueStats
+);
+
+// Get monthly statistics (12 months)
+router.get(
+  "/stats/monthly",
+  authorize("admin", "employee"),
+  orderController.getMonthlyStats
+);
+
+// Get hourly statistics (24 hours, every 2 hours)
+router.get(
+  "/stats/hourly",
+  authorize("admin", "employee"),
+  orderController.getHourlyStats
+);
+
+// Get customer statistics (7 days)
+router.get(
+  "/stats/customers",
+  authorize("admin", "employee"),
+  orderController.getCustomerStats
+);
+
+// Get today statistics
+router.get(
+  "/stats/today",
+  authorize("admin", "employee"),
+  orderController.getTodayStats
 );
 
 export default router;

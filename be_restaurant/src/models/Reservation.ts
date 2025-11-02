@@ -12,7 +12,7 @@ interface ReservationAttributes {
   preferences?: any;
   event_id?: string;
   event_fee?: number;
-  status: "pending" | "confirmed" | "cancelled" | "no_show";
+  status: "pending" | "confirmed" | "cancelled" | "no_show" | "completed";
   timeout_minutes: number;
   deposit_amount?: number;
   pre_order_items?: any;
@@ -38,7 +38,7 @@ class Reservation extends Model<ReservationAttributes, ReservationCreationAttrib
   public preferences?: any
   public event_id?: string
   public event_fee?: number
-  public status!: "pending" | "confirmed" | "cancelled" | "no_show"
+  public status!: "pending" | "confirmed" | "cancelled" | "no_show" | "completed"
   public timeout_minutes!: number
   public deposit_amount?: number
   public pre_order_items?: any

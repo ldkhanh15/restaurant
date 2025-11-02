@@ -13,10 +13,6 @@ const startServer = async () => {
     await testConnection();
 
     // Sync database (use { force: true } to drop and recreate tables in development)
-<<<<<<< HEAD
-    // await sequelize.sync({ alter: true })
-    await sequelize.sync({ alter: false, logging: false });
-=======
     // Try to run alter sync; if MySQL complains about dropping a missing FK (errno 1091),
     // fall back to syncing without alter to allow the server to start.
     try {
@@ -32,7 +28,6 @@ const startServer = async () => {
         throw syncErr
       }
     }
->>>>>>> 007920e (Use appRouter.push for /order-confirmation navigation across screens)
     // 🔥 Gọi seed
     //await runSeeds();
     //logger.info("Database synchronized");

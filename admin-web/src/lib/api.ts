@@ -41,37 +41,72 @@ export interface AuthResponse {
 
 export interface Order {
   id: string;
-  order_number: string;
+  user_id?: string;
+  reservation_id?: string;
+  table_id?: string;
+  table_group_id?: string;
+  event_id?: string;
+  voucher_id?: string;
   status:
     | "pending"
-    | "confirmed"
+    | "dining"
+    | "waiting_payment"
     | "preparing"
     | "ready"
-    | "served"
-    | "completed"
+    | "delivered"
+    | "paid"
     | "cancelled";
   total_amount: number;
-  table_id?: string;
-  table_name?: string;
-  customer_id?: string;
-  customer_name?: string;
+  voucher_discount_amount?: number;
+  final_amount: number;
+  event_fee?: number;
+  deposit_amount?: number;
+  customizations?: any;
+  notes?: string;
+  payment_status: "pending" | "paid" | "failed";
+  payment_method?: "zalopay" | "momo" | "cash" | "vnpay";
   created_at: string;
   updated_at: string;
-  items: OrderItem[];
+  deleted_at?: string | null;
+
+  // Relations (if included)
+  user?: {
+    id: string;
+    username: string;
+    email: string;
+    phone?: string;
+    full_name?: string;
+  };
+  table?: {
+    id: string;
+    table_number: string;
+    capacity: number;
+    status: string;
+  };
+  items?: OrderItem[];
   voucher?: Voucher;
-  payment_status?: "pending" | "paid" | "failed" | "refunded";
-  payment_method?: string;
-  notes?: string;
 }
 
 export interface OrderItem {
   id: string;
-  dish_id: string;
-  dish_name: string;
+  order_id?: string;
+  dish_id?: string;
   quantity: number;
   price: number;
-  status: "pending" | "preparing" | "ready" | "served" | "cancelled";
+  customizations?: any;
+  status: "pending" | "completed" | "preparing" | "ready" | "cancelled";
   special_instructions?: string;
+  estimated_wait_time?: number;
+  completed_at?: string;
+  created_at: string;
+
+  // Relation (if included)
+  dish?: {
+    id: string;
+    name: string;
+    price: number;
+    media_urls?: string[];
+  };
 }
 
 export interface OrderFilters {
@@ -98,87 +133,77 @@ export interface OrderStats {
 
 export interface Reservation {
   id: string;
-  user_id: string;
-  table_id: string;
-  table_group_id: string | null;
-  reservation_time: string; // ISO string
+  user_id?: string;
+  table_id?: string;
+  table_group_id?: string;
+  reservation_time: string; // ISO string (Date from backend)
   duration_minutes: number;
   num_people: number;
-  preferences: JSON;
-  pre_order_items: {
-    dish_id: string;
-    quantity: string; // chú ý: quantity đang là string trong response
-  }[];
-  event_id: string | null;
-  event_fee: string | null;
-  status:
-    | "pending"
-    | "confirmed"
-    | "checked_in"
-    | "completed"
-    | "cancelled"
-    | "no_show";
+  preferences?: any;
+  pre_order_items?: any;
+  event_id?: string;
+  event_fee?: number;
+  status: "pending" | "confirmed" | "cancelled" | "no_show";
   timeout_minutes: number;
-  deposit_amount: string | null;
+  deposit_amount?: number;
   created_at: string;
   updated_at: string;
-  deleted_at: string | null;
+  deleted_at?: string | null;
 
-  user: {
+  // Relations (if included)
+  user?: {
     id: string;
     username: string;
     email: string;
-    phone: string | null;
+    phone?: string;
     role: string;
-    full_name: string | null;
-    preferences: any | null;
+    full_name?: string;
+    preferences?: any;
     ranking: string;
     points: number;
     created_at: string;
     updated_at: string;
-    deleted_at: string | null;
+    deleted_at?: string | null;
   };
 
-  table: {
+  table?: {
     id: string;
     table_number: string;
     capacity: number;
     deposit: number;
     cancel_minutes: number;
-    location: string | null;
+    location?: string;
     status: string;
-    panorama_urls: string[] | null;
-    amenities: string[] | null;
-    description: string | null;
-    created_at: string | null;
+    panorama_urls?: string[];
+    amenities?: string[];
+    description?: string;
+    created_at?: string;
     updated_at: string;
-    deleted_at: string | null;
+    deleted_at?: string | null;
   };
 
-  event: {
+  event?: {
     id: string;
     name: string;
     description: string;
-    price: string;
-    inclusions: string[];
-    decorations: string[];
+    price: number;
+    inclusions?: string[];
+    decorations?: string[];
     created_at: string;
-    deleted_at: string | null;
+    deleted_at?: string | null;
   } | null;
 
-  payments: [
-    {
-      id: "97ea316b-101e-4b9b-b461-a6df71401895";
-      order_id: null;
-      reservation_id: "1541078c-cd0b-4de7-9c66-3cee20497bb0";
-      amount: "3000000.00";
-      method: "vnpay";
-      status: "completed";
-      transaction_id: "RES_1541078c-cd0b-4de7-9c66-3cee20497bb0_1760855844265";
-      created_at: "2025-10-19T06:37:24.000Z";
-      updated_at: "2025-10-19T06:37:53.000Z";
-    }
-  ];
+  payments?: {
+    id: string;
+    order_id?: string | null;
+    reservation_id?: string;
+    amount: number;
+    method: string;
+    status: string;
+    transaction_id: string;
+    created_at: string;
+    updated_at: string;
+  }[];
 }
 export interface ReservationDetailResponse {
   id: string;
@@ -374,7 +399,6 @@ export interface Payment {
   };
 }
 
-
 export interface PaymentFilters {
   status?: string;
   payment_method?: string;
@@ -448,7 +472,7 @@ export interface Dish {
 
 export interface Notification {
   id: string;
-  user_id: string | null;
+  user_id?: string;
   type:
     | "low_stock"
     | "reservation_confirm"
@@ -462,22 +486,20 @@ export interface Notification {
     | "support_request"
     | "payment_completed"
     | "other";
-  title: string;
-  content: string; // Đổi từ message -> content
+  content: string;
+  title?: string;
+  data?: any;
   is_read: boolean;
-  data?: {
-    amount?: number;
-    order_id?: string;
-    table_id?: string;
-    table_group_id?: string | null;
-    // Có thể bổ sung thêm nếu có các type khác
-    [key: string]: any;
-  };
-  sent_at: string; // Đổi từ created_at / updated_at -> sent_at
-  status: string; // Ví dụ: "sent"
-  user?: any | null; // Nếu có user object sau này thì có thể thay thế bằng type cụ thể
-}
+  sent_at: string;
+  status: "sent" | "failed";
 
+  // Relation (if included)
+  user?: {
+    id: string;
+    username: string;
+    email: string;
+  };
+}
 
 export interface NotificationFilters {
   user_id?: string;
@@ -485,6 +507,39 @@ export interface NotificationFilters {
   is_read?: boolean;
   page?: number;
   limit?: number;
+}
+
+// ==================== CHAT TYPES ====================
+
+export interface ChatSession {
+  id: string;
+  user_id?: string;
+  is_authenticated: boolean;
+  channel: "web" | "app" | "zalo";
+  context?: any;
+  start_time?: string;
+  end_time?: string;
+  status: "active" | "closed";
+  handled_by: "bot" | "human";
+  bot_enabled?: boolean;
+
+  // Relation (if included)
+  user?: {
+    id: string;
+    username: string;
+    email: string;
+    phone?: string;
+    full_name?: string;
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id?: string;
+  sender_type: "user" | "bot" | "human";
+  sender_id?: string | null;
+  message_text: string;
+  timestamp?: string;
 }
 
 // ==================== API CLIENT ====================
@@ -529,6 +584,30 @@ export const api = {
       apiClient.delete(`/orders/items/${itemId}`),
     applyVoucher: (id: string, code: string): Promise<ApiResponse<Order>> =>
       apiClient.post(`/orders/${id}/voucher`, { code }),
+    removeVoucher: (id: string): Promise<ApiResponse<Order>> =>
+      apiClient.delete(`/orders/${id}/voucher`),
+    create: (data: {
+      table_id?: string;
+      table_group_id?: string;
+      reservation_id?: string;
+      items?: Array<{
+        dish_id: string;
+        quantity: number;
+        price: number;
+        customizations?: any;
+      }>;
+      voucher_code?: string;
+      status?: string;
+    }): Promise<ApiResponse<Order>> => apiClient.post("/orders", data),
+    update: (
+      id: string,
+      data: {
+        table_id?: string;
+        table_group_id?: string;
+        status?: string;
+        payment_method?: string;
+      }
+    ): Promise<ApiResponse<Order>> => apiClient.patch(`/orders/${id}`, data),
     mergeOrders: (
       orderId1: string,
       orderId2: string
@@ -537,12 +616,12 @@ export const api = {
         order_id_1: orderId1,
         order_id_2: orderId2,
       }),
-    requestSupport: (id: string, message: string): Promise<ApiResponse> =>
-      apiClient.post(`/orders/${id}/support`, { message }),
+    requestSupport: (id: string): Promise<ApiResponse> =>
+      apiClient.post(`/orders/${id}/support`),
     requestPayment: (
       id: string,
       data: { method: string; amount: number }
-    ): Promise<ApiResponse> =>
+    ): Promise<ApiResponse<{ redirect_url: string }>> =>
       apiClient.post(`/orders/${id}/payment/request`, data),
     getRevenueStats: (filters?: {
       start_date?: string;
@@ -560,6 +639,33 @@ export const api = {
       apiClient.get("/reservations", { params: filters }),
     getById: (id: string): Promise<ApiResponse<ReservationDetailResponse>> =>
       apiClient.get(`/reservations/${id}`),
+    create: (data: {
+      table_id?: string;
+      table_group_id?: string;
+      reservation_time: string;
+      duration_minutes: number;
+      num_people: number;
+      preferences?: any;
+      pre_order_items?: any;
+      event_id?: string;
+      notes?: string;
+    }): Promise<ApiResponse<Reservation>> =>
+      apiClient.post("/reservations", data),
+    update: (
+      id: string,
+      data: {
+        table_id?: string;
+        table_group_id?: string;
+        reservation_time?: string;
+        duration_minutes?: number;
+        num_people?: number;
+        preferences?: any;
+        pre_order_items?: any;
+        event_id?: string | null;
+        notes?: string;
+      }
+    ): Promise<ApiResponse<Reservation>> =>
+      apiClient.patch(`/reservations/${id}`, data),
     updateStatus: (
       id: string,
       status: string
@@ -567,6 +673,8 @@ export const api = {
       apiClient.patch(`/reservations/${id}/status`, { status }),
     checkIn: (id: string): Promise<ApiResponse<Reservation>> =>
       apiClient.post(`/reservations/${id}/checkin`),
+    cancel: (id: string, reason: string): Promise<ApiResponse<Reservation>> =>
+      apiClient.post(`/reservations/${id}/cancel`, { reason }),
     delete: (id: string): Promise<ApiResponse<any>> =>
       apiClient.delete(`/reservations/${id}`),
   },
@@ -662,6 +770,15 @@ export const api = {
     getAll: (): Promise<ApiResponse<Dish[]>> => apiClient.get("/dishes"),
     getById: (id: string): Promise<ApiResponse<Dish>> =>
       apiClient.get(`/dishes/${id}`),
+  },
+
+  // ==================== EVENTS ====================
+  events: {
+    getAll: (): Promise<ApiResponse<any[]>> => apiClient.get("/events"),
+    getById: (id: string): Promise<ApiResponse<any>> =>
+      apiClient.get(`/events/${id}`),
+    getActive: (): Promise<ApiResponse<any[]>> =>
+      apiClient.get("/events/active"),
   },
 
   // ==================== NOTIFICATIONS ====================

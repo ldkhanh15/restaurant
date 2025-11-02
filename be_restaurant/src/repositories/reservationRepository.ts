@@ -11,10 +11,13 @@ import { AppError } from "../middlewares/errorHandler";
 
 export interface ReservationFilters {
   date?: string;
+  start_date?: string | Date;
+  end_date?: string | Date;
   status?: string;
   table_id?: string;
   table_group_id?: string;
   user_id?: string;
+  customer_id?: string;
   event_id?: string;
   page?: number;
   limit?: number;
@@ -53,7 +56,21 @@ class ReservationRepository {
 
     const where: any = {};
 
-    if (whereFilters.date) {
+    // Handle date range filter (start_date and end_date take priority over date)
+    if (whereFilters.start_date || whereFilters.end_date) {
+      where.reservation_time = {};
+      if (whereFilters.start_date) {
+        const startDate = new Date(whereFilters.start_date);
+        startDate.setHours(0, 0, 0, 0);
+        where.reservation_time[Op.gte] = startDate;
+      }
+      if (whereFilters.end_date) {
+        const endDate = new Date(whereFilters.end_date);
+        endDate.setHours(23, 59, 59, 999);
+        where.reservation_time[Op.lte] = endDate;
+      }
+    } else if (whereFilters.date) {
+      // Legacy support: single date filter
       const startOfDay = new Date(whereFilters.date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(whereFilters.date);
@@ -72,12 +89,13 @@ class ReservationRepository {
       where.table_id = whereFilters.table_id;
     }
 
-    if (whereFilters.table_group_id) {
-      where.table_group_id = whereFilters.table_group_id;
-    }
-
     if (whereFilters.user_id) {
       where.user_id = whereFilters.user_id;
+    }
+
+    // Support both user_id and customer_id for compatibility
+    if (whereFilters.customer_id) {
+      where.user_id = whereFilters.customer_id;
     }
 
     if (whereFilters.event_id) {
@@ -88,7 +106,7 @@ class ReservationRepository {
       where,
       limit,
       offset,
-      order: [["reservation_time", "ASC"]],
+      order: [["reservation_time", "DESC"]],
       include: [
         { model: User, as: "user" },
         { model: Table, as: "table" },
@@ -129,7 +147,7 @@ class ReservationRepository {
   async update(id: string, data: any): Promise<Reservation> {
     const reservation = await Reservation.findByPk(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     await reservation.update(data);
@@ -139,7 +157,7 @@ class ReservationRepository {
   async delete(id: string): Promise<void> {
     const reservation = await Reservation.findByPk(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     await reservation.destroy();
@@ -147,11 +165,11 @@ class ReservationRepository {
 
   async updateStatus(
     id: string,
-    status: "pending" | "confirmed" | "cancelled" | "no_show"
+    status: "pending" | "confirmed" | "cancelled" | "no_show" | "completed"
   ): Promise<Reservation> {
     const reservation = await Reservation.findByPk(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     await reservation.update({ status });
@@ -163,7 +181,7 @@ class ReservationRepository {
   ): Promise<{ reservation: Reservation; order: Order }> {
     const reservation = await Reservation.findByPk(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Check if order already exists (created after successful deposit)
