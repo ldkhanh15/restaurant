@@ -11,6 +11,7 @@ router.post("/table-group", tableController.doGroupTables)
 router.put("/table-group/:id", tableController.doUpdateTableGroup)
 router.delete("/table-group/:id", tableController.ungroupTables)
 
+router.get("/search", tableController.searchTables)
 router.get("/status/:status", tableController.getTablesByStatus)
 router.get("/", tableController.getAllTables)
 router.get("/:id", tableController.getTableById)

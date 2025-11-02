@@ -51,6 +51,27 @@ export const getTableById = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
+export const searchTables = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { count, rows, page, limit } = await tableService.search(req.query)
+
+    const totalPages = Math.ceil(count / limit)
+
+    res.json({
+      status: "success",
+      data: {
+        totalItems: count,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        items: rows,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getTablesByStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)

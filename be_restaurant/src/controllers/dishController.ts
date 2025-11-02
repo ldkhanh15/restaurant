@@ -39,6 +39,27 @@ export const getAllDishes = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
+export const searchDishes = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { count, rows, page, limit } = await dishService.search(req.query)
+
+    const totalPages = Math.ceil(count / limit)
+
+    return res.json({
+      status: "success",
+      data: {
+        totalItems: count,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        items: rows,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getDishesByCategoryId = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await dishService.findDishesByCategoryId(req.params.id)
