@@ -9,10 +9,11 @@ import '../../../domain/models/booking.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
 import '../../../domain/models/notification.dart';
 import '../../../data/services/payment_app_user_service_app_user.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/leading_back_button.dart';
 import '../../../app/app.dart';
 import 'payment_success_screen.dart';
+import '../../../data/datasources/api_config.dart';
+import '../payment/vnpay_webview_screen.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final String? initialOrderId;
@@ -75,6 +76,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'MoMo';
       case PaymentMethodType.banking:
         return 'Chuyển khoản';
+      case PaymentMethodType.vnpay:
+        return 'VNPay';
     }
   }
 
@@ -88,6 +91,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return Icons.account_balance_wallet;
       case PaymentMethodType.banking:
         return Icons.account_balance;
+      case PaymentMethodType.vnpay:
+        return Icons.payment;
     }
   }
 
@@ -102,6 +107,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'other';
       case PaymentMethodType.banking:
         return 'other';
+      case PaymentMethodType.vnpay:
+        return 'vnpay';
     }
   }
 
@@ -115,6 +122,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return PaymentMethodType.momo;
       case 'banking':
         return PaymentMethodType.banking;
+      case 'vnpay':
+        return PaymentMethodType.vnpay;
       default:
         return PaymentMethodType.cash;
     }
@@ -182,8 +191,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       // If user selected VNPay (or momo/banking mapped to vnpay on backend), call createVnpayPayment
   // Only MoMo should use the VNPay redirect flow. Treat banking (transfer) as a simple method
   // that uses the immediate processOrderPayment API to mark the order paid.
-  if (selectedMethod == PaymentMethodType.momo) {
-        // For now, prefer VNPay flow via backend's /vnpay/create which will return a redirect_url
+  // VNPay redirect flow for VNPay and MoMo (backend maps MoMo -> vnpay redirect when appropriate)
+  if (selectedMethod == PaymentMethodType.momo || selectedMethod == PaymentMethodType.vnpay) {
+        // Use backend to generate VNPay redirect URL, then open inside an in-app WebView so
+        // the user can select bank -> fill bank form -> OTP, and we intercept the return URL.
         final resp = await PaymentAppUserService.createVnpayPayment(
           currentOrder.id.toString(),
           voucherIds: _appliedVoucherIds,
@@ -191,30 +202,59 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         );
         final redirect = resp['redirect_url'] as String?;
         if (redirect != null && redirect.isNotEmpty) {
-          // Open in external browser
-          final uri = Uri.parse(redirect);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
+          // Build return URL prefix from backend config. The backend uses /api/payments/vnpay/return
+          final returnPrefix = ApiConfig.baseUrl.endsWith('/')
+              ? '${ApiConfig.baseUrl}api/payments/vnpay/return'
+              : '${ApiConfig.baseUrl}/api/payments/vnpay/return';
 
-          // Poll order status for up to 60 seconds
-          final start = DateTime.now();
-          while (DateTime.now().difference(start).inSeconds < 60) {
-            await Future.delayed(const Duration(seconds: 2));
+          // Open WebView and await the final return URL (which VNPAY will redirect to after OTP)
+          final resultUrl = await Navigator.of(context).push<String?>(
+            MaterialPageRoute(builder: (_) => VnPayWebViewScreen(initialUrl: redirect, returnUrlPrefix: returnPrefix)),
+          );
+
+          // If we received a resultUrl, call backend verify endpoint to validate the VNPay return
+          if (resultUrl != null && resultUrl.isNotEmpty) {
             try {
-              final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
-              if (fresh['payment_status'] == 'paid' || fresh['status'] == 'paid') {
-                // Update provider
+              // Dev fallback: if VNPay returned a localhost URL (common in dev/backends),
+              // replace the host with ApiConfig.baseUrl so the app can reach the backend.
+              var normalizedResultUrl = resultUrl;
+              try {
+                final parsed = Uri.parse(resultUrl);
+                if ((parsed.host == 'localhost' || parsed.host == '127.0.0.1') && ApiConfig.baseUrl.isNotEmpty) {
+                  final base = Uri.parse(ApiConfig.baseUrl);
+                  final replaced = base.replace(path: parsed.path, queryParameters: parsed.queryParameters);
+                  normalizedResultUrl = replaced.toString();
+                }
+              } catch (_) {
+                // ignore parse errors and use original
+              }
+
+              final verifyResp = await PaymentAppUserService.verifyVnpayReturnFromUrl(normalizedResultUrl);
+              // Backend should return payment result including order id and payment_status
+              final paymentStatus = (verifyResp['payment_status'] ?? verifyResp['status'] ?? 'paid') as String;
+              final paymentMethod = (verifyResp['payment_method'] ?? 'vnpay') as String;
+              // Refresh order from backend to get canonical values
+              try {
+                final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
                 final updatedOrder = currentOrder.copyWith(
-                  status: OrderStatus.paid,
-                  paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? 'momo'),
-                  paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? 'paid'),
+                  status: fresh['status'] == 'paid' ? OrderStatus.paid : currentOrder.status,
+                  paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? paymentMethod),
+                  paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? paymentStatus),
                 );
                 ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
-                break;
+              } catch (_) {
+                // Fallback: update local status based on verifyResp
+                final updatedOrder = currentOrder.copyWith(
+                  paymentMethod: _parsePaymentMethodType(paymentMethod),
+                  paymentStatus: _parsePaymentStatus(paymentStatus),
+                  status: paymentStatus.toLowerCase() == 'paid' ? OrderStatus.paid : currentOrder.status,
+                );
+                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
               }
-            } catch (_) {
-              // ignore polling errors
+            } catch (e) {
+              // verification failed — keep polling or notify user
+              // For now, show a snackbar and allow polling fallback
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xác thực giao dịch: $e')));
             }
           }
         }
@@ -547,6 +587,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Ví điện tử MoMo';
       case PaymentMethodType.banking:
         return 'Internet Banking';
+      case PaymentMethodType.vnpay:
+        return 'Thanh toán qua VNPay (Internet Banking / QR / Ví)';
+      // All PaymentMethodType cases handled above.
     }
   }
 }

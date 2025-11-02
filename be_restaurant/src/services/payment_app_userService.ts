@@ -36,7 +36,14 @@ class PaymentService {
             .map((key) => `${key}=${encodeURIComponent(vnpParams[key])}`)
             .join("&")
 
-        return `${VNPAY_CONFIG.VNP_URL}?${queryString}`
+        const finalUrl = `${VNPAY_CONFIG.VNP_URL}?${queryString}`
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                console.debug('[VNPAY] Generated params:', JSON.stringify(vnpParams))
+                console.debug('[VNPAY] Redirect URL:', finalUrl)
+            } catch (_) {}
+        }
+        return finalUrl
     }
     /**
      * Generate VNPay payment URL with proper hash

@@ -41,6 +41,10 @@ class BlogListScreen extends ConsumerWidget {
                                   width: 140,
                                   height: double.infinity,
                                   fit: BoxFit.cover,
+                                  loadingBuilder: (_, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(width:140, alignment: Alignment.center, child: SizedBox(width:20,height:20, child: CircularProgressIndicator(strokeWidth:2)));
+                                  },
                                   errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, width: 140, child: const Icon(Icons.photo, size: 40)),
                                 )
                               : Container(color: Colors.grey.shade200, width: 140, height: double.infinity, child: const Icon(Icons.photo, size: 40)),

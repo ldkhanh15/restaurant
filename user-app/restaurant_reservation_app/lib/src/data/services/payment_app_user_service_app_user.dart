@@ -41,4 +41,26 @@ class PaymentAppUserService {
     }
     throw Exception('Failed to create deposit for order: ${res.statusCode} ${res.body}');
   }
+
+  /// Verify VNPay return by forwarding the query parameters to the backend return endpoint.
+  /// The backend will validate the signature and return payment result data.
+  static Future<Map<String, dynamic>> verifyVnpayReturnFromUrl(String returnUrl) async {
+    final client = HttpClientAppUser();
+    // Parse the incoming returnUrl's query parameters and forward them to backend GET /vnpay/return
+    final uri = Uri.parse(returnUrl);
+    final queryParams = Map<String, String>.from(uri.queryParameters);
+
+    // Build backend verify URI under app_user prefix
+    final backend = Uri.parse('${ApiConfig.baseUrl}/api/app_user/payment/vnpay/return').replace(queryParameters: queryParams);
+    final res = await client.get(backend);
+    if (res.statusCode == 200) {
+      final decoded = json.decode(res.body);
+      if (decoded is Map<String, dynamic>) {
+        if (decoded.containsKey('data') && decoded['data'] is Map<String, dynamic>) return decoded['data'] as Map<String, dynamic>;
+        return decoded;
+      }
+      throw Exception('Unexpected response shape when verifying vnpay return');
+    }
+    throw Exception('Failed to verify vnpay return: ${res.statusCode} ${res.body}');
+  }
 }

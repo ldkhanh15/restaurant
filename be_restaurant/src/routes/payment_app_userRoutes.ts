@@ -42,6 +42,14 @@ router.post(
   paymentController.vnpayIpn,
 )
 
+// Dev-only success page to aid local testing when frontend is not running
+// This route intentionally does NOT require authentication and only renders
+// a small HTML page when NODE_ENV !== 'production'. In production it returns 404.
+router.get(
+  "/success",
+  paymentController.devSuccessPage,
+)
+
 // VNPay deposit for Order
 router.post(
   "/vnpay/deposit/order",

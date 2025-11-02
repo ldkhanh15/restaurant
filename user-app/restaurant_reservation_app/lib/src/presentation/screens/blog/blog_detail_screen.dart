@@ -30,6 +30,10 @@ class BlogDetailScreen extends StatelessWidget {
                         width: double.infinity,
                         height: 220,
                         fit: BoxFit.cover,
+                        loadingBuilder: (_, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(height:220, alignment: Alignment.center, child: SizedBox(width:24,height:24, child: CircularProgressIndicator(strokeWidth:2)));
+                        },
                         errorBuilder: (_, __, ___) => Container(height: 220, color: Colors.grey.shade200, child: const Icon(Icons.photo, size: 56)),
                       ),
                     ),

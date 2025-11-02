@@ -1,4 +1,4 @@
-enum PaymentMethodType { cash, card, momo, banking }
+enum PaymentMethodType { cash, card, momo, banking, vnpay }
 enum PaymentStatus { pending, processing, completed, failed }
 
 class PaymentMethod {
