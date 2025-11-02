@@ -25,13 +25,13 @@ import {
   useTheme,
   SegmentedButtons,
   IconButton,
-  Switch
+  Switch,
+  Snackbar
 } from 'react-native-paper';
 import { spacing } from '@/theme';
 import { StatCard } from '@/components';
-import { useReservations } from '@/hooks';
-import { CreateReservationRequest } from '../api/reservations';
-import { Reservation } from '../api/generated/RestaurantApi';
+import { useReservations, CreateReservationRequest, Reservation } from '@/hooks/useReservations';
+import { useRealtimeReservations } from '@/hooks/useRealtimeReservations';
 
 // Helper function to transform API reservation to display format
 const transformReservation = (reservation: Reservation) => {
@@ -65,6 +65,45 @@ const formatDate = (date: Date): string => {
 
 const formatTime = (date: Date): string => {
   return date.toTimeString().slice(0, 5);
+};
+
+// Format datetime for better UX
+const formatReservationDateTime = (dateStr: string, timeStr: string): string => {
+  if (!dateStr || !timeStr) return 'Chưa có thông tin';
+  
+  try {
+    const date = new Date(`${dateStr}T${timeStr}`);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const reservationDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    // Check if today, tomorrow, or show full date
+    let dayText = '';
+    if (reservationDate.getTime() === today.getTime()) {
+      dayText = 'Hôm nay';
+    } else if (reservationDate.getTime() === tomorrow.getTime()) {
+      dayText = 'Ngày mai';
+    } else {
+      // Format: Thứ X, DD/MM/YYYY
+      const weekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      const weekday = weekdays[date.getDay()];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      dayText = `${weekday}, ${day}/${month}/${year}`;
+    }
+    
+    // Format time
+    const hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const timeText = `${hours}:${minutes}`;
+    
+    return `${dayText} • ${timeText}`;
+  } catch (error) {
+    return `${dateStr} - ${timeStr}`;
+  }
 };
 
 const mapStatusToVietnamese = (status: string): string => {
@@ -116,6 +155,48 @@ export const ReservationScreen = () => {
     deleteReservationById,
     refresh: refreshReservations,
   } = useReservations();
+
+  // Real-time WebSocket integration
+  const {
+    onReservationCreated,
+    onReservationUpdated,
+    onReservationStatusChanged,
+  } = useRealtimeReservations();
+
+  // Snackbar state
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  // Setup real-time event listeners
+  useEffect(() => {
+    console.log('📡 Setting up real-time reservation listeners');
+
+    const unsubscribeCreated = onReservationCreated((reservation: any) => {
+      console.log('✅ New reservation created:', reservation.id);
+      setSnackbarMessage(`Đặt bàn mới #${reservation.id}`);
+      setSnackbarVisible(true);
+      refreshReservations();
+    });
+
+    const unsubscribeUpdated = onReservationUpdated((reservation: any) => {
+      console.log('✅ Reservation updated:', reservation.id);
+      refreshReservations();
+    });
+
+    const unsubscribeStatusChanged = onReservationStatusChanged((data: { reservationId: string; status: string }) => {
+      console.log('✅ Reservation status changed:', data.reservationId, data.status);
+      setSnackbarMessage(`Đặt bàn #${data.reservationId} - ${data.status}`);
+      setSnackbarVisible(true);
+      refreshReservations();
+    });
+
+    return () => {
+      console.log('🔌 Cleaning up real-time reservation listeners');
+      unsubscribeCreated();
+      unsubscribeUpdated();
+      unsubscribeStatusChanged();
+    };
+  }, [onReservationCreated, onReservationUpdated, onReservationStatusChanged, refreshReservations]);
 
   // Transform API data for UI
   const transformedReservations = useMemo(() => {
@@ -396,6 +477,7 @@ export const ReservationScreen = () => {
       const reservationTime = `${date}T${time}:00.000Z`;
       
       const reservationData: CreateReservationRequest = {
+        table_id: newReservationForm.tableNumber || '1', // Default to table 1 if not specified
         reservation_time: reservationTime,
         num_people: parseInt(newReservationForm.partySize || '2') || 2,
         duration_minutes: 120, // Default 2 hours
@@ -497,10 +579,10 @@ export const ReservationScreen = () => {
         <View style={styles.reservationDetails}>
           <View style={styles.detailRow}>
             <Text variant="bodySmall" style={[styles.detailLabel, { color: theme.colors.onSurfaceVariant }]}>
-              Ngày giờ:
+              📅 Thời gian:
             </Text>
-            <Text variant="bodySmall" style={[styles.detailValue, { color: theme.colors.onSurface }]}>
-              {item.date} - {item.time}
+            <Text variant="bodyMedium" style={[styles.detailValue, { color: theme.colors.onSurface, fontWeight: '600' }]}>
+              {formatReservationDateTime(item.date, item.time)}
             </Text>
           </View>
           <View style={styles.detailRow}>
@@ -554,6 +636,15 @@ export const ReservationScreen = () => {
               size={20}
               onPress={() => handleUpdateReservationStatus(item.id || '', 'Đã xác nhận')}
               style={[styles.actionButton, styles.confirmButton]}
+              iconColor="white"
+            />
+          )}
+          {item.status === 'confirmed' && (
+            <IconButton
+              icon="account-check"
+              size={20}
+              onPress={() => handleUpdateReservationStatus(item.id || '', 'Đang phục vụ')}
+              style={[styles.actionButton, { backgroundColor: '#10b981' }]}
               iconColor="white"
             />
           )}
@@ -690,14 +781,27 @@ export const ReservationScreen = () => {
                   {/* Date Filter */}
                   <View style={styles.filterItem}>
                     <Text style={[styles.filterLabel, { color: theme.colors.onSurface }]}>Ngày đặt</Text>
-                    <TextInput
+                    <Button
                       mode="outlined"
-                      value={selectedDate}
-                      onChangeText={setSelectedDate}
-                      placeholder="YYYY-MM-DD"
-                      style={styles.dateInput}
-                      right={selectedDate ? <TextInput.Icon icon="close" onPress={() => setSelectedDate('')} /> : undefined}
-                    />
+                      onPress={() => setShowDatePicker(true)}
+                      style={styles.dateButton}
+                      contentStyle={styles.dateButtonContent}
+                      icon="calendar"
+                    >
+                      {selectedDate || new Date().toLocaleDateString('vi-VN', { 
+                        day: '2-digit',
+                        month: '2-digit', 
+                        year: 'numeric'
+                      })}
+                    </Button>
+                    {selectedDate && (
+                      <IconButton
+                        icon="close"
+                        size={16}
+                        onPress={() => setSelectedDate('')}
+                        style={styles.clearDateButton}
+                      />
+                    )}
                   </View>
                 </View>
 
@@ -1176,6 +1280,158 @@ export const ReservationScreen = () => {
           </Modal>
 
         </Portal>
+
+        {/* Date Picker Modal for Filter */}
+        <Portal>
+          <Modal
+            visible={showDatePicker && !showAddModal}
+            onDismiss={() => setShowDatePicker(false)}
+            contentContainerStyle={[styles.datePickerModal, { backgroundColor: theme.colors.surface }]}
+          >
+            <View style={[styles.datePickerContainer, { backgroundColor: theme.colors.surface }]}>
+              <Text variant="titleLarge" style={[styles.datePickerTitle, { color: theme.colors.onSurface }]}>
+                📅 Chọn ngày lọc
+              </Text>
+              
+              <ScrollView showsVerticalScrollIndicator={false} style={{maxHeight: 400}}>
+                <View style={styles.dateGridContainer}>
+                {/* Quick options */}
+                <TouchableOpacity
+                  style={[styles.quickDateButton, { backgroundColor: theme.colors.primaryContainer }]}
+                  onPress={() => {
+                    setSelectedDate('');
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text variant="bodyMedium" style={[styles.quickDateText, { color: theme.colors.onPrimaryContainer }]}>
+                    🔄 Tất cả ngày
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.quickDateButton, { backgroundColor: theme.colors.secondaryContainer }]}
+                  onPress={() => {
+                    const today = new Date();
+                    const dateStr = today.toLocaleDateString('vi-VN', { 
+                      day: '2-digit',
+                      month: '2-digit', 
+                      year: 'numeric'
+                    });
+                    setSelectedDate(dateStr);
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text variant="bodyMedium" style={[styles.quickDateText, { color: theme.colors.onSecondaryContainer }]}>
+                    📍 Hôm nay
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.quickDateButton, { backgroundColor: theme.colors.tertiaryContainer }]}
+                  onPress={() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const dateStr = tomorrow.toLocaleDateString('vi-VN', { 
+                      day: '2-digit',
+                      month: '2-digit', 
+                      year: 'numeric'
+                    });
+                    setSelectedDate(dateStr);
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text variant="bodyMedium" style={[styles.quickDateText, { color: theme.colors.onTertiaryContainer }]}>
+                    ⏭️ Ngày mai
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Date grid */}
+                {[...Array(60)].map((_, index) => {
+                  const date = new Date();
+                  date.setDate(date.getDate() - 30 + index); // Show last 30 days and next 30 days
+                  const dateStr = date.toLocaleDateString('vi-VN', { 
+                    day: '2-digit',
+                    month: '2-digit', 
+                    year: 'numeric'
+                  });
+                  const isToday = index === 30;
+                  const isSelected = selectedDate === dateStr;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={`filter-${index}`}
+                      style={[
+                        styles.dateItem,
+                        { backgroundColor: theme.colors.surfaceVariant },
+                        isToday && { backgroundColor: theme.colors.primaryContainer },
+                        isSelected && { backgroundColor: theme.colors.primary }
+                      ]}
+                      onPress={() => {
+                        setSelectedDate(dateStr);
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text 
+                        variant="bodySmall" 
+                        style={[
+                          styles.dateDayName, 
+                          { color: theme.colors.onSurfaceVariant },
+                          isToday && { color: theme.colors.onPrimaryContainer },
+                          isSelected && { color: 'white' }
+                        ]}
+                      >
+                        {date.toLocaleDateString('vi-VN', { weekday: 'short' })}
+                      </Text>
+                      <Text 
+                        variant="titleMedium" 
+                        style={[
+                          styles.dateDay,
+                          { color: theme.colors.onSurfaceVariant },
+                          isToday && { color: theme.colors.onPrimaryContainer, fontWeight: 'bold' },
+                          isSelected && { color: 'white', fontWeight: 'bold' }
+                        ]}
+                      >
+                        {date.getDate()}
+                      </Text>
+                      <Text 
+                        variant="bodySmall" 
+                        style={[
+                          styles.dateMonth,
+                          { color: theme.colors.onSurfaceVariant },
+                          isToday && { color: theme.colors.onPrimaryContainer },
+                          isSelected && { color: 'white' }
+                        ]}
+                      >
+                        Th{date.getMonth() + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                </View>
+              </ScrollView>
+              
+              <Button 
+                mode="outlined" 
+                onPress={() => setShowDatePicker(false)}
+                style={styles.datePickerCloseBtn}
+              >
+                Đóng
+              </Button>
+            </View>
+          </Modal>
+        </Portal>
+
+        <Snackbar
+          visible={snackbarVisible}
+          onDismiss={() => setSnackbarVisible(false)}
+          duration={3000}
+          action={{
+            label: 'Đóng',
+            onPress: () => setSnackbarVisible(false),
+          }}
+        >
+          {snackbarMessage}
+        </Snackbar>
 
       </SafeAreaView>
     </Provider>
@@ -1693,6 +1949,28 @@ const styles = StyleSheet.create({
   datePickerCloseBtn: {
     marginTop: 16,
   },
+  quickDateButton: {
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickDateText: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  dateButton: {
+    marginTop: spacing.xs,
+  },
+  dateButtonContent: {
+    paddingVertical: spacing.xs,
+  },
+  clearDateButton: {
+    position: 'absolute',
+    right: 0,
+    top: 20,
+  },
   dateGridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1723,6 +2001,12 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: '#666',
     textAlign: 'center',
+  },
+  dateDay: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginVertical: 2,
   },
   dateDayNumber: {
     fontSize: 12,

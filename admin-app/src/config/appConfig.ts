@@ -3,41 +3,25 @@ import { Platform } from 'react-native';
 // API Configuration  
 export const API_CONFIG = {
   // IP của máy backend
-  LOCAL_IP: '10.0.235.235', // 🔧 IP của backend server
-  
-  // Cổng backend
-  PORT: 8000,
+  // Physical device with Expo Go: Use WiFi IP of your computer
+  HOST: '10.0.108.226',  // WiFi IP từ ipconfig - Wireless LAN adapter Wi-Fi
+  PORT: 8000,  // Backend port (be_restaurant runs on 8000)
+  BASE_PATH: '/api',
   
   // Timeout cho API requests
-  TIMEOUT: 15000,
+  TIMEOUT: 30000,  // Tăng timeout lên 30s cho mobile
   
   // Retry configuration
   MAX_RETRIES: 3,
   RETRY_DELAY: 1000,
 };
 
-// Network Configuration
-export const NETWORK_CONFIG = {
-  // Development URLs
-  DEVELOPMENT: {
-    ANDROID_EMULATOR: `http://${API_CONFIG.LOCAL_IP}:${API_CONFIG.PORT}/api`,
-    IOS_SIMULATOR: `http://${API_CONFIG.LOCAL_IP}:${API_CONFIG.PORT}/api`,
-    PHYSICAL_DEVICE: `http://${API_CONFIG.LOCAL_IP}:${API_CONFIG.PORT}/api`,
-  },
-  
-  // Production URL
-  PRODUCTION: 'https://your-production-api.com/api',
-};
-
-// Get the appropriate base URL based on environment and platform
+// Get the base URL
 export const getBaseURL = (): string => {
-  if (__DEV__) {
-    // Development mode - sử dụng IP backend thật
-    return `http://${API_CONFIG.LOCAL_IP}:${API_CONFIG.PORT}/api`;
-  }
-  
-  // Production mode
-  return NETWORK_CONFIG.PRODUCTION;
+  const url = `http://${API_CONFIG.HOST}:${API_CONFIG.PORT}${API_CONFIG.BASE_PATH}`;
+  console.log('🌐 API Base URL:', url);
+  console.log('📱 Platform:', Platform.OS);
+  return url;
 };
 
 // Debug configuration

@@ -1,204 +1,175 @@
-/**
- * Employee API Module
- * 
- * Vì Employee endpoints chưa được định nghĩa trong swagger.yaml,
- * nên tôi tạo wrapper riêng cho Employee management
- */
+import api from './axiosConfig';
 
-import axios, { AxiosResponse } from 'axios';
-import api from './axiosConfig'; // Use configured axios instance
-
-// Employee Types (dựa vào backend Employee model)
-export interface Employee {
+// User interface (from users table)
+export interface User {
   id: string;
-  user_id: string;
-  position: string;
-  department: string;
-  hire_date: string;
-  salary: number;
-  status: 'active' | 'inactive' | 'terminated';
-  face_image_url?: string;
+  username: string;
+  email: string;
+  phone?: string;
+  role: 'customer' | 'employee' | 'admin';
+  full_name?: string;
+  ranking: 'regular' | 'vip' | 'platinum';
+  points: number;
   created_at: string;
-  updated_at?: string;
-  // Data from User relationship
-  user?: {
-    full_name: string;
-    email: string;
-    phone: string;
-  };
+  updated_at: string;
 }
 
-export interface CreateEmployeeRequest {
+// Employee interface (from employees table)
+export interface Employee {
+  id: string;
   user_id?: string;
-  full_name: string;
+  position?: string;
+  face_image_url?: string;
+  created_at: string;
+  deleted_at?: string | null;
+  // Nested user data from JOIN
+  user?: User;
+  
+  // Deprecated fields (for backward compatibility, will be removed)
+  // Use employee.user.* instead
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  department?: string;
+  salary?: number;
+  hire_date?: string;
+  status?: 'active' | 'inactive' | 'terminated';
+  updated_at?: string;
+}
+
+export interface CreateEmployeeData {
+  user_id?: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone: string;
   position: string;
   department: string;
-  hire_date: string;
   salary: number;
-  face_image_url?: string;
-}
-
-export interface UpdateEmployeeRequest extends Partial<CreateEmployeeRequest> {
+  hire_date: string;
   status?: 'active' | 'inactive' | 'terminated';
 }
 
-export interface EmployeeFilters {
-  search?: string;
-  department?: string;
-  status?: string;
+export interface UpdateEmployeeData {
+  user_id?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
   position?: string;
+  department?: string;
+  salary?: number;
+  hire_date?: string;
+  status?: 'active' | 'inactive' | 'terminated';
 }
 
-export interface EmployeeStats {
+export interface AttendanceLog {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  status: string;
+  hours_worked?: number;
+  location?: string;
+  verified?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Payroll {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  period_start: string;
+  period_end: string;
+  base_salary: number;
+  bonus?: number;
+  deductions?: number;
   total: number;
-  active: number;
-  inactive: number;
-  terminated: number;
-  departments: Record<string, number>;
-  positions: Record<string, number>;
+  status: string;
+  overtime_hours?: number;
+  overtime_pay?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
-// Use the configured axios instance from axiosConfig
-const employeeAxios = api;
+const employeeAPI = {
+  // Employee Management
+  getAllEmployees: (page: number = 1, limit: number = 10, search?: string) => {
+    let url = `/employees?page=${page}&limit=${limit}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    return api.get(url);
+  },
 
-/**
- * Employee API Client
- */
-export class EmployeeApi {
-  
-  // Get all employees with filters
-  async getEmployees(filters?: EmployeeFilters): Promise<Employee[]> {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.department && filters.department !== 'all') params.append('department', filters.department);
-    if (filters?.status && filters.status !== 'all') params.append('status', filters.status);
-    
-    const response: AxiosResponse<{data: Employee[]}> = await employeeAxios.get(
-      `/employees?${params.toString()}`
-    );
-    
-    // Transform backend data to frontend format
-    return response.data.data?.map(emp => ({
-      id: emp.id,
-      user_id: emp.user_id,
-      position: emp.position || '',
-      department: emp.department || '',
-      hire_date: emp.hire_date || new Date().toISOString().split('T')[0],
-      salary: emp.salary || 0,
-      status: emp.status || 'active',
-      face_image_url: emp.face_image_url,
-      created_at: emp.created_at || new Date().toISOString(),
-      updated_at: emp.updated_at,
-      user: emp.user
-    })) || [];
-  }
+  getEmployeeById: (id: string) => 
+    api.get(`/employees/${id}`),
 
-  // Get employee by ID
-  async getEmployee(id: string): Promise<Employee> {
-    const response: AxiosResponse<{data: Employee}> = await employeeAxios.get(
-      `/employees/${id}`
-    );
-    
-    const emp = response.data.data;
-    return {
-      id: emp.id,
-      user_id: emp.user_id,
-      position: emp.position || '',
-      department: emp.department || '',
-      hire_date: emp.hire_date || new Date().toISOString().split('T')[0],
-      salary: emp.salary || 0,
-      status: emp.status || 'active',
-      face_image_url: emp.face_image_url,
-      created_at: emp.created_at || new Date().toISOString(),
-      updated_at: emp.updated_at,
-      user: emp.user
-    };
-  }
+  createEmployee: (employeeData: CreateEmployeeData) => 
+    api.post('/employees', employeeData),
 
-  // Create new employee
-  async createEmployee(data: CreateEmployeeRequest): Promise<Employee> {
-    const response: AxiosResponse<{data: Employee}> = await employeeAxios.post(
-      `/employees`,
-      data
-    );
-    
-    return response.data.data;
-  }
+  updateEmployee: (id: string, employeeData: UpdateEmployeeData) => 
+    api.put(`/employees/${id}`, employeeData),
 
-  // Update employee
-  async updateEmployee(id: string, data: UpdateEmployeeRequest): Promise<Employee> {
-    const response: AxiosResponse<{data: Employee}> = await employeeAxios.put(
-      `/employees/${id}`,
-      data
-    );
-    
-    return response.data.data;
-  }
+  deleteEmployee: (id: string) => 
+    api.delete(`/employees/${id}`),
 
-  // Delete employee
-  async deleteEmployee(id: string): Promise<boolean> {
-    await employeeAxios.delete(`/employees/${id}`);
-    return true;
-  }
+  deleteEmployeeShift: (id: string) => 
+    api.delete(`/shifts/${id}`),
 
-  // Get employee statistics
-  async getEmployeeStats(): Promise<EmployeeStats> {
-    try {
-      const response: AxiosResponse<{data: EmployeeStats}> = await employeeAxios.get(
-        `/employees/stats`
-      );
-      
-      return response.data.data;
-    } catch (error) {
-      // Return default stats on error
-      return {
-        total: 0,
-        active: 0,
-        inactive: 0,
-        terminated: 0,
-        departments: {},
-        positions: {}
-      };
-    }
-  }
+  // Employee Shifts
+  getShifts: (page: number = 1, limit: number = 10, date?: string) => {
+    let url = `/shifts?page=${page}&limit=${limit}`;
+    if (date) url += `&date=${date}`;
+    return api.get(url);
+  },
 
-  // Get departments list
-  async getDepartments(): Promise<string[]> {
-    try {
-      const response: AxiosResponse<{data: string[]}> = await employeeAxios.get(
-        `/employees/departments`
-      );
-      
-      return response.data.data || [];
-    } catch (error) {
-      return [];
-    }
-  }
+  getShiftById: (id: string) => 
+    api.get(`/shifts/${id}`),
 
-  // Get positions list
-  async getPositions(): Promise<string[]> {
-    try {
-      const response: AxiosResponse<{data: string[]}> = await employeeAxios.get(
-        `/employees/positions`
-      );
-      
-      return response.data.data || [];
-    } catch (error) {
-      return [];
-    }
-  }
-}
+  createShift: (shiftData: any) => 
+    api.post('/shifts', shiftData),
 
-// Export singleton instance
-export const employeeApi = new EmployeeApi();
+  updateShift: (id: string, shiftData: any) => 
+    api.put(`/shifts/${id}`, shiftData),
 
-// Helper function để lấy auth token - sync version cho interceptor
-function getAuthToken(): string | null {
-  // Trả về null để interceptor trong axiosConfig.ts xử lý async
-  return null;
-}
+  // Attendance Logs
+  getAttendanceLogs: (page: number = 1, limit: number = 10) => 
+    api.get(`/attendance?page=${page}&limit=${limit}`),
 
-// Export default
-export default employeeApi;
+  getAttendanceLog: (id: string) => 
+    api.get(`/attendance/${id}`),
+
+  createAttendanceLog: (logData: any) => 
+    api.post('/attendance', logData),
+
+  updateAttendanceLog: (id: string, logData: any) => 
+    api.put(`/attendance/${id}`, logData),
+
+  deleteAttendanceLog: (id: string) => 
+    api.delete(`/attendance/${id}`),
+
+  // Payroll
+  getPayrolls: (page: number = 1, limit: number = 10) => 
+    api.get(`/payroll?page=${page}&limit=${limit}`),
+
+  getPayroll: (id: string) => 
+    api.get(`/payroll/${id}`),
+
+  createPayroll: (payrollData: any) => 
+    api.post('/payroll', payrollData),
+
+  updatePayroll: (id: string, payrollData: any) => 
+    api.put(`/payroll/${id}`, payrollData),
+
+  deletePayroll: (id: string) => 
+    api.delete(`/payroll/${id}`),
+
+  // Users
+  getAllUserUnassigned: () => 
+    api.get('/users?role=employee&limit=1000&unassigned=true'),
+};
+
+export default employeeAPI;

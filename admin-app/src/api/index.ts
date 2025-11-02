@@ -1,68 +1,87 @@
 /**
  * API Module Index
  * 
- * Export tất cả API clients và configurations
+ * Export tất cả API clients và configurations - Refactored version
  */
 
-// Main configuration
-export { default as API_CONFIG, buildApiUrl, getDefaultHeaders } from './apiConfig';
+// New API Services - RECOMMENDED
+export { default as authAPI } from './authApi';
+export { default as usersAPI } from './usersApi';
+export { default as dashboardAPI } from './dashboardApi';
+export { default as dishesAPI } from './dishesApi';
+export { default as blogAPI } from './blog';
+export { default as reservationAPI } from './reservationApi';
+export { default as voucherAPI } from './voucherApi';
+export { default as employeeAPI } from './employeeApi';
+export { default as ingredientAPI } from './ingredientApi';
+export { default as reviewAPI } from './reviewApi';
 
-// Swagger API Client - RECOMMENDED
-export { default as swaggerClient, swaggerClient as api } from './swaggerClient';
+// Export axios instance
+export { default as api } from './axiosConfig';
 
-// Auto-generated API client từ Swagger (legacy)
-export { default as restaurantApi, notifications, orders, reservations, payments } from './client';
+// Export types from new API services
+export type { 
+  LoginCredentials, 
+  SignupData, 
+  User as AuthUser, 
+  AuthResponse 
+} from './authApi';
 
-// Employee API (tùy chỉnh vì chưa có trong Swagger)
-export { default as employeeApi, EmployeeApi } from './employeeApi';
+export type { 
+  User, 
+  CreateUserData, 
+  UpdateUserData 
+} from './usersApi';
 
-// Types from Swagger Client - RECOMMENDED
+export type { 
+  DashboardStats, 
+  RevenueStats, 
+  DailyOrderStats, 
+  PopularDish, 
+  RecentOrder 
+} from './dashboardApi';
+
+export type { 
+  Dish, 
+  CreateDishData, 
+  UpdateDishData, 
+  DishFilters 
+} from './dishesApi';
+
 export type {
-  ApiResponse,
-  AuthResponse,
-  User,
-  Order,
-  OrderItem,
-  Employee,
-  Payment,
-  Notification,
-  LoginRequest,
-  SignupRequest
-} from './swaggerClient';
-
-// Legacy types from generated API (with aliases to avoid conflicts)
-export type {
-  Notification as GeneratedNotification,
-  Order as GeneratedOrder,
   Reservation,
-  Payment as GeneratedPayment,
-  Pagination,
-  Error as ApiError
-} from './generated/RestaurantApi';
+  CreateReservationData,
+  UpdateReservationData,
+  ReservationFilters,
+  TableAvailability
+} from './reservationApi';
 
-// Employee types from custom API
 export type {
-  CreateEmployeeRequest,
-  UpdateEmployeeRequest,
-  EmployeeFilters,
-  EmployeeStats
+  Voucher,
+  CreateVoucherData,
+  UpdateVoucherData
+} from './voucherApi';
+
+export type {
+  Employee,
+  CreateEmployeeData,
+  UpdateEmployeeData,
+  AttendanceLog,
+  Payroll
 } from './employeeApi';
 
-// Legacy API clients (backward compatibility)
-export { default as axiosConfig } from './axiosConfig';
+export type {
+  Ingredient,
+  CreateIngredientData,
+  UpdateIngredientData
+} from './ingredientApi';
 
-/**
- * Quick Usage Examples:
- * 
- * // Sử dụng auto-generated API
- * import { restaurantApi, notifications } from '../api';
- * const notifs = await notifications.notificationsList();
- * 
- * // Sử dụng Employee API
- * import { employeeApi } from '../api';
- * const employees = await employeeApi.getEmployees();
- * 
- * // Configuration
- * import { API_CONFIG } from '../api';
- * console.log(API_CONFIG.BASE_URL);
- */
+export type {
+  Review,
+  CreateReviewData,
+  UpdateReviewData
+} from './reviewApi';
+
+// Legacy exports (for backward compatibility)
+export { default as swaggerClient } from './swaggerClient';
+export { orderService } from './orderService';

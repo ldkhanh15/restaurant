@@ -18,7 +18,9 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF"
-      }
+      },
+      "usesCleartextTraffic": true,
+      "package": "com.restaurant.admin"
     },
     "web": {}
   }

@@ -1,20 +1,16 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
+import ingredientAPI, { Ingredient } from '../api/ingredientApi';
 
-// Mock interface for inventory items since API might not have these endpoints yet
-interface InventoryItem {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  current_stock: number;
-  min_stock: number;
-  max_stock: number;
-  cost_per_unit: number;
-  supplier: string;
-  status: 'in_stock' | 'low_stock' | 'out_of_stock';
-  last_updated: string;
+// Map Ingredient to InventoryItem format for compatibility
+interface InventoryItem extends Ingredient {
+  category?: string;
+  cost_per_unit?: number;
+  supplier?: string;
+  status?: 'in_stock' | 'low_stock' | 'out_of_stock';
+  last_updated?: string;
   expiry_date?: string;
+  max_stock_level?: number;
 }
 
 interface ImportHistory {
@@ -35,100 +31,16 @@ interface ImportHistory {
 
 interface CreateInventoryData {
   name: string;
-  category: string;
   unit: string;
   current_stock: number;
-  min_stock: number;
-  max_stock: number;
-  cost_per_unit: number;
-  supplier: string;
+  min_stock_level: number;
+  barcode?: string;
+  rfid?: string;
 }
 
-// Mock data for demonstration
-const mockInventoryItems: InventoryItem[] = [
-  {
-    id: '1',
-    name: "Thịt bò",
-    category: "Thịt",
-    unit: "kg",
-    current_stock: 25,
-    min_stock: 10,
-    max_stock: 100,
-    cost_per_unit: 350000,
-    supplier: "Công ty TNHH Thực phẩm ABC",
-    status: "in_stock",
-    last_updated: "2024-03-20T10:00:00.000Z",
-    expiry_date: "2024-03-25"
-  },
-  {
-    id: '2',
-    name: "Bánh phở",
-    category: "Nguyên liệu",
-    unit: "kg",
-    current_stock: 5,
-    min_stock: 15,
-    max_stock: 50,
-    cost_per_unit: 25000,
-    supplier: "Nhà máy bánh phở Hương Việt",
-    status: "low_stock",
-    last_updated: "2024-03-19T15:30:00.000Z",
-    expiry_date: "2024-03-30"
-  },
-  {
-    id: '3',
-    name: "Hành lá",
-    category: "Rau củ",
-    unit: "kg",
-    current_stock: 0,
-    min_stock: 5,
-    max_stock: 20,
-    cost_per_unit: 15000,
-    supplier: "Vườn rau sạch Đà Lạt",
-    status: "out_of_stock",
-    last_updated: "2024-03-18T08:00:00.000Z"
-  }
-];
-
-const mockImportHistory: ImportHistory[] = [
-  {
-    id: '1',
-    supplier: "Công ty TNHH Thực phẩm ABC",
-    items: [
-      {
-        item_id: '1',
-        item_name: "Thịt bò",
-        quantity: 20,
-        cost_per_unit: 350000,
-        total_cost: 7000000
-      }
-    ],
-    total_cost: 7000000,
-    import_date: "2024-03-20T10:00:00.000Z",
-    created_by: "Nhân viên Minh",
-    status: "completed"
-  },
-  {
-    id: '2',
-    supplier: "Vườn rau sạch Đà Lạt",
-    items: [
-      {
-        item_id: '3',
-        item_name: "Hành lá",
-        quantity: 10,
-        cost_per_unit: 15000,
-        total_cost: 150000
-      }
-    ],
-    total_cost: 150000,
-    import_date: "2024-03-19T14:00:00.000Z",
-    created_by: "Nhân viên Lan",
-    status: "completed"
-  }
-];
-
 export const useInventory = () => {
-  const [items, setItems] = useState<InventoryItem[]>(mockInventoryItems);
-  const [importHistory, setImportHistory] = useState<ImportHistory[]>(mockImportHistory);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [importHistory, setImportHistory] = useState<ImportHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,14 +49,27 @@ export const useInventory = () => {
       setLoading(true);
       setError(null);
       
-      console.log('📦 Hook: Fetching inventory items...');
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.inventory.inventoryList();
+      console.log('📦 Hook: Fetching inventory items from API...');
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setItems(mockInventoryItems);
-      console.log('✅ Hook: Inventory items loaded successfully:', mockInventoryItems.length);
+      const response: any = await ingredientAPI.getAllNoPaging();
+      
+      // Handle response - unwrapped by interceptor
+      const inventoryData = Array.isArray(response) ? response : (response?.data || []);
+      
+      // Map to InventoryItem format with status calculation
+      const mappedItems: InventoryItem[] = inventoryData.map((item: Ingredient) => ({
+        ...item,
+        status: item.current_stock === 0 
+          ? 'out_of_stock' 
+          : item.current_stock < item.min_stock_level 
+          ? 'low_stock' 
+          : 'in_stock',
+        last_updated: item.updated_at || item.created_at,
+        max_stock_level: item.min_stock_level * 10 // Default max is 10x min
+      }));
+      
+      setItems(mappedItems);
+      console.log('✅ Hook: Inventory items loaded successfully:', mappedItems.length);
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách tồn kho';
       setError(errorMessage);
@@ -160,14 +85,10 @@ export const useInventory = () => {
       setLoading(true);
       setError(null);
       
-      console.log('📦 Hook: Fetching import history...');
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.inventory.importHistoryList();
+      console.log('📦 Hook: Import history not yet implemented in API');
+      // TODO: Implement when backend has import history endpoint
+      setImportHistory([]);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setImportHistory(mockImportHistory);
-      console.log('✅ Hook: Import history loaded successfully:', mockImportHistory.length);
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải lịch sử nhập hàng';
       setError(errorMessage);
@@ -184,30 +105,32 @@ export const useInventory = () => {
       setError(null);
       
       console.log('📦 Hook: Creating inventory item:', data);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.inventory.inventoryCreate(data);
       
-      const newItem: InventoryItem = {
-        id: Date.now().toString(),
+      const newItem: any = await ingredientAPI.create({
         name: data.name,
-        category: data.category,
         unit: data.unit,
         current_stock: data.current_stock,
-        min_stock: data.min_stock,
-        max_stock: data.max_stock,
-        cost_per_unit: data.cost_per_unit,
-        supplier: data.supplier,
-        status: data.current_stock === 0 ? 'out_of_stock' : 
-                data.current_stock <= data.min_stock ? 'low_stock' : 'in_stock',
+        min_stock_level: data.min_stock_level,
+        barcode: data.barcode,
+        rfid: data.rfid
+      });
+      
+      const mappedItem: InventoryItem = {
+        ...newItem,
+        status: newItem.current_stock === 0 
+          ? 'out_of_stock' 
+          : newItem.current_stock < newItem.min_stock_level 
+          ? 'low_stock' 
+          : 'in_stock',
         last_updated: new Date().toISOString()
       };
       
-      setItems(prev => [newItem, ...prev]);
-      Alert.alert('Thành công', 'Tạo mặt hàng thành công!');
+      setItems(prev => [mappedItem, ...prev]);
+      Alert.alert('Thành công', 'Thêm nguyên liệu thành công!');
       console.log('✅ Hook: Inventory item created successfully');
       return true;
     } catch (err: any) {
-      const errorMessage = err.message || 'Lỗi khi tạo mặt hàng';
+      const errorMessage = err.message || 'Lỗi khi thêm nguyên liệu';
       setError(errorMessage);
       Alert.alert('Lỗi', errorMessage);
       console.error('❌ Hook: Error creating inventory item:', err);
@@ -223,8 +146,8 @@ export const useInventory = () => {
       setError(null);
       
       console.log('📦 Hook: Updating inventory item:', id, data);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.inventory.inventoryUpdate(id, data);
+      
+      await ingredientAPI.update(id, data);
       
       setItems(prev => prev.map(item => {
         if (item.id === id) {
@@ -232,7 +155,7 @@ export const useInventory = () => {
           // Update status based on stock level
           if (updated.current_stock === 0) {
             updated.status = 'out_of_stock';
-          } else if (updated.current_stock <= updated.min_stock) {
+          } else if (updated.current_stock && updated.min_stock_level && updated.current_stock <= updated.min_stock_level) {
             updated.status = 'low_stock';
           } else {
             updated.status = 'in_stock';
@@ -242,11 +165,11 @@ export const useInventory = () => {
         return item;
       }));
       
-      Alert.alert('Thành công', 'Cập nhật mặt hàng thành công!');
+      Alert.alert('Thành công', 'Cập nhật nguyên liệu thành công!');
       console.log('✅ Hook: Inventory item updated successfully');
       return true;
     } catch (err: any) {
-      const errorMessage = err.message || 'Lỗi khi cập nhật mặt hàng';
+      const errorMessage = err.message || 'Lỗi khi cập nhật nguyên liệu';
       setError(errorMessage);
       Alert.alert('Lỗi', errorMessage);
       console.error('❌ Hook: Error updating inventory item:', err);
@@ -261,15 +184,15 @@ export const useInventory = () => {
       setLoading(true);
       
       console.log('📦 Hook: Deleting inventory item:', id);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.inventory.inventoryDelete(id);
+      
+      await ingredientAPI.remove(id);
       
       setItems(prev => prev.filter(item => item.id !== id));
-      Alert.alert('Thành công', 'Xóa mặt hàng thành công!');
+      Alert.alert('Thành công', 'Xóa nguyên liệu thành công!');
       console.log('✅ Hook: Inventory item deleted successfully');
       return true;
     } catch (err: any) {
-      const errorMessage = err.message || 'Lỗi khi xóa mặt hàng';
+      const errorMessage = err.message || 'Lỗi khi xóa nguyên liệu';
       setError(errorMessage);
       Alert.alert('Lỗi', errorMessage);
       console.error('❌ Hook: Error deleting inventory item:', err);
@@ -297,5 +220,3 @@ export const useInventory = () => {
     refresh
   };
 };
-
-export type { InventoryItem, ImportHistory, CreateInventoryData };

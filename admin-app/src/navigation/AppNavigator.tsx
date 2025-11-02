@@ -5,12 +5,14 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme, IconButton } from 'react-native-paper';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import screens
 import { 
   LoginScreen,
   DashboardScreen,
   OrdersScreen,
+  OrderDetailScreen,  // NEW: Import OrderDetailScreen
   UsersScreen,
   SettingsScreen,
   ReservationScreen,
@@ -26,11 +28,12 @@ import {
 
 import { useAuthStore } from '../store';
 import { MenuModal } from '../components/MenuModal';
-import { debugAuth } from '../utils/debugAuth';
+import { STORAGE_KEYS } from '../config/appConfig';
 
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
+  OrderDetail: { orderId: string };  // NEW: Add OrderDetail route
   Users: undefined;
   Inventory: undefined;
   Blog: undefined;
@@ -224,31 +227,29 @@ export const AppNavigator = () => {
     });
   }, [clearAuth]);
 
-  // Check authentication on app start and test API
+  // Check authentication on app start
   React.useEffect(() => {
     const initAuth = async () => {
       console.log('🚀 App starting - checking auth...');
       
-      // Check if API URL changed and clear old tokens if needed
-      const { checkAndClearOldTokens } = require('../utils/tokenMigration');
-      await checkAndClearOldTokens();
-      
-      // Test Swagger API connectivity
-      const { quickConnectivityTest, runSwaggerTests } = require('../utils/testSwaggerAPI');
-      const isConnected = await quickConnectivityTest();
-      
-      if (isConnected) {
-        console.log('✅ Backend connectivity confirmed');
-        runSwaggerTests();
-      } else {
-        console.log('❌ Backend not reachable - check IP and port');
+      // Only check auth if there's potentially a token
+      try {
+        const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+        if (token) {
+          console.log('🔑 Token found, validating...');
+          await checkAuth();
+        } else {
+          console.log('❌ No token found, skipping validation');
+          // Ensure we're in logged out state
+          clearAuth();
+        }
+      } catch (error) {
+        console.error('❌ Error during auth init:', error);
+        clearAuth();
       }
-      
-      await debugAuth(); // Debug current auth state
-      await checkAuth();
     };
     initAuth();
-  }, [checkAuth]);
+  }, [checkAuth, clearAuth]);
 
   // Show loading screen while checking auth
   if (isLoading) {
@@ -291,6 +292,11 @@ export const AppNavigator = () => {
               name="Main" 
               component={MainTabNavigator} 
               options={{ headerShown: false }} 
+            />
+            <RootStack.Screen 
+              name="OrderDetail" 
+              component={OrderDetailScreen}
+              options={{ title: 'Chi tiết đơn hàng' }}
             />
             <RootStack.Screen 
               name="Users" 

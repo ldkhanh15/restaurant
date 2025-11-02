@@ -55,9 +55,9 @@ export const ReviewScreen = () => {
   // Filter reviews using useMemo for performance
   const filteredReviews = useMemo(() => {
     return reviews.filter(item => {
-      const matchesSearch = item.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch = (item.customer_name || item.user_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           (item.content || item.comment || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                            (item.order_code || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = selectedType === 'Tất cả loại' || 
                          (selectedType === 'Đánh giá' && item.type === 'review') ||

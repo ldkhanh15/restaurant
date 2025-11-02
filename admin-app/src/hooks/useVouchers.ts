@@ -1,61 +1,25 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
+import voucherAPI from '../api/voucherApi';
 
 interface Voucher {
   id: string;
   code: string;
-  name: string;
-  description: string;
-  type: 'percentage' | 'fixed';
-  value: number;
-  min_order?: number;
-  usage_limit?: number;
-  usage_count?: number;
-  start_date: string;
-  end_date: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  name?: string;
+  description?: string;
+  discount_type: 'percentage' | 'fixed';
+  value: number | string;
+  min_order_value?: number;
+  max_uses?: number;
+  current_uses?: number;
+  expiry_date?: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
-// Mock data - will be replaced with API when available
-const mockVouchers: Voucher[] = [
-  {
-    id: '1',
-    code: 'WEEKEND20',
-    name: 'Giảm giá cuối tuần',
-    description: 'Giảm 20% cho tất cả món ăn vào cuối tuần',
-    type: 'percentage',
-    value: 20,
-    min_order: 200000,
-    usage_limit: 100,
-    usage_count: 67,
-    start_date: '2024-03-15',
-    end_date: '2024-03-31',
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: '2',
-    code: 'NEWUSER50',
-    name: 'Khuyến mãi khách hàng mới',
-    description: 'Giảm 50,000đ cho đơn hàng đầu tiên',
-    type: 'fixed',
-    value: 50000,
-    min_order: 100000,
-    usage_limit: 50,
-    usage_count: 23,
-    start_date: '2024-03-01',
-    end_date: '2024-04-30',
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
-
 export const useVouchers = () => {
-  const [vouchers, setVouchers] = useState<Voucher[]>(mockVouchers);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,13 +28,15 @@ export const useVouchers = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🎟️ Hook: Fetching vouchers (mock data)...');
+      console.log('🎟️ Hook: Fetching vouchers from API...');
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const response: any = await voucherAPI.getAll();
       
-      setVouchers(mockVouchers);
-      console.log('✅ Hook: Vouchers loaded successfully:', mockVouchers.length);
+      // Handle response - unwrapped by interceptor
+      const voucherData = Array.isArray(response) ? response : (response?.data || []);
+      setVouchers(voucherData);
+      
+      console.log('✅ Hook: Vouchers loaded successfully:', voucherData.length);
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách voucher';
       setError(errorMessage);
@@ -86,26 +52,19 @@ export const useVouchers = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🎟️ Hook: Creating voucher (mock):', data);
+      console.log('🎟️ Hook: Creating voucher:', data);
       
-      const newVoucher: Voucher = {
-        id: Math.random().toString(),
+      const newVoucher: any = await voucherAPI.create({
         code: data.code || '',
-        name: data.name || '',
-        description: data.description || '',
-        type: data.type || 'percentage',
+        discount_type: data.discount_type || 'percentage',
         value: data.value || 0,
-        min_order: data.min_order,
-        usage_limit: data.usage_limit,
-        usage_count: 0,
-        start_date: data.start_date || new Date().toISOString(),
-        end_date: data.end_date || new Date().toISOString(),
-        is_active: data.is_active !== false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+        min_order_value: data.min_order_value,
+        max_uses: data.max_uses || 100,
+        active: data.active !== false,
+        expiry_date: data.expiry_date,
+      });
       
-      setVouchers(prev => [newVoucher, ...prev]);
+      setVouchers(prev => [newVoucher as Voucher, ...prev]);
       Alert.alert('Thành công', 'Tạo voucher thành công!');
       console.log('✅ Hook: Voucher created successfully');
       return true;
@@ -125,7 +84,9 @@ export const useVouchers = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🎟️ Hook: Updating voucher (mock):', id, data);
+      console.log('🎟️ Hook: Updating voucher:', id, data);
+      
+      await voucherAPI.update(id, data);
       
       setVouchers(prev => prev.map(voucher => 
         voucher.id === id 
@@ -151,7 +112,9 @@ export const useVouchers = () => {
     try {
       setLoading(true);
       
-      console.log('🎟️ Hook: Deleting voucher (mock):', id);
+      console.log('🎟️ Hook: Deleting voucher:', id);
+      
+      await voucherAPI.remove(id);
       
       setVouchers(prev => prev.filter(voucher => voucher.id !== id));
       Alert.alert('Thành công', 'Xóa voucher thành công!');

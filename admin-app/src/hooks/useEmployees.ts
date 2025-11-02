@@ -1,383 +1,329 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Alert } from 'react-native';
-import { 
-  employeeApi,
-  Employee,
-  EmployeeFilters as ApiEmployeeFilters,
-  CreateEmployeeRequest 
-} from '../api/employeeApi';
-
-// Định nghĩa local interfaces cho compatibility
-interface EmployeeFilters {
-  page?: number;
-  limit?: number;
-  department?: string;
-  status?: 'active' | 'inactive' | 'terminated';
-}
-
-interface EmployeeStats {
-  total: number;
-  active: number;
-  inactive: number;
-  byDepartment: Record<string, number>;
-}
-
-// Employee shift types
-export interface EmployeeShift {
-  id: string;
-  employee_id: string;
-  employee_name: string;
-  shift_date: string;
-  start_time: string;
-  end_time: string;
-  total_hours: number;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'missed';
-}
-
-export interface AttendanceLog {
-  id: string;
-  employee_id: string;
-  employee_name: string;
-  check_in_time: string;
-  check_out_time?: string;
-  total_hours: number;
-  status: 'present' | 'absent' | 'late' | 'early_leave';
-}
-
-export interface PayrollRecord {
-  id: string;
-  employee_id: string;
-  employee_name: string;
-  period_start: string;
-  period_end: string;
-  base_salary: number;
-  overtime_hours: number;
-  overtime_pay: number;
-  deductions: number;
-  net_salary: number;
-  status: 'pending' | 'approved' | 'paid';
-}
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import employeeAPI, { Employee } from '../api/employeeApi';
+import { logger } from '../utils/logger';
 
 export const useEmployees = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const limit = 30;
 
-  const fetchEmployees = useCallback(async (filters?: EmployeeFilters) => {
+  const fetchEmployees = useCallback(async (page: number = 1, search: string = '') => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('👥 Hook: Fetching employees with filters:', filters);
-      const employeesData = await employeeApi.getEmployees(filters as ApiEmployeeFilters);
+      logger.info('Fetching employees from API...', { page, limit, search });
+      const response: any = await employeeAPI.getAllEmployees(page, limit, search);
       
-      setEmployees(employeesData);
-      console.log('✅ Hook: Employees loaded successfully:', employeesData.length);
+      // Handle response similar to admin-web
+      // Response is already unwrapped by interceptor (response.data.data)
+      if (response) {
+        // Case 1: Direct array
+        if (Array.isArray(response)) {
+          setEmployees(response);
+          setTotalPages(1);
+          setTotalEmployees(response.length);
+          logger.info('Employees fetched (direct array)', { count: response.length });
+        } 
+        // Case 2: Object with items property (pagination)
+        else if (typeof response === 'object' && response.items && Array.isArray(response.items)) {
+          setEmployees(response.items);
+          
+          // Handle pagination if exists
+          if (response.pagination) {
+            setTotalPages(response.pagination.totalPages || 1);
+            setTotalEmployees(response.pagination.totalItems || 0);
+          } else {
+            setTotalPages(1);
+            setTotalEmployees(response.items.length);
+          }
+          
+          logger.info('Employees fetched (with pagination)', { 
+            count: response.items.length,
+            page: response.pagination?.currentPage,
+            totalPages: response.pagination?.totalPages 
+          });
+        }
+        // Case 3: Fallback - try to find any array in response
+        else if (typeof response === 'object') {
+          const possibleArrays = Object.values(response).filter(Array.isArray);
+          if (possibleArrays.length > 0) {
+            const employeesArray = possibleArrays[0] as Employee[];
+            setEmployees(employeesArray);
+            setTotalPages(1);
+            setTotalEmployees(employeesArray.length);
+            logger.info('Employees fetched (fallback array)', { count: employeesArray.length });
+          } else {
+            setEmployees([]);
+            logger.warn('No array found in response', response);
+          }
+        }
+        else {
+          setEmployees([]);
+          logger.warn('Unexpected response format', response);
+        }
+      } else {
+        setEmployees([]);
+        logger.warn('Empty response from API');
+      }
     } catch (err: any) {
-      const errorMessage = err.message || 'Lỗi khi tải danh sách nhân viên';
-      setError(errorMessage);
-      Alert.alert('Lỗi', errorMessage);
-      console.error('❌ Hook: Error fetching employees:', err);
+      logger.error('Failed to fetch employees', err);
+      setError(err.message || 'Không thể tải danh sách nhân viên');
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const getEmployee = useCallback(async (id: string) => {
-    try {
-      console.log('👤 Hook: Fetching employee by ID:', id);
-      const employee = await employeeApi.getEmployee(id);
-      console.log('✅ Hook: Employee details loaded');
-      return employee;
-    } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể tải thông tin nhân viên');
-      console.error('❌ Hook: Error fetching employee:', err);
-      throw err;
-    }
-  }, []);
-
-  const createEmployee = useCallback(async (data: any) => {
-    try {
-      console.log('➕ Hook: Creating employee:', data);
-      const newEmployee = await employeeApi.createEmployee(data);
-      
-      // Refresh danh sách
-      await fetchEmployees();
-      console.log('✅ Hook: Employee created successfully');
-      return newEmployee;
-    } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể tạo nhân viên mới');
-      console.error('❌ Hook: Error creating employee:', err);
-      throw err;
-    }
-  }, [fetchEmployees]);
-
-  const updateEmployee = useCallback(async (id: string, data: any) => {
-    try {
-      console.log('✏️ Hook: Updating employee:', id, data);
-      const updatedEmployee = await employeeApi.updateEmployee(id, data);
-      
-      // Update local state
-      if (updatedEmployee) {
-        setEmployees(prev => prev.map(emp => 
-          emp.id === id ? updatedEmployee : emp
-        ));
-      }
-      console.log('✅ Hook: Employee updated successfully');
-      return updatedEmployee;
-    } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể cập nhật nhân viên');
-      console.error('❌ Hook: Error updating employee:', err);
-      throw err;
-    }
-  }, []);
-
-  const deleteEmployee = useCallback(async (id: string) => {
-    try {
-      console.log('🗑️ Hook: Deleting employee:', id);
-      await employeeApi.deleteEmployee(id);
-      
-      // Remove from local state
-      setEmployees(prev => prev.filter(emp => emp.id !== id));
-      console.log('✅ Hook: Employee deleted successfully');
-    } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể xóa nhân viên');
-      console.error('❌ Hook: Error deleting employee:', err);
-      throw err;
-    }
-  }, []);
-
-  const refresh = useCallback(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+  const refetch = useCallback((filters?: { page?: number; limit?: number; search?: string }) => {
+    const page = filters?.page || currentPage;
+    const search = filters?.search || '';
+    setCurrentPage(page);
+    return fetchEmployees(page, search);
+  }, [currentPage, fetchEmployees]);
 
   useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+    fetchEmployees(currentPage);
+  }, []);
 
   return {
     employees,
     loading,
     error,
+    currentPage,
+    totalPages,
+    totalEmployees,
+    refetch,
     fetchEmployees,
-    getEmployee,
-    createEmployee,
-    updateEmployee,
-    deleteEmployee,
-    refresh
+    setCurrentPage
   };
 };
 
 export const useEmployeeStats = () => {
-  const [stats, setStats] = useState<EmployeeStats | null>(null);
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    onLeave: 0,
+    newThisMonth: 0
+  });
   const [loading, setLoading] = useState(false);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('📊 Hook: Fetching employee stats...');
-      // TODO: Implement stats endpoint in swagger client
-      // const statsData = await swaggerClient.employees.getStats();
-      
-      // Mock stats for now
-      const statsData = {
-        total: 0,
-        active: 0,
-        inactive: 0,
-        byDepartment: {}
-      };
-      
-      setStats(statsData);
-      console.log('✅ Hook: Employee stats loaded:', statsData);
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching employee stats:', err);
-      setStats({
-        total: 0,
-        active: 0,
-        inactive: 0,
-        byDepartment: {}
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch all employees (with high limit to get all)
+        const response: any = await employeeAPI.getAllEmployees(1, 1000);
+        
+        // Parse response similar to useEmployees
+        let allEmployees: Employee[] = [];
+        if (response) {
+          if (Array.isArray(response)) {
+            allEmployees = response;
+          } else if (typeof response === 'object' && response.items && Array.isArray(response.items)) {
+            allEmployees = response.items;
+          } else if (typeof response === 'object') {
+            const possibleArrays = Object.values(response).filter(Array.isArray);
+            if (possibleArrays.length > 0) {
+              allEmployees = possibleArrays[0] as Employee[];
+            }
+          }
+        }
+        
+        // Calculate stats
+        const total = allEmployees.length;
+        const active = allEmployees.filter(emp => {
+          const status = emp.status || (emp.user ? 'active' : 'active');
+          return status === 'active';
+        }).length;
+        
+        const inactive = allEmployees.filter(emp => {
+          const status = emp.status || (emp.user ? 'active' : 'active');
+          return status === 'inactive';
+        }).length;
+        
+        // Calculate new this month
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const newThisMonth = allEmployees.filter(emp => {
+          const createdAt = new Date(emp.created_at);
+          return createdAt >= firstDayOfMonth;
+        }).length;
+        
+        setStats({
+          total,
+          active,
+          onLeave: inactive,
+          newThisMonth
+        });
+        
+        logger.info('Employee stats calculated', { total, active, onLeave: inactive, newThisMonth });
+      } catch (err: any) {
+        logger.error('Failed to fetch employee stats', err);
+        setError(err.message || 'Không thể tải thống kê nhân viên');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchStats();
-  }, [fetchStats]);
+  }, []);
 
-  return {
-    stats,
-    loading,
-    fetchStats
-  };
+  return { stats, loading, error };
+};
+
+export const useTodayShifts = () => {
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchTodayShifts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get today's date in YYYY-MM-DD format
+        const today = new Date().toISOString().split('T')[0];
+        
+        logger.info('Fetching today shifts', { date: today });
+        const response: any = await employeeAPI.getShifts(1, 100, today);
+        
+        // Parse response
+        let shiftsData: any[] = [];
+        if (response) {
+          if (Array.isArray(response)) {
+            shiftsData = response;
+          } else if (typeof response === 'object' && response.items && Array.isArray(response.items)) {
+            shiftsData = response.items;
+          } else if (typeof response === 'object') {
+            const possibleArrays = Object.values(response).filter(Array.isArray);
+            if (possibleArrays.length > 0) {
+              shiftsData = possibleArrays[0] as any[];
+            }
+          }
+        }
+        
+        setShifts(shiftsData);
+        logger.info('Today shifts fetched', { count: shiftsData.length });
+      } catch (err: any) {
+        logger.error('Failed to fetch today shifts', err);
+        setError(err.message || 'Không thể tải ca làm việc hôm nay');
+        setShifts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTodayShifts();
+  }, []);
+
+  return { shifts, loading, error };
+};
+
+export const useTodayAttendance = () => {
+  return useMemo(() => ({
+    attendance: [
+      {
+        id: '1',
+        employee_name: 'Nguyễn Văn A',
+        check_in_time: '2024-01-15T08:00:00Z',
+        check_out_time: '2024-01-15T16:00:00Z',
+        status: 'present',
+        hours_worked: 8,
+        location: 'Tầng 1',
+        verified: true
+      },
+      {
+        id: '2',
+        employee_name: 'Trần Thị B',
+        check_in_time: '2024-01-15T16:05:00Z',
+        check_out_time: null,
+        status: 'late',
+        hours_worked: 0,
+        location: 'Tầng 2',
+        verified: false
+      },
+      {
+        id: '3',
+        employee_name: 'Lê Văn C',
+        check_in_time: null,
+        check_out_time: null,
+        status: 'absent',
+        hours_worked: 0,
+        location: 'Không xác định',
+        verified: false
+      }
+    ],
+    loading: false,
+    error: null
+  }), []);
+};
+
+export const useCurrentMonthPayroll = () => {
+  return useMemo(() => ({
+    payroll: [
+      {
+        id: '1',
+        employee_name: 'Nguyễn Văn A',
+        period_start: '2024-01-01',
+        period_end: '2024-01-31',
+        base_salary: 15000000,
+        bonus: 2000000,
+        deductions: 500000,
+        total: 16500000,
+        status: 'paid',
+        overtime_hours: 10,
+        overtime_pay: 1500000
+      },
+      {
+        id: '2',
+        employee_name: 'Trần Thị B',
+        period_start: '2024-01-01',
+        period_end: '2024-01-31',
+        base_salary: 12000000,
+        bonus: 1000000,
+        deductions: 300000,
+        total: 12700000,
+        status: 'approved',
+        overtime_hours: 5,
+        overtime_pay: 750000
+      },
+      {
+        id: '3',
+        employee_name: 'Lê Văn C',
+        period_start: '2024-01-01',
+        period_end: '2024-01-31',
+        base_salary: 10000000,
+        bonus: 500000,
+        deductions: 200000,
+        total: 10300000,
+        status: 'draft',
+        overtime_hours: 2,
+        overtime_pay: 300000
+      }
+    ],
+    loading: false,
+    error: null
+  }), []);
 };
 
 export const useDepartments = () => {
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchDepartments = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('🏢 Hook: Fetching departments...');
-      // TODO: Implement departments endpoint in swagger client
-      const departmentsData = ['kitchen', 'service', 'management', 'cleaning'];
-      
-      setDepartments(departmentsData);
-      console.log('✅ Hook: Departments loaded:', departmentsData);
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching departments:', err);
-      setDepartments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDepartments();
-  }, [fetchDepartments]);
-
-  return {
-    departments,
-    loading,
-    fetchDepartments
-  };
-};
-
-export const usePositions = () => {
-  const [positions, setPositions] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchPositions = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('💼 Hook: Fetching positions...');
-      // TODO: Implement positions endpoint in swagger client
-      const positionsData = ['chef', 'cook', 'waiter', 'manager', 'cashier'];
-      
-      setPositions(positionsData);
-      console.log('✅ Hook: Positions loaded:', positionsData);
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching positions:', err);
-      setPositions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPositions();
-  }, [fetchPositions]);
-
-  return {
-    positions,
-    loading,
-    fetchPositions
-  };
-};
-
-// Shifts hooks (Tạm thời return mock data vì chưa có API)
-export const useTodayShifts = () => {
-  const [shifts, setShifts] = useState<EmployeeShift[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchTodayShifts = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('📅 Hook: Fetching today shifts...');
-      
-      // TODO: Implement with real API when available
-      // const shiftsData = await shiftsApi.getTodayShifts();
-      
-      // Mock data for now
-      setShifts([]);
-      console.log('⚠️ Hook: Today shifts - using mock data');
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching today shifts:', err);
-      setShifts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTodayShifts();
-  }, [fetchTodayShifts]);
-
-  return {
-    shifts,
-    loading,
-    fetchTodayShifts
-  };
-};
-
-// Attendance hooks
-export const useTodayAttendance = () => {
-  const [attendance, setAttendance] = useState<AttendanceLog[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchTodayAttendance = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('👥 Hook: Fetching today attendance...');
-      
-      // TODO: Implement with real API when available
-      // const attendanceData = await attendanceApi.getTodayAttendance();
-      
-      // Mock data for now
-      setAttendance([]);
-      console.log('⚠️ Hook: Today attendance - using mock data');
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching today attendance:', err);
-      setAttendance([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTodayAttendance();
-  }, [fetchTodayAttendance]);
-
-  return {
-    attendance,
-    loading,
-    fetchTodayAttendance
-  };
-};
-
-// Payroll hooks
-export const useCurrentMonthPayroll = () => {
-  const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchCurrentMonthPayroll = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('💰 Hook: Fetching current month payroll...');
-      
-      // TODO: Implement with real API when available
-      // const payrollData = await payrollApi.getCurrentMonthPayroll();
-      
-      // Mock data for now
-      setPayroll([]);
-      console.log('⚠️ Hook: Current month payroll - using mock data');
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching current month payroll:', err);
-      setPayroll([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCurrentMonthPayroll();
-  }, [fetchCurrentMonthPayroll]);
-
-  return {
-    payroll,
-    loading,
-    fetchCurrentMonthPayroll
-  };
+  return useMemo(() => ({
+    departments: [
+      { id: '1', name: 'Quản lý', count: 5 },
+      { id: '2', name: 'Bếp', count: 10 },
+      { id: '3', name: 'Phục vụ', count: 8 },
+      { id: '4', name: 'Thu ngân', count: 2 }
+    ],
+    loading: false,
+    error: null
+  }), []);
 };

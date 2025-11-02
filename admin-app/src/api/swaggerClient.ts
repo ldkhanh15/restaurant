@@ -1,11 +1,11 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../config/appConfig';
+import { STORAGE_KEYS, getBaseURL, API_CONFIG } from '../config/appConfig';
 import { clearAuthData, triggerLogout } from '../utils/authUtils';
 
-// Base configuration
-const BASE_URL = 'http://10.0.235.235:8000/api';
-const TIMEOUT = 15000;
+// Base configuration - FIXED: Sử dụng getBaseURL() thay vì hardcode
+const BASE_URL = getBaseURL();
+const TIMEOUT = API_CONFIG.TIMEOUT;
 
 // API Response interface
 export interface ApiResponse<T = any> {

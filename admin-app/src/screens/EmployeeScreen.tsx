@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -28,7 +28,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { EmployeeCard } from '@/components';
-import { DebugAuth } from '../components/DebugAuth';
+// import { DebugAuth } from '../components/DebugAuth'; // Disabled for now
 import { 
   useEmployees, 
   useEmployeeStats,
@@ -36,7 +36,7 @@ import {
   useTodayAttendance,
   useCurrentMonthPayroll,
   useDepartments
-} from '@/hooks/useEmployees';
+} from '../hooks/useEmployees';
 import { Employee } from '../api';
 
 // Local interface definition to match useEmployees hook
@@ -48,6 +48,17 @@ interface EmployeeFilters {
 }
 import { spacing } from '@/theme';
 import { formatCurrency } from '@/utils';
+import { 
+  getEmployeeFullName,
+  getEmployeeEmail,
+  getEmployeePhone,
+  getEmployeePosition,
+  getEmployeeDepartment,
+  getEmployeeSalary,
+  getEmployeeStatus,
+  getEmployeeAvatar,
+  getDepartmentColor
+} from '@/utils/employeeUtils';
 
 export const EmployeeScreen = () => {
   const theme = useTheme();
@@ -77,27 +88,39 @@ export const EmployeeScreen = () => {
   const [departmentFormMenuVisible, setDepartmentFormMenuVisible] = useState(false);
   const [filterMenuVisible, setFilterMenuVisible] = useState(false);
 
-  const filters: EmployeeFilters = {
+  const filters: EmployeeFilters = useMemo(() => ({
     department: selectedDepartment === 'all' ? undefined : selectedDepartment,
     status: selectedStatus === 'all' ? undefined : (selectedStatus as 'active' | 'inactive' | 'terminated'),
-  };
+  }), [selectedDepartment, selectedStatus]);
 
-  const { employees, loading: isLoading, fetchEmployees: refetch } = useEmployees();
+  const { 
+    employees, 
+    loading: isLoading, 
+    refetch,
+    currentPage,
+    totalPages,
+    totalEmployees,
+    setCurrentPage
+  } = useEmployees();
   const { stats: employeeStats } = useEmployeeStats();
   const { shifts: todayShifts } = useTodayShifts();
   const { attendance: todayAttendance } = useTodayAttendance();
   const { payroll } = useCurrentMonthPayroll();
   
-  // Load data when filters change
-  useEffect(() => {
-    refetch(filters);
-  }, [filters, refetch]);
+  // Load data when filters change - TEMPORARILY DISABLED for testing
+  // useEffect(() => {
+  //   console.log('🔄 EmployeeScreen: Filters changed, refetching...', filters);
+  //   // Don't use refetch in dependency, just call it
+  //   refetch(filters);
+  // }, [filters]); // Only depend on filters
   
-  // Debug logs
-  console.log('Debug - Today Shifts:', todayShifts?.length || 0, todayShifts);
-  console.log('Debug - Today Attendance:', todayAttendance?.length || 0, todayAttendance);
-  console.log('Debug - Payroll:', payroll?.length || 0, payroll);
-  console.log('Debug - Active Tab:', activeTab);
+  // Debug logs - moved to useEffect to avoid running on every render
+  useEffect(() => {
+    console.log('Debug - Today Shifts:', todayShifts?.length || 0, todayShifts);
+    console.log('Debug - Today Attendance:', todayAttendance?.length || 0, todayAttendance);
+    console.log('Debug - Payroll:', payroll?.length || 0, payroll);
+    console.log('Debug - Active Tab:', activeTab);
+  }, []); // Only run once on mount
   
   // Static departments data as fallback
   const departments = ['Bếp', 'Phục vụ', 'Quản lý'];
@@ -234,6 +257,7 @@ export const EmployeeScreen = () => {
       )}
       keyExtractor={(item) => item.id.toString()}
       ListHeaderComponent={renderHeader}
+      ListFooterComponent={renderPagination}
       refreshControl={
         <RefreshControl
           refreshing={isLoading}
@@ -245,6 +269,122 @@ export const EmployeeScreen = () => {
       showsVerticalScrollIndicator={false}
     />
   );
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const handlePageChange = (page: number) => {
+      setCurrentPage(page);
+      refetch({ page, search: searchQuery });
+    };
+
+    // Calculate page numbers to show
+    const getPageNumbers = () => {
+      const pages: (number | string)[] = [];
+      const maxVisible = 5; // Maximum visible page buttons
+      
+      if (totalPages <= maxVisible) {
+        // Show all pages
+        for (let i = 1; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        // Show first page
+        pages.push(1);
+        
+        // Calculate range around current page
+        let start = Math.max(2, currentPage - 1);
+        let end = Math.min(totalPages - 1, currentPage + 1);
+        
+        // Add ellipsis after first page if needed
+        if (start > 2) {
+          pages.push('...');
+          start = Math.max(start, currentPage - 1);
+        }
+        
+        // Add middle pages
+        for (let i = start; i <= end; i++) {
+          pages.push(i);
+        }
+        
+        // Add ellipsis before last page if needed
+        if (end < totalPages - 1) {
+          pages.push('...');
+        }
+        
+        // Show last page
+        pages.push(totalPages);
+      }
+      
+      return pages;
+    };
+
+    return (
+      <View style={styles.paginationContainer}>
+        <View style={styles.paginationInfo}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            Trang {currentPage} / {totalPages} • Tổng {totalEmployees} nhân viên
+          </Text>
+        </View>
+        
+        <View style={styles.paginationButtons}>
+          {/* Previous Button */}
+          <Button
+            mode="outlined"
+            disabled={currentPage === 1}
+            onPress={() => handlePageChange(currentPage - 1)}
+            icon="chevron-left"
+            style={styles.paginationButton}
+            compact
+          >
+            Trước
+          </Button>
+
+          {/* Page Numbers */}
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.paginationNumbers}
+            contentContainerStyle={styles.paginationNumbersContent}
+          >
+            {getPageNumbers().map((page, index) => (
+              <View key={`page-${index}`}>
+                {page === '...' ? (
+                  <Text style={styles.paginationEllipsis}>...</Text>
+                ) : (
+                  <Button
+                    mode={currentPage === page ? 'contained' : 'outlined'}
+                    onPress={() => handlePageChange(page as number)}
+                    style={[
+                      styles.paginationNumberButton,
+                      currentPage === page && styles.paginationNumberButtonActive
+                    ]}
+                    labelStyle={styles.paginationNumberLabel}
+                    compact
+                  >
+                    {page}
+                  </Button>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Next Button */}
+          <Button
+            mode="outlined"
+            disabled={currentPage === totalPages}
+            onPress={() => handlePageChange(currentPage + 1)}
+            icon="chevron-right"
+            contentStyle={styles.paginationNextContent}
+            style={styles.paginationButton}
+            compact
+          >
+            Sau
+          </Button>
+        </View>
+      </View>
+    );
+  };
 
   const renderShiftsList = () => (
     <FlatList
@@ -338,7 +478,7 @@ export const EmployeeScreen = () => {
                   {item.employee_name}
                 </Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {new Date(item.check_in_time).toLocaleDateString('vi-VN')}
+                  {item.check_in_time ? new Date(item.check_in_time).toLocaleDateString('vi-VN') : 'Chưa chấm công'}
                 </Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   📍 {(item as any).location || 'Không xác định'}
@@ -355,7 +495,7 @@ export const EmployeeScreen = () => {
                   Giờ vào
                 </Text>
                 <Text variant="bodyLarge" style={{ color: theme.colors.primary, fontWeight: 'bold' }}>
-                  {new Date(item.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                  {item.check_in_time ? new Date(item.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                 </Text>
               </View>
               <View style={styles.timeCard}>
@@ -527,7 +667,7 @@ export const EmployeeScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <DebugAuth />
+      {/* <DebugAuth /> */}
       {renderContent()}
 
       <FAB
@@ -543,48 +683,81 @@ export const EmployeeScreen = () => {
           onDismiss={() => setIsViewModalVisible(false)}
           contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
-          {selectedEmployee && (
-            <ScrollView>
-              <View style={styles.modalHeader}>
-                <Avatar.Image
-                  size={80}
-                  source={{ uri: selectedEmployee.user?.avatar || 'https://via.placeholder.com/80' }}
-                />
-                <View style={styles.modalEmployeeInfo}>
-                  <Text variant="headlineSmall">{selectedEmployee.user?.full_name || 'N/A'}</Text>
-                  <Text variant="bodyLarge" style={{ color: theme.colors.primary }}>
-                    {selectedEmployee.position}
-                  </Text>
-                  {getStatusBadge(selectedEmployee.status)}
+          {selectedEmployee && (() => {
+            const fullName = getEmployeeFullName(selectedEmployee);
+            const email = getEmployeeEmail(selectedEmployee);
+            const phone = getEmployeePhone(selectedEmployee);
+            const position = getEmployeePosition(selectedEmployee);
+            const department = getEmployeeDepartment(selectedEmployee);
+            const salary = getEmployeeSalary(selectedEmployee);
+            const status = getEmployeeStatus(selectedEmployee);
+            const avatar = getEmployeeAvatar(selectedEmployee);
+            const departmentColor = getDepartmentColor(department);
+            
+            return (
+              <ScrollView>
+                <View style={styles.modalHeader}>
+                  {avatar.type === 'url' ? (
+                    <Avatar.Image size={80} source={{ uri: avatar.value }} />
+                  ) : (
+                    <Avatar.Text 
+                      size={80} 
+                      label={avatar.value}
+                      style={{ backgroundColor: departmentColor }}
+                      color="#fff"
+                    />
+                  )}
+                  <View style={styles.modalEmployeeInfo}>
+                    <Text variant="headlineSmall">{fullName}</Text>
+                    <Text variant="bodyLarge" style={{ color: theme.colors.primary }}>
+                      {position}
+                    </Text>
+                    {getStatusBadge(status)}
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.modalContent}>
-                <View style={styles.infoSection}>
-                  <Text variant="titleMedium">Thông tin liên hệ</Text>
-                  <Text variant="bodyMedium">Email: {selectedEmployee.user?.email || 'N/A'}</Text>
-                  <Text variant="bodyMedium">Điện thoại: {selectedEmployee.user?.phone || 'N/A'}</Text>
+                <View style={styles.modalContent}>
+                  <View style={styles.infoSection}>
+                    <Text variant="titleMedium">Thông tin cơ bản</Text>
+                    <Text variant="bodyMedium">ID: {selectedEmployee.id}</Text>
+                    <Text variant="bodyMedium">Họ tên: {fullName}</Text>
+                    {selectedEmployee.user?.username && (
+                      <Text variant="bodyMedium">Username: {selectedEmployee.user.username}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.infoSection}>
+                    <Text variant="titleMedium">Thông tin liên hệ</Text>
+                    <Text variant="bodyMedium">📧 Email: {email || 'N/A'}</Text>
+                    <Text variant="bodyMedium">📱 Điện thoại: {phone || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.infoSection}>
+                    <Text variant="titleMedium">Thông tin công việc</Text>
+                    <Text variant="bodyMedium">Vị trí: {position}</Text>
+                    <Text variant="bodyMedium">Phòng ban: {department}</Text>
+                    {selectedEmployee.user?.role && (
+                      <Text variant="bodyMedium">Vai trò: {selectedEmployee.user.role}</Text>
+                    )}
+                    <Text variant="bodyMedium">
+                      Ngày tạo: {new Date(selectedEmployee.created_at).toLocaleDateString('vi-VN')}
+                    </Text>
+                    {salary > 0 && (
+                      <Text variant="bodyMedium">Lương cơ bản: {formatCurrency(salary)}</Text>
+                    )}
+                  </View>
                 </View>
 
-                <View style={styles.infoSection}>
-                  <Text variant="titleMedium">Thông tin công việc</Text>
-                  <Text variant="bodyMedium">Phòng ban: {selectedEmployee.department}</Text>
-                  <Text variant="bodyMedium">
-                    Ngày vào làm: {new Date(selectedEmployee.hire_date).toLocaleDateString('vi-VN')}
-                  </Text>
-                  <Text variant="bodyMedium">Lương cơ bản: {formatCurrency(selectedEmployee.salary)}</Text>
-                </View>
-              </View>
-
-              <Button 
-                mode="contained" 
-                onPress={() => setIsViewModalVisible(false)}
-                style={styles.closeButton}
-              >
-                Đóng
-              </Button>
-            </ScrollView>
-          )}
+                <Button 
+                  mode="contained" 
+                  onPress={() => setIsViewModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  Đóng
+                </Button>
+              </ScrollView>
+            );
+          })()}
         </Modal>
 
         {/* Add Employee Modal */}
@@ -1251,5 +1424,46 @@ const styles = StyleSheet.create({
   menuItem: {
     justifyContent: 'flex-start',
     marginVertical: spacing.xs,
+  },
+  // Pagination styles
+  paginationContainer: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  paginationInfo: {
+    alignItems: 'center',
+  },
+  paginationButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  paginationButton: {
+    minWidth: 80,
+  },
+  paginationNextContent: {
+    flexDirection: 'row-reverse',
+  },
+  paginationNumbers: {
+    flex: 1,
+  },
+  paginationNumbersContent: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  paginationNumberButton: {
+    minWidth: 40,
+    borderRadius: 8,
+  },
+  paginationNumberButtonActive: {
+    elevation: 2,
+  },
+  paginationNumberLabel: {
+    fontSize: 14,
+  },
+  paginationEllipsis: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: '#999',
   },
 });

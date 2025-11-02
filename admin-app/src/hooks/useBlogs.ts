@@ -1,70 +1,11 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
+import { BlogAPI, BlogPost, CreateBlogData } from '../api/blog';
 
-// Mock interface for blog posts since API might not have blog endpoints yet
-interface BlogPost {
-  id: string;
-  title: string;
-  content: string;
-  excerpt?: string;
-  author: string;
-  category: string;
-  status: 'draft' | 'published' | 'archived';
-  views: number;
-  created_at: string;
-  updated_at: string;
-  featured_image?: string;
-}
-
-interface CreateBlogData {
-  title: string;
-  content: string;
-  category: string;
-  excerpt?: string;
-}
-
-// Mock data for demonstration
-const mockBlogs: BlogPost[] = [
-  {
-    id: '1',
-    title: "Bí quyết nấu phở bò ngon như quán",
-    content: "Khám phá bí quyết nấu nước dùng phở trong vắt, thơm ngon...",
-    excerpt: "Khám phá bí quyết nấu nước dùng phở trong vắt, thơm ngon.",
-    author: "Bếp trưởng Minh",
-    category: "Công thức",
-    status: "published",
-    views: 1250,
-    created_at: "2024-03-14T00:00:00.000Z",
-    updated_at: "2024-03-14T00:00:00.000Z"
-  },
-  {
-    id: '2',
-    title: "Thực đơn mùa xuân 2024",
-    content: "Giới thiệu các món ăn mới trong thực đơn mùa xuân...",
-    excerpt: "Giới thiệu các món ăn mới trong thực đơn mùa xuân.",
-    author: "Quản lý Lan", 
-    category: "Thực đơn",
-    status: "published",
-    views: 890,
-    created_at: "2024-03-08T00:00:00.000Z",
-    updated_at: "2024-03-08T00:00:00.000Z"
-  },
-  {
-    id: '3',
-    title: "Cách trình bày món ăn đẹp mắt",
-    content: "Hướng dẫn trình bày món ăn chuyên nghiệp...",
-    excerpt: "Hướng dẫn trình bày món ăn chuyên nghiệp.",
-    author: "Bếp phó Hùng",
-    category: "Kỹ thuật",
-    status: "draft",
-    views: 0,
-    created_at: "2024-03-10T00:00:00.000Z",
-    updated_at: "2024-03-10T00:00:00.000Z"
-  }
-];
+const blogAPI = new BlogAPI();
 
 export const useBlogs = () => {
-  const [blogs, setBlogs] = useState<BlogPost[]>(mockBlogs);
+  const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,14 +14,13 @@ export const useBlogs = () => {
       setLoading(true);
       setError(null);
       
-      console.log('📝 Hook: Fetching blogs...');
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.blogs.blogsList();
+      console.log('📝 Hook: Fetching blogs from API...');
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setBlogs(mockBlogs);
-      console.log('✅ Hook: Blogs loaded successfully:', mockBlogs.length);
+      const response = await blogAPI.getBlogs();
+      
+      setBlogs(response.data || []);
+      
+      console.log('✅ Hook: Blogs loaded successfully:', response.data.length);
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách blog';
       setError(errorMessage);
@@ -97,21 +37,8 @@ export const useBlogs = () => {
       setError(null);
       
       console.log('📝 Hook: Creating blog:', data);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.blogs.blogsCreate(data);
       
-      const newBlog: BlogPost = {
-        id: Date.now().toString(),
-        title: data.title,
-        content: data.content,
-        excerpt: data.excerpt || data.content.substring(0, 100),
-        author: 'Admin',
-        category: data.category,
-        status: 'draft',
-        views: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+      const newBlog = await blogAPI.createBlog(data);
       
       setBlogs(prev => [newBlog, ...prev]);
       Alert.alert('Thành công', 'Tạo blog thành công!');
@@ -134,13 +61,11 @@ export const useBlogs = () => {
       setError(null);
       
       console.log('📝 Hook: Updating blog:', id, data);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.blogs.blogsUpdate(id, data);
+      
+      const updatedBlog = await blogAPI.updateBlog(id, data);
       
       setBlogs(prev => prev.map(blog => 
-        blog.id === id 
-          ? { ...blog, ...data, updated_at: new Date().toISOString() }
-          : blog
+        blog.id === id ? updatedBlog : blog
       ));
       
       Alert.alert('Thành công', 'Cập nhật blog thành công!');
@@ -162,8 +87,8 @@ export const useBlogs = () => {
       setLoading(true);
       
       console.log('📝 Hook: Deleting blog:', id);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.blogs.blogsDelete(id);
+      
+      await blogAPI.deleteBlog(id);
       
       setBlogs(prev => prev.filter(blog => blog.id !== id));
       Alert.alert('Thành công', 'Xóa blog thành công!');
@@ -183,7 +108,8 @@ export const useBlogs = () => {
   const publishBlog = useCallback(async (id: string) => {
     try {
       console.log('📝 Hook: Publishing blog:', id);
-      // TODO: Replace with actual API call when available
+      
+      await blogAPI.updateBlog(id, { status: 'published' });
       
       setBlogs(prev => prev.map(blog => 
         blog.id === id 

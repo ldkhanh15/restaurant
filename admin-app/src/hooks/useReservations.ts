@@ -1,15 +1,39 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
-import { 
-  getReservations, 
-  createReservation, 
-  updateReservationStatus, 
-  deleteReservation,
-  Reservation,
-  CreateReservationRequest 
-} from '../api/reservations';
+import reservationAPI from '../api/reservationApi';
 
-// Simple Reservations Hook with API integration
+// Types
+export interface Reservation {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_phone?: string;
+  user_email?: string;
+  table_id: string;
+  table_number?: string;
+  reservation_time: string;
+  num_people: number;
+  status: 'pending' | 'confirmed' | 'seated' | 'completed' | 'cancelled' | 'no_show';
+  notes?: string;
+  preferences?: any;
+  deposit_amount?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateReservationRequest {
+  user_id?: string;
+  table_id: string;
+  reservation_time: string;
+  num_people: number;
+  notes?: string;
+  preferences?: any;
+  deposit_amount?: number;
+  duration_minutes?: number;
+  status?: string;
+}
+
+// Reservations Hook with Real API integration
 export const useReservations = () => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,17 +51,27 @@ export const useReservations = () => {
       setLoading(true);
       setError(null);
       
-      console.log('📅 Hook: Fetching reservations...');
-      const response = await getReservations(params);
+      console.log('📅 Hook: Fetching reservations from API...', params);
       
-      const reservationsData = response.reservations || [];
-      setReservations(reservationsData);
-      setTotal(response.total || 0);
-      console.log('✅ Hook: Reservations loaded successfully:', reservationsData.length);
+      const response: any = await reservationAPI.list(params);
+      
+      // Handle response structure: response might be { data: [...], total: X } or just [...]
+      if (Array.isArray(response)) {
+        setReservations(response);
+        setTotal(response.length);
+      } else if (response && response.data) {
+        setReservations(response.data);
+        setTotal(response.total || response.data.length);
+      } else {
+        setReservations([]);
+        setTotal(0);
+      }
+      
+      console.log('✅ Hook: Reservations loaded successfully');
       
       return {
-        reservations: reservationsData,
-        total: response.total || 0
+        reservations: Array.isArray(response) ? response : (response?.data || []),
+        total: response?.total || (Array.isArray(response) ? response.length : 0)
       };
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách đặt bàn';
@@ -53,17 +87,16 @@ export const useReservations = () => {
   const createNewReservation = useCallback(async (reservationData: CreateReservationRequest) => {
     try {
       setLoading(true);
-      console.log('📅 Hook: Creating new reservation...');
+      console.log('📅 Hook: Creating new reservation...', reservationData);
       
-      const newReservation = await createReservation(reservationData);
+      const newReservation: any = await reservationAPI.create(reservationData);
       
-      // Add to local state
-      setReservations(prev => [newReservation, ...prev]);
+      setReservations(prev => [newReservation as Reservation, ...prev]);
       
       Alert.alert('Thành công', 'Tạo đặt bàn mới thành công!');
       console.log('✅ Hook: Reservation created successfully');
       
-      return newReservation;
+      return newReservation as Reservation;
     } catch (err: any) {
       const errorMessage = err.message || 'Không thể tạo đặt bàn mới';
       setError(errorMessage);
@@ -78,14 +111,15 @@ export const useReservations = () => {
   const updateStatus = useCallback(async (reservationId: string, status: Reservation['status']) => {
     try {
       setLoading(true);
-      console.log('📅 Hook: Updating reservation status...');
+      console.log('📅 Hook: Updating reservation status...', { reservationId, status });
       
-      const updatedReservation = await updateReservationStatus(reservationId, status);
+      const updatedReservation = await reservationAPI.updateStatus(reservationId, status);
       
-      // Update local state
       setReservations(prev => 
         prev.map(reservation => 
-          reservation.id === reservationId ? updatedReservation : reservation
+          reservation.id === reservationId 
+            ? { ...reservation, ...updatedReservation, status, updated_at: new Date().toISOString() }
+            : reservation
         )
       );
       
@@ -107,11 +141,10 @@ export const useReservations = () => {
   const deleteReservationById = useCallback(async (reservationId: string) => {
     try {
       setLoading(true);
-      console.log('📅 Hook: Deleting reservation...');
+      console.log('📅 Hook: Deleting reservation...', reservationId);
       
-      await deleteReservation(reservationId);
+      await reservationAPI.remove(reservationId);
       
-      // Remove from local state
       setReservations(prev => prev.filter(reservation => reservation.id !== reservationId));
       
       Alert.alert('Thành công', 'Xóa đặt bàn thành công!');

@@ -7,7 +7,8 @@ import {
   FlatList,
   RefreshControl,
   Alert,
-  Image
+  Image,
+  ActivityIndicator
 } from 'react-native';
 import { 
   Text, 
@@ -26,7 +27,16 @@ import {
   Switch
 } from 'react-native-paper';
 import { spacing } from '@/theme';
-import { useMenuItems, useMenuCategories, useCreateMenuItem, useDeleteMenuItem } from '../hooks/useMenu';
+import { 
+  useMenuItems, 
+  useMenuCategories, 
+  useCreateMenuItem, 
+  useUpdateMenuItem,
+  useDeleteMenuItem,
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory
+} from '../hooks/useMenu';
 
 // Mock data for menu items
 const mockMenuItems = [
@@ -139,19 +149,42 @@ export const MenuScreen = () => {
   const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
   
   // Use menu hooks
-  const { data: menuItems = [], isLoading: menuLoading, refetch: refetchMenu } = useMenuItems();
-  const { data: categories = [], isLoading: categoriesLoading, refetch: refetchCategories } = useMenuCategories();
+  const { data: menuItems = [], isLoading: menuLoading, refetch: refetchMenu, error: menuError } = useMenuItems();
+  const { data: categories = [], isLoading: categoriesLoading, refetch: refetchCategories, error: categoriesError } = useMenuCategories();
+  
+  // Mutations
   const createMenuItemMutation = useCreateMenuItem();
+  const updateMenuItemMutation = useUpdateMenuItem();
   const deleteMenuItemMutation = useDeleteMenuItem();
+  const createCategoryMutation = useCreateCategory();
+  const updateCategoryMutation = useUpdateCategory();
+  const deleteCategoryMutation = useDeleteCategory();
   
   const isLoading = menuLoading || categoriesLoading;
+
+  // Debug: Log data
+  console.log('Menu Screen - menuItems:', menuItems?.length, menuItems);
+  console.log('Menu Screen - categories:', categories?.length, categories);
+  console.log('Menu Screen - isLoading:', isLoading);
+  console.log('Menu Screen - errors:', { menuError, categoriesError });
   
   // Modal states
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [showAddDishModal, setShowAddDishModal] = useState(false);
+  
   const [newCategoryForm, setNewCategoryForm] = useState({
     name: '',
     description: '',
     status: 'Hoạt động'
+  });
+
+  const [newDishForm, setNewDishForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category_id: '',
+    active: true,
+    is_available: true,
   });
 
   // Safe check for theme
@@ -163,9 +196,14 @@ export const MenuScreen = () => {
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'Tất cả danh mục' || item.category === selectedCategory;
-      const matchesAvailability = showInactive || item.available;
+                           (item.description?.toLowerCase().includes(searchQuery.toLowerCase()) || false);
+      
+      // Handle category - can be object or string
+      const itemCategory = typeof item.category === 'object' ? item.category?.name : item.category;
+      const matchesCategory = selectedCategory === 'Tất cả danh mục' || itemCategory === selectedCategory;
+      
+      // Use is_available instead of available
+      const matchesAvailability = showInactive || (item.is_available !== false);
       
       return matchesSearch && matchesCategory && matchesAvailability;
     });
@@ -248,15 +286,62 @@ export const MenuScreen = () => {
     }
 
     try {
-      // This would use createCategory mutation in real implementation
-      console.log('Create category:', newCategoryForm);
+      await createCategoryMutation.mutateAsync({
+        name: newCategoryForm.name.trim(),
+        description: newCategoryForm.description.trim(),
+        is_active: newCategoryForm.status === 'Hoạt động',
+      });
       
       setNewCategoryForm({ name: '', description: '', status: 'Hoạt động' });
       setShowAddCategoryModal(false);
       Alert.alert('Thành công', 'Đã thêm danh mục mới!');
       refetchCategories();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating category:', error);
+      Alert.alert('Lỗi', error.message || 'Không thể tạo danh mục');
+    }
+  };
+
+  const handleAddDish = async () => {
+    if (!newDishForm.name.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên món ăn');
+      return;
+    }
+
+    if (!newDishForm.price || Number(newDishForm.price) <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập giá hợp lệ');
+      return;
+    }
+
+    if (!newDishForm.category_id) {
+      Alert.alert('Lỗi', 'Vui lòng chọn danh mục');
+      return;
+    }
+
+    try {
+      await createMenuItemMutation.mutateAsync({
+        name: newDishForm.name.trim(),
+        description: newDishForm.description.trim(),
+        price: Number(newDishForm.price),
+        category_id: newDishForm.category_id,
+        active: newDishForm.active,
+        is_available: newDishForm.is_available,
+      });
+      
+      setNewDishForm({
+        name: '',
+        description: '',
+        price: '',
+        category_id: '',
+        active: true,
+        is_available: true,
+      });
+      setShowAddDishModal(false);
+      Alert.alert('Thành công', 'Đã thêm món ăn mới!');
+      refetchMenu();
+    } catch (error: any) {
+      console.error('Error creating dish:', error);
+      Alert.alert('Lỗi', error.message || 'Không thể tạo món ăn');
     }
   };
 
@@ -410,6 +495,34 @@ export const MenuScreen = () => {
             </Text>
           </View>
 
+          {/* Error Messages */}
+          {(menuError || categoriesError) && (
+            <Card style={[styles.errorCard, { backgroundColor: theme.colors.errorContainer }]}>
+              <Card.Content>
+                <Text style={[styles.errorText, { color: theme.colors.onErrorContainer }]}>
+                  ⚠️ {menuError?.message || categoriesError?.message || 'Lỗi tải dữ liệu'}
+                </Text>
+                <Button 
+                  mode="text" 
+                  onPress={onRefresh}
+                  textColor={theme.colors.onErrorContainer}
+                >
+                  Thử lại
+                </Button>
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Loading State */}
+          {isLoading && menuItems.length === 0 && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>
+                Đang tải dữ liệu...
+              </Text>
+            </View>
+          )}
+
           {/* Tab Navigation */}
           <View style={[styles.tabSection, { backgroundColor: theme.colors.surface }]}>
             <SegmentedButtons
@@ -428,7 +541,7 @@ export const MenuScreen = () => {
                 if (activeTab === 'categories') {
                   setShowAddCategoryModal(true);
                 } else {
-                  console.log('Thêm món ăn mới');
+                  setShowAddDishModal(true);
                 }
               }}
               style={styles.addButton}
@@ -580,81 +693,217 @@ export const MenuScreen = () => {
             onDismiss={() => setShowAddCategoryModal(false)}
             contentContainerStyle={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}
           >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
-                Thêm danh mục mới
-              </Text>
-              <IconButton
-                icon="close"
-                onPress={() => setShowAddCategoryModal(false)}
-                style={styles.closeButton}
-              />
-            </View>
-
-            <View style={styles.modalContent}>
-              {/* Category Name */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
-                  Tên danh mục <Text style={styles.required}>*</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+                  Thêm danh mục mới
                 </Text>
-                <TextInput
+                <IconButton
+                  icon="close"
+                  onPress={() => setShowAddCategoryModal(false)}
+                  style={styles.closeButton}
+                />
+              </View>
+
+              <View style={styles.modalContent}>
+                {/* Category Name */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Tên danh mục <Text style={styles.required}>*</Text>
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    value={newCategoryForm.name}
+                    onChangeText={(text) => setNewCategoryForm(prev => ({ ...prev, name: text }))}
+                    placeholder="VD: Khai vị"
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                {/* Category Description */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Mô tả
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    value={newCategoryForm.description}
+                    onChangeText={(text) => setNewCategoryForm(prev => ({ ...prev, description: text }))}
+                    placeholder="Mô tả về danh mục..."
+                    multiline
+                    numberOfLines={3}
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                {/* Status */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Trạng thái
+                  </Text>
+                  <SegmentedButtons
+                    value={newCategoryForm.status}
+                    onValueChange={(value) => setNewCategoryForm(prev => ({ ...prev, status: value }))}
+                    buttons={[
+                      { value: 'Hoạt động', label: 'Hoạt động' },
+                      { value: 'Tạm dừng', label: 'Tạm dừng' }
+                    ]}
+                    style={styles.statusButtons}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <Button
                   mode="outlined"
-                  value={newCategoryForm.name}
-                  onChangeText={(text) => setNewCategoryForm(prev => ({ ...prev, name: text }))}
-                  placeholder="VD: Khai vị"
-                  style={styles.modalInput}
+                  onPress={() => setShowAddCategoryModal(false)}
+                  style={[styles.modalActionButton, styles.cancelButton]}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={handleAddCategory}
+                  style={[styles.modalActionButton, styles.saveButton]}
+                  loading={createCategoryMutation.isPending}
+                >
+                  Thêm danh mục
+                </Button>
+              </View>
+            </ScrollView>
+          </Modal>
+        </Portal>
+
+        {/* Add Dish Modal */}
+        <Portal>
+          <Modal
+            visible={showAddDishModal}
+            onDismiss={() => setShowAddDishModal(false)}
+            contentContainerStyle={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}
+          >
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+                  Thêm món ăn mới
+                </Text>
+                <IconButton
+                  icon="close"
+                  onPress={() => setShowAddDishModal(false)}
+                  style={styles.closeButton}
                 />
               </View>
 
-              {/* Category Description */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
-                  Mô tả
-                </Text>
-                <TextInput
+              <View style={styles.modalContent}>
+                {/* Dish Name */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Tên món ăn <Text style={styles.required}>*</Text>
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    value={newDishForm.name}
+                    onChangeText={(text) => setNewDishForm(prev => ({ ...prev, name: text }))}
+                    placeholder="VD: Phở Bò Tái"
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                {/* Description */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Mô tả
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    value={newDishForm.description}
+                    onChangeText={(text) => setNewDishForm(prev => ({ ...prev, description: text }))}
+                    placeholder="Mô tả chi tiết về món ăn..."
+                    multiline
+                    numberOfLines={3}
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                {/* Price */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Giá <Text style={styles.required}>*</Text>
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    value={newDishForm.price}
+                    onChangeText={(text) => setNewDishForm(prev => ({ ...prev, price: text.replace(/[^0-9]/g, '') }))}
+                    placeholder="VD: 85000"
+                    keyboardType="numeric"
+                    right={<TextInput.Affix text="đ" />}
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                {/* Category */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                    Danh mục <Text style={styles.required}>*</Text>
+                  </Text>
+                  <View style={styles.categoryPickerContainer}>
+                    {categories.map((category) => (
+                      <Chip
+                        key={category.id}
+                        selected={newDishForm.category_id === category.id}
+                        onPress={() => setNewDishForm(prev => ({ ...prev, category_id: category.id }))}
+                        style={styles.categoryChip}
+                      >
+                        {category.name}
+                      </Chip>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Active Status */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.switchRow}>
+                    <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                      Món ăn đang hoạt động
+                    </Text>
+                    <Switch
+                      value={newDishForm.active}
+                      onValueChange={(value) => setNewDishForm(prev => ({ ...prev, active: value }))}
+                    />
+                  </View>
+                </View>
+
+                {/* Available Status */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.switchRow}>
+                    <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
+                      Có sẵn để đặt
+                    </Text>
+                    <Switch
+                      value={newDishForm.is_available}
+                      onValueChange={(value) => setNewDishForm(prev => ({ ...prev, is_available: value }))}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <Button
                   mode="outlined"
-                  value={newCategoryForm.description}
-                  onChangeText={(text) => setNewCategoryForm(prev => ({ ...prev, description: text }))}
-                  placeholder="Mô tả về danh mục..."
-                  multiline
-                  numberOfLines={3}
-                  style={styles.modalInput}
-                />
+                  onPress={() => setShowAddDishModal(false)}
+                  style={[styles.modalActionButton, styles.cancelButton]}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={handleAddDish}
+                  style={[styles.modalActionButton, styles.saveButton]}
+                  loading={createMenuItemMutation.isPending}
+                >
+                  Thêm món ăn
+                </Button>
               </View>
-
-              {/* Status */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.colors.onSurface }]}>
-                  Trạng thái
-                </Text>
-                <SegmentedButtons
-                  value={newCategoryForm.status}
-                  onValueChange={(value) => setNewCategoryForm(prev => ({ ...prev, status: value }))}
-                  buttons={[
-                    { value: 'Hoạt động', label: 'Hoạt động' },
-                    { value: 'Tạm dừng', label: 'Tạm dừng' }
-                  ]}
-                  style={styles.statusButtons}
-                />
-              </View>
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                mode="outlined"
-                onPress={() => setShowAddCategoryModal(false)}
-                style={[styles.modalActionButton, styles.cancelButton]}
-              >
-                Hủy
-              </Button>
-              <Button
-                mode="contained"
-                onPress={handleAddCategory}
-                style={[styles.modalActionButton, styles.saveButton]}
-              >
-                Thêm danh mục
-              </Button>
-            </View>
+            </ScrollView>
           </Modal>
         </Portal>
 
@@ -926,7 +1175,7 @@ const styles = StyleSheet.create({
     margin: 0,
   },
   modalContent: {
-    flex: 1,
+    // Removed flex: 1 to work with ScrollView
   },
   inputGroup: {
     marginBottom: spacing.lg,
@@ -963,14 +1212,39 @@ const styles = StyleSheet.create({
   saveButton: {
     // Default styles
   },
+  categoryPickerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  categoryChip: {
+    marginRight: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   // Legacy styles to maintain compatibility
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
   },
   loadingText: {
-    marginTop: 16,
+    marginTop: spacing.md,
+    fontSize: 14,
+  },
+  errorCard: {
+    margin: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  errorText: {
+    fontSize: 14,
+    marginBottom: spacing.xs,
   },
   headerContainer: {
     paddingVertical: 8,
@@ -1007,9 +1281,6 @@ const styles = StyleSheet.create({
   },
   categoriesList: {
     paddingHorizontal: 16,
-  },
-  categoryChip: {
-    marginRight: 8,
   },
   list: {
     padding: 16,

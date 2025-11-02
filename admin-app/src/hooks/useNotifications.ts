@@ -1,6 +1,17 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
-import { swaggerClient, Notification } from '../api';
+import { swaggerClient } from '../api';
+
+interface LocalNotification {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  recipients?: string[];
+  created_at: string;
+  updated_at?: string;
+  is_read?: boolean;
+}
 
 interface CreateNotificationData {
   title: string;
@@ -10,7 +21,7 @@ interface CreateNotificationData {
 }
 
 export const useNotifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<LocalNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,8 +35,19 @@ export const useNotifications = () => {
       
       if (response.data?.status === 'success' && response.data.data) {
         const notificationsData = response.data.data.items || [];
-        setNotifications(notificationsData);
-        console.log('✅ Hook: Notifications loaded successfully:', notificationsData.length);
+        // Map swagger notifications to LocalNotification format
+        const mappedNotifications: LocalNotification[] = notificationsData.map((item: any) => ({
+          id: String(item.id),
+          title: item.title || '',
+          content: item.content || item.body || '',
+          type: item.type || 'info',
+          recipients: item.recipients || [],
+          created_at: item.created_at || new Date().toISOString(),
+          updated_at: item.updated_at,
+          is_read: item.is_read || false
+        }));
+        setNotifications(mappedNotifications);
+        console.log('✅ Hook: Notifications loaded successfully:', mappedNotifications.length);
       }
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách thông báo';
@@ -65,10 +87,10 @@ export const useNotifications = () => {
     }
   }, [fetchNotifications]);
 
-  const markAsRead = useCallback(async (notificationId: number) => {
+  const markAsRead = useCallback(async (notificationId: string) => {
     try {
       console.log('📢 Hook: Marking notification as read:', notificationId);
-      const response = await swaggerClient.notifications.markAsRead(notificationId);
+      const response = await swaggerClient.notifications.markAsRead(Number(notificationId));
       
       if (response.data?.status === 'success') {
         // Update local state
@@ -86,7 +108,7 @@ export const useNotifications = () => {
     }
   }, []);
 
-  const deleteNotification = useCallback(async (notificationId: number) => {
+  const deleteNotification = useCallback(async (notificationId: string) => {
     try {
       setLoading(true);
       

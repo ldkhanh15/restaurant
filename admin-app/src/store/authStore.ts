@@ -1,10 +1,23 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AdminUser, login, logout as apiLogout, verifyToken, getCurrentUser, LoginRequest } from '../api/auth';
 import { clearAuthData, saveAuthData, setLogoutHandler } from '../utils/authUtils';
 import { STORAGE_KEYS } from '../config/appConfig';
 import swaggerClient from '../api/swaggerClient';
+
+// Types
+interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  avatar?: string;
+}
+
+interface LoginRequest {
+  email: string;
+  password: string;
+}
 
 interface AuthState {
   user: AdminUser | null;
@@ -45,8 +58,14 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             // Save new auth data
             await saveAuthData(authData.token, authData.user);
             
+            // Convert user id to string if it's a number
+            const user = {
+              ...authData.user,
+              id: String(authData.user.id)
+            };
+            
             set({
-              user: authData.user as AdminUser,
+              user: user as AdminUser,
               isAuthenticated: true,
               isLoading: false,
               error: null,
@@ -70,7 +89,9 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       logout: async () => {
         set({ isLoading: true });
         try {
-          await apiLogout();
+          // Call logout API if needed (currently no logout endpoint in swagger)
+          // await swaggerClient.auth.logout?.();
+          console.log('Logging out user...');
         } catch (error) {
           // Even if API logout fails, we clear local state
           console.log('Logout API error:', error);
@@ -89,6 +110,19 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       checkAuth: async () => {
         set({ isLoading: true });
         try {
+          // Check if token exists first
+          const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+          const user = await AsyncStorage.getItem(STORAGE_KEYS.USER);
+          
+          console.log('🔍 DEBUG AUTH STATE:');
+          console.log('Token:', token ? 'FOUND' : 'NOT FOUND');
+          console.log('User:', user ? 'FOUND' : 'NOT FOUND');
+          
+          if (!token) {
+            console.log('❌ No token found, skipping validation');
+            throw new Error('No token found');
+          }
+          
           // Use swagger client to validate token
           const response = await swaggerClient.auth.validateToken();
           
@@ -111,6 +145,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             throw new Error('Token validation failed');
           }
         } catch (error) {
+          console.log('🔑 401 Unauthorized - Token expired or invalid');
           // Token is invalid, clear everything
           await clearAuthData();
           set({

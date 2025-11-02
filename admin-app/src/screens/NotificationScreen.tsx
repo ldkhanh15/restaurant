@@ -18,12 +18,14 @@ import {
   Menu,
   Provider,
   Modal,
-  Portal
+  Portal,
+  Snackbar
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { spacing } from '@/theme';
 import { useNotifications } from '../hooks/useNotifications';
+import { useRealtimeNotifications, type RealtimeNotification } from '../hooks/useRealtimeNotifications';
 
 // Notification types for filtering and creation
 
@@ -52,6 +54,9 @@ export const NotificationScreen = () => {
   const [typeMenuVisible, setTypeMenuVisible] = useState(false);
   const [statusMenuVisible, setStatusMenuVisible] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
   
   // Use notifications hook
   const { 
@@ -64,6 +69,35 @@ export const NotificationScreen = () => {
     deleteNotification, 
     refresh 
   } = useNotifications();
+
+  // Real-time WebSocket integration
+  const {
+    onNewNotification,
+  } = useRealtimeNotifications();
+
+  // Setup real-time event listeners
+  useEffect(() => {
+    console.log('📡 Setting up real-time notification listeners');
+
+    const unsubscribeNew = onNewNotification((notification: RealtimeNotification) => {
+      console.log('✅ New notification:', notification.id);
+      setSnackbarMessage(notification.title || 'Thông báo mới');
+      setSnackbarVisible(true);
+      setUnreadCount(prev => prev + 1);
+      refresh();
+    });
+
+    return () => {
+      console.log('🔌 Cleaning up real-time notification listeners');
+      unsubscribeNew();
+    };
+  }, [onNewNotification, refresh]);
+
+  // Calculate unread count
+  useEffect(() => {
+    const unread = notifications.filter(n => !n.is_read).length;
+    setUnreadCount(unread);
+  }, [notifications]);
   
   // Form state for creating new notification
   const [newNotificationForm, setNewNotificationForm] = useState({
@@ -86,7 +120,7 @@ export const NotificationScreen = () => {
   const filteredNotifications = useMemo(() => {
     return notifications.filter(item => {
       const matchesSearch = (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           (item.message || '').toLowerCase().includes(searchQuery.toLowerCase());
+                           (item.content || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = selectedType === 'Tất cả loại' || item.type === selectedType;
       // For now, assume all notifications are "sent" since API doesn't have status field
       const matchesStatus = selectedStatus === 'Tất cả trạng thái' || selectedStatus === 'Đã gửi';
@@ -224,6 +258,11 @@ export const NotificationScreen = () => {
                 </Text>
                 <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
                   Quản lý và theo dõi thông báo 🔔
+                  {unreadCount > 0 && (
+                    <Text style={{ color: theme.colors.error, fontWeight: 'bold' }}>
+                      {' '}({unreadCount} chưa đọc)
+                    </Text>
+                  )}
                 </Text>
               </View>
               <Button
@@ -408,6 +447,21 @@ export const NotificationScreen = () => {
             </ScrollView>
           </Modal>
         </Portal>
+
+        <Snackbar
+          visible={snackbarVisible}
+          onDismiss={() => setSnackbarVisible(false)}
+          duration={4000}
+          action={{
+            label: 'Xem',
+            onPress: () => {
+              setSnackbarVisible(false);
+              // Scroll to top to see new notification
+            },
+          }}
+        >
+          {snackbarMessage}
+        </Snackbar>
       </SafeAreaView>
     </Provider>
   );

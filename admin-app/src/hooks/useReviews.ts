@@ -1,16 +1,20 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
+import reviewAPI from '../api/reviewApi';
 
-// Mock interface for reviews and complaints since API might not have these endpoints yet
+// Review interface
 interface Review {
   id: string;
-  type: 'review' | 'complaint';
-  status: 'pending' | 'responded' | 'resolved';
+  type?: 'review' | 'complaint';
+  status: 'pending' | 'approved' | 'rejected' | 'responded' | 'resolved';
   rating: number;
-  title: string;
-  content: string;
-  customer_name: string;
+  title?: string;
+  content?: string;
+  comment?: string;
+  customer_name?: string;
+  user_name?: string;
   order_code?: string;
+  order_id?: string;
   response?: string;
   responded_by?: string;
   created_at: string;
@@ -22,68 +26,25 @@ interface CreateResponseData {
   response: string;
 }
 
-// Mock data for demonstration
-const mockReviews: Review[] = [
-  {
-    id: '1',
-    type: 'review',
-    status: 'responded',
-    rating: 5,
-    title: "Món ăn rất ngon!",
-    content: "Phở bò tái ở đây thật sự rất ngon, nước dùng đậm đà, thịt bò tươi. Nhân viên phục vụ nhiệt tình. Sẽ quay lại lần sau!",
-    customer_name: "Nguyễn Văn A",
-    order_code: "#DH001",
-    response: "Cảm ơn bạn đã đánh giá! Chúng tôi rất vui khi được phục vụ bạn.",
-    responded_by: "Quản lý Lan",
-    created_at: "2024-03-20T15:30:00.000Z",
-    updated_at: "2024-03-20T16:00:00.000Z"
-  },
-  {
-    id: '2',
-    type: 'complaint',
-    status: 'pending',
-    rating: 2,
-    title: "Thời gian chờ quá lâu",
-    content: "Đặt món từ 19:00 nhưng đến 20:15 mới được phục vụ. Món ăn nguội và không đúng yêu cầu. Rất thất vọng!",
-    customer_name: "Trần Thị B",
-    order_code: "#DH002",
-    created_at: "2024-03-19T20:15:00.000Z",
-    updated_at: "2024-03-19T20:15:00.000Z"
-  },
-  {
-    id: '3',
-    type: 'review',
-    status: 'responded',
-    rating: 4,
-    title: "Không gian thoải mái",
-    content: "Nhà hàng trang trí đẹp, không gian rộng rãi. Món ăn ngon, giá hợp lý. Chỉ có điều bãi xe hơi nhỏ.",
-    customer_name: "Lê Văn C",
-    order_code: "#DH003",
-    response: "Cảm ơn góp ý của bạn! Chúng tôi sẽ cải thiện vấn đề bãi xe.",
-    responded_by: "Nhân viên Hoa",
-    created_at: "2024-03-18T14:20:00.000Z",
-    updated_at: "2024-03-18T15:00:00.000Z"
-  }
-];
-
 export const useReviews = () => {
-  const [reviews, setReviews] = useState<Review[]>(mockReviews);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchReviews = useCallback(async () => {
+  const fetchReviews = useCallback(async (page: number = 1, limit: number = 100) => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('⭐ Hook: Fetching reviews...');
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.reviews.reviewsList();
+      console.log('⭐ Hook: Fetching reviews from API...');
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setReviews(mockReviews);
-      console.log('✅ Hook: Reviews loaded successfully:', mockReviews.length);
+      const response: any = await reviewAPI.getAllReviews(page, limit);
+      
+      // Handle response - unwrapped by interceptor
+      const reviewData = Array.isArray(response) ? response : (response?.data || []);
+      setReviews(reviewData);
+      
+      console.log('✅ Hook: Reviews loaded successfully:', reviewData.length);
     } catch (err: any) {
       const errorMessage = err.message || 'Lỗi khi tải danh sách đánh giá';
       setError(errorMessage);
@@ -100,8 +61,10 @@ export const useReviews = () => {
       setError(null);
       
       console.log('⭐ Hook: Responding to review:', data);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.reviews.reviewsRespond(data.reviewId, { response: data.response });
+      
+      await reviewAPI.updateReview(data.reviewId, {
+        status: 'approved'
+      });
       
       setReviews(prev => prev.map(review => 
         review.id === data.reviewId 
@@ -109,7 +72,7 @@ export const useReviews = () => {
               ...review, 
               response: data.response,
               responded_by: 'Admin',
-              status: 'responded' as const,
+              status: 'approved' as const,
               updated_at: new Date().toISOString()
             }
           : review
@@ -134,14 +97,16 @@ export const useReviews = () => {
       setLoading(true);
       
       console.log('⭐ Hook: Resolving complaint:', reviewId);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.reviews.reviewsResolve(reviewId);
+      
+      await reviewAPI.updateReview(reviewId, {
+        status: 'approved'
+      });
       
       setReviews(prev => prev.map(review => 
         review.id === reviewId 
           ? { 
               ...review, 
-              status: 'resolved' as const,
+              status: 'approved' as const,
               updated_at: new Date().toISOString()
             }
           : review
@@ -166,8 +131,8 @@ export const useReviews = () => {
       setLoading(true);
       
       console.log('⭐ Hook: Deleting review:', reviewId);
-      // TODO: Replace with actual API call when available
-      // const response = await restaurantApi.reviews.reviewsDelete(reviewId);
+      
+      await reviewAPI.deleteReview(reviewId);
       
       setReviews(prev => prev.filter(review => review.id !== reviewId));
       Alert.alert('Thành công', 'Xóa đánh giá thành công!');

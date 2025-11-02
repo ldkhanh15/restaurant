@@ -16,8 +16,8 @@ import {
   ActivityIndicator 
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '../store/authStore';
-import { spacing } from '@/theme';
+import { useAuth } from '../hooks/useAuthNew';
+import { spacing } from '../theme';
 
 const LoginScreen = () => {
   const theme = useTheme();
@@ -25,7 +25,7 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const { login, isLoading, error } = useAuthStore();
+  const { login, isLoading, error, clearError } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -39,6 +39,17 @@ const LoginScreen = () => {
     } catch (error: any) {
       Alert.alert('Đăng nhập thất bại', error.message || 'Có lỗi xảy ra');
     }
+  };
+
+  // Clear error when user starts typing
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (error) clearError();
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (error) clearError();
   };
 
   return (
@@ -62,22 +73,29 @@ const LoginScreen = () => {
 
           <Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <Card.Content style={styles.cardContent}>
+              {error && (
+                <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                  {error}
+                </Text>
+              )}
+              
               <TextInput
                 label="Email"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={handleEmailChange}
                 mode="outlined"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
                 style={styles.input}
                 left={<TextInput.Icon icon="email" />}
+                error={!!error}
               />
 
               <TextInput
                 label="Mật khẩu"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={handlePasswordChange}
                 mode="outlined"
                 secureTextEntry={!showPassword}
                 autoComplete="password"
@@ -89,13 +107,14 @@ const LoginScreen = () => {
                     onPress={() => setShowPassword(!showPassword)}
                   />
                 }
+                error={!!error}
               />
 
               <Button
                 mode="contained"
                 onPress={handleLogin}
                 loading={isLoading}
-                disabled={isLoading}
+                disabled={isLoading || !email || !password}
                 style={styles.loginButton}
                 contentStyle={styles.loginButtonContent}
               >
@@ -152,6 +171,11 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: spacing.lg,
+  },
+  errorText: {
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    fontSize: 14,
   },
   input: {
     marginBottom: spacing.md,

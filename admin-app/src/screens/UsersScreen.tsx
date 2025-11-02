@@ -24,7 +24,7 @@ import {
   FAB
 } from 'react-native-paper';
 import { spacing } from '@/theme';
-import { getUsers, createUser, updateUser, deleteUser, User as ApiUser } from '../api/userApi';
+import { usersAPI as userApiInstance, User as ApiUser } from '../api/usersApi';
 
 // Type definitions - mapping từ API sang UI
 type User = {
@@ -104,32 +104,24 @@ export const UsersScreen = () => {
       console.log('🔄 Fetching users...');
       console.log('📍 API Base URL:', "http://192.168.1.114:8000/api");
       
-      const response = await getUsers();
-      console.log('📦 Raw response:', JSON.stringify(response, null, 2));
+      const users = await userApiInstance.getUsers();
+      console.log('📦 Raw users response:', JSON.stringify(users, null, 2));
       
-      // Defensive programming - check all levels
-      if (!response) {
-        throw new Error('Response is null or undefined');
+      // Defensive programming - check response
+      if (!users) {
+        throw new Error('Users response is null or undefined');
       }
       
-      if (response.status !== 'success') {
-        throw new Error(`API returned status: ${response.status}`);
+      if (!Array.isArray(users)) {
+        throw new Error('Users response is not an array');
       }
       
-      if (!response.data) {
-        throw new Error('Response.data is undefined');
-      }
-      
-      if (!response.data.data || !Array.isArray(response.data.data)) {
-        throw new Error('Response.data.data is not an array');
-      }
-      
-      console.log('✅ Valid response structure');
-      console.log('👥 Users data:', response.data.data);
-      console.log('📊 Users array length:', response.data.data.length);
+      console.log('✅ Valid users response structure');
+      console.log('👥 Users data:', users);
+      console.log('📊 Users array length:', users.length);
       
       // Handle empty database gracefully
-      if (response.data.data.length === 0) {
+      if (users.length === 0) {
         console.log('📭 Database is empty - showing empty state');
         setUsers([]);
         setSnackbarMessage('Database hiện đang trống');
@@ -137,7 +129,7 @@ export const UsersScreen = () => {
         return;
       }
 
-      const mappedUsers = response.data.data
+      const mappedUsers = users
         .filter((user: any) => user != null) // Filter out null/undefined users
         .map((user: any, index: number) => {
           try {
@@ -148,7 +140,7 @@ export const UsersScreen = () => {
             return null;
           }
         })
-        .filter((user: any) => user !== null); // Remove failed mappings
+        .filter((user: any) => user !== null) as User[]; // Remove failed mappings and cast type
       
       console.log('✅ Mapped users:', mappedUsers.length);
       setUsers(mappedUsers);
@@ -301,14 +293,12 @@ export const UsersScreen = () => {
                 userForm.tier === 'Platinum' ? 'platinum' as const : 'regular' as const,
       };
 
-      const response = await createUser(newUserData);
-      if (response.status === 'success') {
-        const newUser = mapApiUserToUIUser(response.data);
-        setUsers(prev => [newUser, ...prev]);
-        resetForm();
-        setShowAddModal(false);
-        showSnackbar('Đã thêm người dùng mới thành công!');
-      }
+      const newUser = await userApiInstance.createUser(newUserData);
+      const mappedUser = mapApiUserToUIUser(newUser);
+      setUsers(prev => [mappedUser, ...prev]);
+      resetForm();
+      setShowAddModal(false);
+      showSnackbar('Đã thêm người dùng mới thành công!');
     } catch (error) {
       console.error('Error creating user:', error);
       showSnackbar('Lỗi khi thêm người dùng');
@@ -363,17 +353,15 @@ export const UsersScreen = () => {
                 userForm.tier === 'Platinum' ? 'platinum' as const : 'regular' as const,
       };
 
-      const response = await updateUser(editingUser.id, updateData);
-      if (response.status === 'success') {
-        const updatedUser = mapApiUserToUIUser(response.data);
-        setUsers(prev => prev.map(user => 
-          user.id === editingUser.id ? updatedUser : user
-        ));
-        resetForm();
-        setEditingUser(null);
-        setShowAddModal(false);
-        showSnackbar('Đã cập nhật thông tin người dùng!');
-      }
+      const updatedUser = await userApiInstance.updateUser(editingUser.id, updateData);
+      const mappedUpdatedUser = mapApiUserToUIUser(updatedUser);
+      setUsers(prev => prev.map(user => 
+        user.id === editingUser.id ? mappedUpdatedUser : user
+      ));
+      resetForm();
+      setEditingUser(null);
+      setShowAddModal(false);
+      showSnackbar('Đã cập nhật thông tin người dùng!');
     } catch (error) {
       console.error('Error updating user:', error);
       showSnackbar('Lỗi khi cập nhật người dùng');
@@ -394,15 +382,13 @@ export const UsersScreen = () => {
           onPress: async () => {
             try {
               setIsLoading(true);
-              const response = await deleteUser(userId);
-              if (response.status === 'success') {
-                setUsers(prev => prev.map(user => 
-                  user.id === userId 
-                    ? { ...user, status: 'Đã xóa' as User['status'] }
-                    : user
-                ));
-                showSnackbar('Đã xóa người dùng!');
-              }
+              await userApiInstance.deleteUser(userId);
+              setUsers(prev => prev.map(user => 
+                user.id === userId 
+                  ? { ...user, status: 'Đã xóa' as User['status'] }
+                  : user
+              ));
+              showSnackbar('Đã xóa người dùng!');
             } catch (error) {
               console.error('Error deleting user:', error);
               showSnackbar('Lỗi khi xóa người dùng');

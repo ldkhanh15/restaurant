@@ -79,7 +79,7 @@ const BlogScreen = () => {
     },
     {
       title: "Tổng lượt xem",
-      value: blogs.reduce((total, item) => total + item.views, 0).toLocaleString(),
+      value: blogs.reduce((total, item) => total + (item.views || 0), 0).toLocaleString(),
       change: "+15%",
       icon: "👁️",
       color: "#9C27B0",
@@ -88,9 +88,10 @@ const BlogScreen = () => {
 
   // Filter blog data
   const filteredBlogData = blogs.filter(item => {
+    const authorName = item.author ? `${item.author.first_name} ${item.author.last_name}` : '';
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (item.excerpt || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         item.author.toLowerCase().includes(searchQuery.toLowerCase());
+                         authorName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'Tất cả' || item.category === selectedCategory;
     const matchesStatus = selectedStatus === 'Tất cả' || 
                          (selectedStatus === 'Đã xuất bản' && item.status === 'published') ||
@@ -159,7 +160,7 @@ const BlogScreen = () => {
                 {item.category}
               </Chip>
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 8 }}>
-                👁️ {item.views.toLocaleString()}
+                👁️ {(item.views || 0).toLocaleString()}
               </Text>
             </View>
             <View style={styles.metaRow}>

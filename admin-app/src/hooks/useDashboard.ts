@@ -1,241 +1,152 @@
-import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
-import { getDashboardStats, getRevenueData, getDailyOrdersData, getPopularDishes, getRecentOrders, getHourlyRevenueData } from '../api/dashboard';
-import type { PopularDish as APIPopularDish, RecentOrder as APIRecentOrder } from '../api/dashboard';
-
-// Dashboard types dựa trên backend response
-export interface DashboardStats {
-  totalCustomers: number;
-  todayOrders: number;
-  monthlyRevenue: number;
-  todayReservations: number;
-  totalDishes: number;
-  growthRate: number;
-}
-
-export interface RevenueData {
-  month: string;
-  revenue: number;
-}
-
-export interface DailyOrdersData {
-  date: string;
-  orders: number;
-}
-
-export interface PopularDish {
-  id: string;
-  name: string;
-  orders: number;
-  revenue: number;
-}
-
-export interface RecentOrder {
-  id: string;
-  table_number: string;
-  total_amount: number;
-  status: string;
-  created_at: string;
-}
-
-export interface HourlyRevenueData {
-  hour: number;
-  revenue: number;
-}
+import { useState, useEffect, useCallback } from 'react';
+import dashboardAPI from '../api/dashboardApi';
+import type { 
+  DashboardStats, 
+  RevenueStats, 
+  DailyOrderStats, 
+  PopularDish, 
+  RecentOrder 
+} from '../api/dashboardApi';
+import { logger } from '../utils/logger';
 
 export const useDashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
-  const [dailyOrdersData, setDailyOrdersData] = useState<DailyOrdersData[]>([]);
+  const [revenueStats, setRevenueStats] = useState<RevenueStats[]>([]);
+  const [dailyOrders, setDailyOrders] = useState<DailyOrderStats[]>([]);
   const [popularDishes, setPopularDishes] = useState<PopularDish[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
-  const [hourlyRevenue, setHourlyRevenue] = useState<HourlyRevenueData[]>([]);
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardStats = useCallback(async () => {
     try {
-      console.log('📊 Hook: Fetching dashboard stats...');
       setLoading(true);
       setError(null);
-
-      // Sử dụng dashboard API trực tiếp
-      const dashboardStats = await getDashboardStats();
-        
-      setStats(dashboardStats);
-      console.log('✅ Hook: Dashboard stats loaded:', dashboardStats);
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching dashboard stats:', err);
-      setError(err.message);
+      logger.info('Fetching dashboard stats...');
       
-      // Set default stats on error
-      setStats({
-        totalCustomers: 0,
-        todayOrders: 0,
-        monthlyRevenue: 0,
-        todayReservations: 0,
-        totalDishes: 0,
-        growthRate: 0
-      });
+      const data = await dashboardAPI.getDashboardStats();
+      setStats(data);
+      
+      logger.info('Dashboard stats loaded successfully');
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to load dashboard stats';
+      setError(errorMessage);
+      logger.error('Error fetching dashboard stats:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchRevenueStats = useCallback(async (year?: number) => {
+  const fetchRevenueStats = useCallback(async (period: 'day' | 'week' | 'month' = 'month') => {
     try {
-      console.log('💰 Hook: Fetching revenue stats...');
       setLoading(true);
-
-      const revenueStats = await getRevenueData(year);
-      setRevenueData(revenueStats);
-      console.log('✅ Hook: Revenue stats loaded:', revenueStats.length);
+      setError(null);
+      logger.info('Fetching revenue stats...');
+      
+      // API doesn't accept period parameter yet
+      const data = await dashboardAPI.getRevenueStats();
+      setRevenueStats(Array.isArray(data) ? data : []);
+      
+      logger.info('Revenue stats loaded successfully');
     } catch (err: any) {
-      console.error('❌ Hook: Error fetching revenue stats:', err);
-      setRevenueData([]);
+      const errorMessage = err.message || 'Failed to load revenue stats';
+      setError(errorMessage);
+      logger.error('Error fetching revenue stats:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchDailyOrdersStats = useCallback(async (date?: string) => {
+  const fetchDailyOrders = useCallback(async (days: number = 7) => {
     try {
-      console.log('📈 Hook: Fetching daily orders stats...');
       setLoading(true);
-
-      const apiDailyOrders = await getDailyOrdersData(date);
+      setError(null);
+      logger.info('Fetching daily orders...');
       
-      // Transform API response to hook interface  
-      const ordersStats: DailyOrdersData[] = apiDailyOrders.map((item) => ({
-        date: item.time, // API uses 'time', hook expects 'date'
-        orders: item.orders
-      }));
+      // API doesn't accept days parameter yet
+      const data = await dashboardAPI.getDailyOrdersStats();
+      setDailyOrders(Array.isArray(data) ? data : []);
       
-      setDailyOrdersData(ordersStats);
-      console.log('✅ Hook: Daily orders stats loaded:', ordersStats.length);
+      logger.info('Daily orders loaded successfully');
     } catch (err: any) {
-      console.error('❌ Hook: Error fetching daily orders stats:', err);
-      setDailyOrdersData([]);
+      const errorMessage = err.message || 'Failed to load daily orders';
+      setError(errorMessage);
+      logger.error('Error fetching daily orders:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchPopularDishes = useCallback(async (limit?: number) => {
+  const fetchPopularDishes = useCallback(async (limit: number = 5) => {
     try {
-      console.log('🍽️ Hook: Fetching popular dishes...');
       setLoading(true);
+      setError(null);
+      logger.info('Fetching popular dishes...');
       
-      const apiPopularDishes = await getPopularDishes(limit);
+      // API doesn't accept limit parameter yet
+      const data = await dashboardAPI.getPopularDishes();
+      setPopularDishes(Array.isArray(data) ? data : []);
       
-      // Transform API response to hook interface
-      const popularDishesStats: PopularDish[] = apiPopularDishes.map((dish, index) => ({
-        id: `dish-${index}`, // Generate ID since API doesn't provide one
-        name: dish.name,
-        orders: dish.orders,
-        revenue: dish.revenue
-      }));
-      
-      setPopularDishes(popularDishesStats);
-      console.log('✅ Hook: Popular dishes loaded:', popularDishesStats.length);
+      logger.info('Popular dishes loaded successfully');
     } catch (err: any) {
-      console.error('❌ Hook: Error fetching popular dishes:', err);
-      setPopularDishes([]);
+      const errorMessage = err.message || 'Failed to load popular dishes';
+      setError(errorMessage);
+      logger.error('Error fetching popular dishes:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchRecentOrders = useCallback(async (limit?: number) => {
+  const fetchRecentOrders = useCallback(async (limit: number = 10) => {
     try {
-      console.log('📋 Hook: Fetching recent orders...');
       setLoading(true);
+      setError(null);
+      logger.info('Fetching recent orders...');
       
-      const apiRecentOrders = await getRecentOrders(limit);
+      // API doesn't accept limit parameter yet
+      const data = await dashboardAPI.getRecentOrders();
+      setRecentOrders(Array.isArray(data) ? data : []);
       
-      // Transform API response to hook interface
-      const recentOrdersStats: RecentOrder[] = apiRecentOrders.map((order) => ({
-        id: order.id,
-        table_number: order.customer || 'N/A', // Use customer as table info
-        total_amount: order.amount,
-        status: order.status,
-        created_at: order.time
-      }));
-      
-      setRecentOrders(recentOrdersStats);
-      console.log('✅ Hook: Recent orders loaded:', recentOrdersStats.length);
+      logger.info('Recent orders loaded successfully');
     } catch (err: any) {
-      console.error('❌ Hook: Error fetching recent orders:', err);
-      setRecentOrders([]);
+      const errorMessage = err.message || 'Failed to load recent orders';
+      setError(errorMessage);
+      logger.error('Error fetching recent orders:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchHourlyRevenue = useCallback(async (date?: string) => {
-    try {
-      console.log('⏰ Hook: Fetching hourly revenue...');
-      setLoading(true);
-      
-      const apiHourlyRevenue = await getHourlyRevenueData(date);
-      
-      // Transform API response to hook interface
-      const hourlyData: HourlyRevenueData[] = apiHourlyRevenue.map((item) => ({
-        hour: parseInt(item.time) || 0, // Convert time to hour
-        revenue: item.revenue
-      }));
-      
-      setHourlyRevenue(hourlyData);
-      console.log('✅ Hook: Hourly revenue loaded:', hourlyData.length);
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching hourly revenue:', err);
-      setHourlyRevenue([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      fetchDashboardStats(),
+      fetchRevenueStats(),
+      fetchDailyOrders(),
+      fetchPopularDishes(),
+      fetchRecentOrders(),
+    ]);
+  }, [fetchDashboardStats, fetchRevenueStats, fetchDailyOrders, fetchPopularDishes, fetchRecentOrders]);
 
-  const fetchAllDashboardData = useCallback(async () => {
-    try {
-      console.log('🔄 Hook: Fetching all dashboard data...');
-      await Promise.all([
-        fetchDashboardStats(),
-        fetchRevenueStats(),
-        fetchDailyOrdersStats(),
-        fetchPopularDishes(),
-        fetchRecentOrders(),
-        fetchHourlyRevenue()
-      ]);
-      console.log('✅ Hook: All dashboard data loaded');
-    } catch (err: any) {
-      console.error('❌ Hook: Error fetching dashboard data:', err);
-      Alert.alert('Lỗi', 'Không thể tải dữ liệu dashboard');
-    }
-  }, [
-    fetchDashboardStats,
-    fetchRevenueStats,
-    fetchDailyOrdersStats,
-    fetchPopularDishes,
-    fetchRecentOrders,
-    fetchHourlyRevenue
-  ]);
+  // Load initial data
+  useEffect(() => {
+    refresh();
+  }, []);
 
   return {
     stats,
-    revenueData,
-    dailyOrdersData,
+    revenueStats,
+    dailyOrders,
     popularDishes,
     recentOrders,
-    hourlyRevenue,
     loading,
     error,
     fetchDashboardStats,
     fetchRevenueStats,
-    fetchDailyOrdersStats,
+    fetchDailyOrders,
     fetchPopularDishes,
     fetchRecentOrders,
-    fetchHourlyRevenue,
-    fetchAllDashboardData
+    refresh,
+    // Backward compatibility: some components expect `fetchAllData`
+    fetchAllData: refresh,
   };
 };

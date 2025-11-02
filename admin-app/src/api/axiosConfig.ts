@@ -50,19 +50,33 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor để xử lý lỗi
+// Response interceptor để xử lý response và lỗi (giống admin-web)
 api.interceptors.response.use(
   (response) => {
     if (DEBUG_CONFIG.LOG_RESPONSES) {
       console.log(`✅ API Success: ${response.config.url}`);
+      console.log(`📦 Response.data:`, response.data);
     }
-    return response;
+    
+    // Unwrap response.data.data như admin-web
+    // Backend structure: { status: "success", data: {...} }
+    // Interceptor unwraps to return data directly
+    if (response.data && response.data.data !== undefined) {
+      return response.data.data;
+    }
+    
+    // Fallback: return response.data if structure is different
+    return response.data;
   },
   async (error) => {
+    const status = error?.response?.status;
+    const message = error?.response?.data?.message || error.message || "Đã xảy ra lỗi";
+    const url = error.config?.url || '';
+    
     if (DEBUG_CONFIG.LOG_ERRORS) {
       console.log("❌ API Error:", {
-        message: error.message,
-        status: error.response?.status,
+        message,
+        status,
         data: error.response?.data,
         config: {
           url: error.config?.url,
@@ -72,7 +86,9 @@ api.interceptors.response.use(
       });
     }
     
-    if (error.response?.status === 401) {
+    // Xử lý lỗi 401 - Unauthorized (giống admin-web)
+    // KHÔNG logout nếu đang ở login/signup endpoint (sai credentials là bình thường)
+    if (status === 401 && !url.includes('/auth/login') && !url.includes('/auth/signup')) {
       console.log("🔑 401 Unauthorized - Token expired or invalid");
       
       // Clear all authentication data
@@ -82,6 +98,7 @@ api.interceptors.response.use(
       triggerLogout();
       console.log("🔄 Redirecting to login screen...");
     }
+    
     return Promise.reject(error);
   }
 );

@@ -6,10 +6,22 @@ import {
   Avatar, 
   Badge, 
   useTheme,
-  IconButton 
+  IconButton,
+  Chip 
 } from 'react-native-paper';
-import { Employee } from '@/api/employees';
+import { Employee } from '@/api/employeeApi';
 import { formatCurrency } from '@/utils';
+import { 
+  getEmployeeFullName,
+  getEmployeeEmail,
+  getEmployeePhone,
+  getEmployeePosition,
+  getEmployeeDepartment,
+  getEmployeeSalary,
+  getEmployeeStatus,
+  getEmployeeAvatar,
+  getDepartmentColor
+} from '@/utils/employeeUtils';
 import { spacing } from '@/theme';
 
 interface EmployeeCardProps {
@@ -26,9 +38,20 @@ export const EmployeeCard: React.FC<EmployeeCardProps> = ({
   onView,
 }) => {
   const theme = useTheme();
+  
+  // Get employee data using helper functions
+  const fullName = getEmployeeFullName(employee);
+  const email = getEmployeeEmail(employee);
+  const phone = getEmployeePhone(employee);
+  const position = getEmployeePosition(employee);
+  const department = getEmployeeDepartment(employee);
+  const salary = getEmployeeSalary(employee);
+  const status = getEmployeeStatus(employee);
+  const avatar = getEmployeeAvatar(employee);
+  const departmentColor = getDepartmentColor(department);
 
   const getStatusBadge = () => {
-    switch (employee.status) {
+    switch (status) {
       case 'active':
         return (
           <Badge 
@@ -62,48 +85,10 @@ export const EmployeeCard: React.FC<EmployeeCardProps> = ({
             style={[styles.badge, { backgroundColor: theme.colors.surfaceVariant }]}
             size={20}
           >
-            {employee.status}
+            {status}
           </Badge>
         );
     }
-  };
-
-  const getDepartmentColor = () => {
-    switch (employee.department) {
-      case 'Bếp':
-        return '#ff6b35';
-      case 'Phục vụ':
-        return '#4dabf7';
-      case 'Quản lý':
-        return '#69db7c';
-      default:
-        return theme.colors.primary;
-    }
-  };
-
-  const formatHireDate = () => {
-    const hireDate = new Date(employee.hire_date);
-    const now = new Date();
-    const diffMonths = (now.getFullYear() - hireDate.getFullYear()) * 12 + 
-                      (now.getMonth() - hireDate.getMonth());
-    
-    if (diffMonths < 1) {
-      return 'Mới tuyển';
-    } else if (diffMonths < 12) {
-      return `${diffMonths} tháng`;
-    } else {
-      const years = Math.floor(diffMonths / 12);
-      const months = diffMonths % 12;
-      return `${years} năm${months > 0 ? ` ${months} tháng` : ''}`;
-    }
-  };
-
-  const getAvatarLabel = () => {
-    const names = employee.full_name.split(' ');
-    if (names.length >= 2) {
-      return names[names.length - 2].charAt(0) + names[names.length - 1].charAt(0);
-    }
-    return employee.full_name.charAt(0);
   };
 
   return (
@@ -111,68 +96,65 @@ export const EmployeeCard: React.FC<EmployeeCardProps> = ({
       <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
         <Card.Content style={styles.content}>
           <View style={styles.header}>
+            {/* Avatar with department indicator */}
             <View style={styles.avatarContainer}>
-              <Avatar.Image
-                size={56}
-                source={{ uri: employee.face_image_url || 'https://via.placeholder.com/56' }}
-                style={styles.avatar}
-              />
-              <View 
-                style={[
-                  styles.departmentIndicator, 
-                  { backgroundColor: getDepartmentColor() }
-                ]}
-              />
+              {avatar.type === 'url' ? (
+                <Avatar.Image
+                  size={56}
+                  source={{ uri: avatar.value }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <Avatar.Text
+                  size={56}
+                  label={avatar.value}
+                  style={[styles.avatar, { backgroundColor: departmentColor }]}
+                  color="#fff"
+                />
+              )}
             </View>
 
+            {/* Main Info */}
             <View style={styles.mainInfo}>
-              <View style={styles.nameRow}>
+              <View style={styles.nameSection}>
                 <Text 
                   variant="titleMedium" 
                   style={[styles.name, { color: theme.colors.onSurface }]}
-                  numberOfLines={1}
                 >
-                  {employee.full_name}
+                  {fullName}
                 </Text>
-                {getStatusBadge()}
+                <Text 
+                  variant="bodyMedium" 
+                  style={[styles.position, { color: theme.colors.primary }]}
+                >
+                  {position}
+                </Text>
               </View>
 
-              <Text 
-                variant="bodyMedium" 
-                style={[styles.position, { color: theme.colors.primary }]}
-                numberOfLines={1}
-              >
-                {employee.position}
-              </Text>
-
               <View style={styles.infoRow}>
-                <Text 
-                  variant="bodySmall" 
-                  style={[styles.department, { color: theme.colors.onSurfaceVariant }]}
+                <Chip
+                  mode="flat"
+                  compact
+                  style={[styles.departmentChip, { backgroundColor: departmentColor + '20' }]}
+                  textStyle={{ fontSize: 11, color: departmentColor }}
                 >
-                  {employee.department}
-                </Text>
-                <Text 
-                  variant="bodySmall" 
-                  style={[styles.separator, { color: theme.colors.onSurfaceVariant }]}
-                >
-                  •
-                </Text>
-                <Text 
-                  variant="bodySmall" 
-                  style={[styles.experience, { color: theme.colors.onSurfaceVariant }]}
-                >
-                  {formatHireDate()}
-                </Text>
+                  {department}
+                </Chip>
+              </View>
+
+              <View style={styles.statusRow}>
+                {getStatusBadge()}
               </View>
             </View>
 
+            {/* Action Buttons */}
             <View style={styles.actions}>
               {onView && (
                 <IconButton
                   icon="eye"
                   size={20}
                   onPress={onView}
+                  iconColor={theme.colors.primary}
                   style={styles.actionButton}
                 />
               )}
@@ -181,43 +163,56 @@ export const EmployeeCard: React.FC<EmployeeCardProps> = ({
                   icon="pencil"
                   size={20}
                   onPress={onEdit}
+                  iconColor={theme.colors.primary}
                   style={styles.actionButton}
                 />
               )}
             </View>
           </View>
 
+          {/* Contact & Salary Footer */}
           <View style={styles.footer}>
-            <View style={styles.contactInfo}>
-              <Text 
-                variant="bodySmall" 
-                style={[styles.email, { color: theme.colors.onSurfaceVariant }]}
-                numberOfLines={1}
-              >
-                {employee.email}
-              </Text>
-              <Text 
-                variant="bodySmall" 
-                style={[styles.phone, { color: theme.colors.onSurfaceVariant }]}
-              >
-                {employee.phone}
-              </Text>
+            <View style={styles.contactSection}>
+              <View style={styles.contactRow}>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}>
+                  📧
+                </Text>
+                <Text 
+                  variant="bodySmall" 
+                  style={[styles.contactText, { color: theme.colors.onSurfaceVariant }]}
+                >
+                  {email || 'N/A'}
+                </Text>
+              </View>
+              <View style={styles.contactRow}>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}>
+                  📱
+                </Text>
+                <Text 
+                  variant="bodySmall" 
+                  style={[styles.contactText, { color: theme.colors.onSurfaceVariant }]}
+                >
+                  {phone || 'N/A'}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.salaryContainer}>
-              <Text 
-                variant="labelSmall" 
-                style={[styles.salaryLabel, { color: theme.colors.onSurfaceVariant }]}
-              >
-                Lương cơ bản
-              </Text>
-              <Text 
-                variant="titleSmall" 
-                style={[styles.salary, { color: theme.colors.primary }]}
-              >
-                {formatCurrency(employee.salary)}
-              </Text>
-            </View>
+            {salary > 0 && (
+              <View style={[styles.salaryContainer, { backgroundColor: theme.colors.primaryContainer }]}>
+                <Text 
+                  variant="labelSmall" 
+                  style={[styles.salaryLabel, { color: theme.colors.onPrimaryContainer }]}
+                >
+                  Lương cơ bản
+                </Text>
+                <Text 
+                  variant="titleSmall" 
+                  style={[styles.salaryValue, { color: theme.colors.onPrimaryContainer }]}
+                >
+                  {formatCurrency(salary)}
+                </Text>
+              </View>
+            )}
           </View>
         </Card.Content>
       </TouchableOpacity>
@@ -240,40 +235,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   avatarContainer: {
-    position: 'relative',
     marginRight: spacing.md,
   },
   avatar: {
-    backgroundColor: '#f0f0f0',
-  },
-  departmentIndicator: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'white',
+    // No need for backgroundColor, will use department color
   },
   mainInfo: {
     flex: 1,
     justifyContent: 'flex-start',
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  nameSection: {
     marginBottom: spacing.xs,
   },
   name: {
     fontWeight: '600',
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  badge: {
-    fontSize: 10,
-    paddingHorizontal: spacing.xs,
+    marginBottom: 4,
   },
   position: {
     fontWeight: '500',
@@ -282,9 +258,12 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: spacing.xs,
   },
-  department: {
-    fontSize: 12,
+  departmentChip: {
+    height: 24,
+    marginRight: spacing.xs,
   },
   separator: {
     marginHorizontal: spacing.xs,
@@ -293,41 +272,51 @@ const styles = StyleSheet.create({
   experience: {
     fontSize: 12,
   },
+  statusRow: {
+    marginTop: spacing.xs,
+  },
+  badge: {
+    fontSize: 10,
+    paddingHorizontal: spacing.xs,
+  },
   actions: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
   },
   actionButton: {
     margin: 0,
-    marginLeft: spacing.xs,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: '#e0e0e0',
   },
-  contactInfo: {
+  contactSection: {
+    marginBottom: spacing.md,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  contactText: {
+    fontSize: 12,
     flex: 1,
   },
-  email: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  phone: {
-    fontSize: 12,
-  },
   salaryContainer: {
-    alignItems: 'flex-end',
+    padding: spacing.sm,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   salaryLabel: {
     fontSize: 10,
     textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  salary: {
     fontWeight: '600',
+  },
+  salaryValue: {
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

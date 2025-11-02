@@ -18,14 +18,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuthStore, useThemeStore } from '@/store';
-import { useLogout } from '@/hooks';
 import { spacing } from '@/theme';
 
 const SettingsScreen = () => {
   const theme = useTheme();
-  const { user } = useAuthStore();
+  const { user, clearAuth } = useAuthStore();
   const { isDarkMode, toggleTheme } = useThemeStore();
-  const logoutMutation = useLogout();
 
   const handleLogout = () => {
     Alert.alert(
@@ -41,7 +39,8 @@ const SettingsScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logoutMutation.mutateAsync();
+              await clearAuth();
+              console.log('✅ Logout successful');
             } catch (error) {
               console.error('Logout failed:', error);
             }
@@ -204,8 +203,6 @@ const SettingsScreen = () => {
           <Button
             mode="contained"
             onPress={handleLogout}
-            loading={logoutMutation.isPending}
-            disabled={logoutMutation.isPending}
             buttonColor={theme.colors.error}
             textColor={theme.colors.onError}
             style={styles.logoutButton}

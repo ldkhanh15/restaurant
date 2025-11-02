@@ -28,21 +28,31 @@ export const login = async (credentials: LoginRequest): Promise<LoginResponse> =
     console.log('🚀 Attempting login with:', credentials.email);
     const response = await api.post('/auth/login', credentials);
     
-    console.log('✅ Login response:', response.data);
+    console.log('✅ Unwrapped response (after interceptor):', response);
     
-    // Backend trả về { status: "success", data: { user, token } }
-    const { user, token } = response.data.data || response.data;
+    // Interceptor đã unwrap response.data.data
+    // response giờ là { user, token } trực tiếp
+    const user = response.user;
+    const token = response.token;
+    
+    if (!user || !token) {
+      console.error('❌ Missing user or token');
+      console.error('response:', response);
+      throw new Error('Invalid response: missing user or token');
+    }
+    
+    console.log('✅ Extracted user:', user);
+    console.log('✅ Extracted token:', token.substring(0, 20) + '...');
     
     // Lưu token và user info vào AsyncStorage
-    if (token) {
-      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
-      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-      console.log('💾 Saved token and user to AsyncStorage');
-    }
+    await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
+    await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+    console.log('💾 Saved token and user to AsyncStorage');
     
     return { user, token, expires_in: 3600 }; // Default 1 hour
   } catch (error: any) {
-    console.log('❌ Login error:', error.response?.data || error.message);
+    console.log('❌ Login error:', error);
+    console.log('❌ Error response:', error.response?.data);
     const errorMessage = error.response?.data?.message || error.message || 'Đăng nhập thất bại';
     throw new Error(errorMessage);
   }
@@ -64,8 +74,8 @@ export const logout = async (): Promise<void> => {
 export const verifyToken = async (): Promise<AdminUser> => {
   try {
     const response = await api.get('/auth/validate');
-    // Backend trả về { status: "success", data: { user } }
-    const user = response.data.data?.user || response.data.user;
+    // Response interceptor đã trả về data.data rồi, nên response chính là user object
+    const user = response?.user || response;
     return user;
   } catch (error: any) {
     throw new Error('Token không hợp lệ');
@@ -84,7 +94,8 @@ export const getCurrentUser = async (): Promise<AdminUser | null> => {
 export const refreshToken = async (): Promise<string> => {
   try {
     const response = await api.post('/auth/refresh');
-    const newToken = response.data.token;
+    // Response interceptor đã trả về data.data rồi
+    const newToken = response?.token || response;
     
     if (newToken) {
       await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, newToken);

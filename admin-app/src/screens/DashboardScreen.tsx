@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -8,7 +8,7 @@ import {
   FlatList,
   TouchableOpacity
 } from 'react-native';
-import { Text, useTheme, Card, Badge } from 'react-native-paper';
+import { Text, useTheme, Card, Badge, ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   LineChart,
@@ -16,13 +16,18 @@ import {
   PieChart,
 } from 'react-native-chart-kit';
 
-import { StatCard } from '@/components';
-import { useDashboard } from '@/hooks';
-import { spacing } from '@/theme';
-import { formatCurrency } from '@/utils';
-import { testDashboardAPI } from '@/utils/testDashboardAPI';
+import { StatCard } from '../components';
+import { useDashboard } from '../hooks/useDashboard';
+import { spacing } from '../theme';
 
 const screenWidth = Dimensions.get('window').width;
+
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(amount);
+};
 
 const DashboardScreen = () => {
   const theme = useTheme();
@@ -35,16 +40,19 @@ const DashboardScreen = () => {
   
   const {
     stats,
-    revenueData,
-    dailyOrdersData: ordersData,
-    popularDishes: dishesData,
-    recentOrders: recentOrdersData,
-    hourlyRevenue,
+    revenueStats,
+    dailyOrders,
+    popularDishes,
+    recentOrders,
     loading,
-    fetchAllDashboardData
+    error,
+    fetchAllData
   } = useDashboard();
 
-  const isLoading = loading;
+  // Fetch data on mount
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
   // Transform real data to display format  
   const enhancedStats = stats ? [
@@ -93,17 +101,13 @@ const DashboardScreen = () => {
   ] : [];
 
   // Use real recent orders data  
-  const recentOrders = recentOrdersData || [];
+  const recentOrdersData = recentOrders || [];
 
   // Load data on component mount and test API
   React.useEffect(() => {
-    // Test API connection in development
-    if (__DEV__) {
-      testDashboardAPI();
-    }
-    
-    fetchAllDashboardData();
-  }, [fetchAllDashboardData]);
+    // Fetch all dashboard data
+    fetchAllData();
+  }, [fetchAllData]);
 
   const tableUtilization = [
     { table: "Bàn 1-5", utilization: 85, occupied: 17, total: 20, capacity: "4 người/bàn" },
@@ -139,11 +143,11 @@ const DashboardScreen = () => {
 
   // Transform data for charts with better mobile sizing
   const transformRevenueData = () => {
-    if (!revenueData || revenueData.length === 0) return null;
+    if (!revenueStats || revenueStats.length === 0) return null;
     return {
-      labels: revenueData.map((item: any) => item.month),
+      labels: revenueStats.map((item: any) => item.month),
       datasets: [{
-        data: revenueData.map((item: any) => item.revenue / 1000000), // Convert to millions
+        data: revenueStats.map((item: any) => item.revenue / 1000000), // Convert to millions
         color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
         strokeWidth: 2,
       }],
@@ -151,39 +155,40 @@ const DashboardScreen = () => {
   };
 
   const transformMonthlyAreaData = () => {
-    if (!revenueData || revenueData.length === 0) return null;
+    if (!revenueStats || revenueStats.length === 0) return null;
     return {
-      labels: revenueData.map((item: any) => item.month),
+      labels: revenueStats.map((item: any) => item.month),
       datasets: [{
-        data: revenueData.map((item: any) => item.revenue),
+        data: revenueStats.map((item: any) => item.revenue),
         color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
         strokeWidth: 3,
       }],
     };
   };
 
-  const transformHourlyBarData = () => {
-    if (!hourlyRevenue || hourlyRevenue.length === 0) return null;
+  const transformHourlyData = () => {
+    // Use revenueStats as hourly data if available
+    if (!revenueStats || revenueStats.length === 0) return null;
     return {
-      labels: hourlyRevenue.map((item: any) => item.time),
+      labels: revenueStats.map((item: any) => item.month || `${item.hour}h`),
       datasets: [{
-        data: hourlyRevenue.map((item: any) => item.revenue),
+        data: revenueStats.map((item: any) => item.revenue),
       }],
     };
   };
 
   const transformOrdersData = () => {
-    if (!ordersData || ordersData.length === 0) return null;
+    if (!dailyOrders || dailyOrders.length === 0) return null;
     return {
-      labels: ordersData.map((item: any) => item.time),
+      labels: dailyOrders.map((item: any) => item.date),
       datasets: [{
-        data: ordersData.map((item: any) => item.orders),
+        data: dailyOrders.map((item: any) => item.total_orders || item.orders),
       }],
     };
   };
 
   const transformDishesData = () => {
-    if (!dishesData || dishesData.length === 0) return null;
+    if (!popularDishes || popularDishes.length === 0) return null;
     const colors = [
       '#FF6384',
       '#36A2EB', 
@@ -192,7 +197,7 @@ const DashboardScreen = () => {
       '#9966FF',
     ];
     
-    return dishesData.slice(0, 5).map((item: any, index: number) => ({
+    return popularDishes.slice(0, 5).map((item: any, index: number) => ({
       name: item.name,
       population: item.orders,
       color: colors[index % colors.length],
@@ -355,8 +360,8 @@ const DashboardScreen = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
-            onRefresh={fetchAllDashboardData}
+            refreshing={loading}
+            onRefresh={fetchAllData}
             colors={[theme.colors.primary]}
           />
         }
@@ -371,7 +376,7 @@ const DashboardScreen = () => {
         </View>
 
         {/* Stats Grid */}
-        {isLoading ? (
+        {loading ? (
           <View style={[styles.statGrid, { justifyContent: 'center', alignItems: 'center', height: 200 }]}>
             <Text style={{ color: theme.colors.onBackground }}>Đang tải dữ liệu...</Text>
           </View>
@@ -419,7 +424,7 @@ const DashboardScreen = () => {
         {activeTab === 'overview' && (
           <View>
             {/* Revenue Overview */}
-            {revenueData && transformRevenueData() && (
+            {revenueStats && transformRevenueData() && (
               <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
                 <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
                   Tổng quan doanh thu (triệu VNĐ)
@@ -471,13 +476,13 @@ const DashboardScreen = () => {
             )}
 
             {/* Hourly Revenue Bar Chart */}
-            {hourlyRevenue && transformHourlyBarData() && (
+            {revenueStats && transformHourlyData() && (
               <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
                 <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
                   Doanh thu theo giờ (triệu VNĐ)
                 </Text>
                 <BarChart
-                  data={transformHourlyBarData()!}
+                  data={transformHourlyData()!}
                   width={getChartWidth()}
                   height={200}
                   chartConfig={chartConfig}
@@ -489,7 +494,7 @@ const DashboardScreen = () => {
             )}
 
             {/* Revenue Comparison Line Chart */}
-            {revenueData && transformRevenueData() && (
+            {revenueStats && transformRevenueData() && (
               <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
                 <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
                   So sánh doanh thu, đơn hàng, khách hàng
@@ -507,10 +512,10 @@ const DashboardScreen = () => {
           </View>
         )}
 
-        {activeTab === 'orders' && ordersData && transformOrdersData() && (
+        {activeTab === 'orders' && dailyOrders && transformOrdersData() && (
           <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
-              Đơn hàng theo giờ
+              Đơn hàng theo ngày
             </Text>
             <BarChart
               data={transformOrdersData()!}
@@ -524,7 +529,7 @@ const DashboardScreen = () => {
           </View>
         )}
 
-        {activeTab === 'dishes' && dishesData && transformDishesData() && (
+        {activeTab === 'dishes' && popularDishes && transformDishesData() && (
           <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
               Món ăn phổ biến
