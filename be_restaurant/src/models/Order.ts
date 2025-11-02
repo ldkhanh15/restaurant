@@ -2,51 +2,59 @@ import { DataTypes, Model, type Optional } from "sequelize"
 import sequelize from "../config/database"
 
 interface OrderAttributes {
-  id: string
-  user_id?: string
-  reservation_id?: string
-  table_id?: string
-  table_group_id?: string
-  event_id?: string
-  voucher_id?: string
-  status: "pending" | "dining" | "waiting_payment" | "preparing" | "ready" | "delivered" | "paid" | "cancelled"
-  total_amount: number
-  voucher_discount_amount?: number
-  final_amount: number
-  event_fee?: number
-  deposit_amount?: number
-  customizations?: any
-  notes?: string
-  payment_status: "pending" | "paid" | "failed"
-  payment_method?: "zalopay" | "momo" | "cash" | "vnpay"
-  created_at?: Date
-  updated_at?: Date
-  deleted_at?: Date | null
+  id: string;
+  user_id?: string;
+  reservation_id?: string;
+  table_id?: string;
+  table_group_id?: string;
+  event_id?: string;
+  voucher_id?: string;
+  status: "pending" | "paid" | "dining" | "waiting_payment" | "cancelled";
+  total_amount: number;
+  voucher_discount_amount?: number;
+  final_amount: number;
+  event_fee?: number;
+  deposit_amount?: number;
+  customizations?: any;
+  notes?: string;
+  payment_status: "pending" | "paid" | "failed";
+  payment_method?: "zalopay" | "momo" | "cash" | "vnpay";
+  created_at?: Date;
+  updated_at?: Date;
+  deleted_at?: Date | null;
 }
 
 interface OrderCreationAttributes extends Optional<OrderAttributes, "id" | "status" | "payment_status"> { }
 
-class Order extends Model<OrderAttributes, OrderCreationAttributes> implements OrderAttributes {
-  public id!: string
-  public user_id?: string
-  public reservation_id?: string
-  public table_id?: string
-  public table_group_id?: string
-  public event_id?: string
-  public voucher_id?: string
-  public status!: "pending" | "dining" | "waiting_payment" | "preparing" | "ready"  | "paid" | "cancelled"
-  public total_amount!: number
-  public voucher_discount_amount?: number
-  public final_amount!: number
-  public event_fee?: number
-  public deposit_amount?: number
-  public customizations?: any
-  public notes?: string
-  public payment_status!: "pending" | "paid" | "failed"
-  public payment_method?: "zalopay" | "momo" | "cash" | "vnpay"
-  public created_at?: Date
-  public updated_at?: Date
-  public deleted_at?: Date | null
+class Order
+  extends Model<OrderAttributes, OrderCreationAttributes>
+  implements OrderAttributes
+{
+  public id!: string;
+  public user_id?: string;
+  public reservation_id?: string;
+  public table_id?: string;
+  public table_group_id?: string;
+  public event_id?: string;
+  public voucher_id?: string;
+  public status!:
+    | "pending"
+    | "paid"
+    | "dining"
+    | "waiting_payment"
+    | "cancelled";
+  public total_amount!: number;
+  public voucher_discount_amount?: number;
+  public final_amount!: number;
+  public event_fee?: number;
+  public deposit_amount?: number;
+  public customizations?: any;
+  public notes?: string;
+  public payment_status!: "pending" | "paid" | "failed";
+  public payment_method?: "zalopay" | "momo" | "cash" | "vnpay";
+  public created_at?: Date;
+  public updated_at?: Date;
+  public deleted_at?: Date | null;
 }
 
 Order.init(
@@ -111,7 +119,9 @@ Order.init(
       onDelete: "SET NULL",
     },
     status: {
-      type: DataTypes.ENUM("pending", "dining", "waiting_payment", "preparing", "ready", "delivered", "paid", "cancelled"),
+      type: DataTypes.ENUM(
+        "pending" , "paid" , "dining" , "waiting_payment" , "cancelled"
+      ),
       defaultValue: "pending",
     },
     total_amount: {
@@ -174,7 +184,7 @@ Order.init(
     createdAt: "created_at",
     updatedAt: "updated_at",
     deletedAt: "deleted_at",
-  },
-)
+  }
+);
 
 export default Order

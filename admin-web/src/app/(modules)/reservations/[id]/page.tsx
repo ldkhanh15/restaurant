@@ -41,10 +41,14 @@ import {
   Save,
   X,
   AlertCircle,
+  CreditCard,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { api, Reservation, ReservationDetailResponse } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { formatCurrency } from "@/lib/utils";
 
 const PAYMENT_STATUSES = [
   {
@@ -81,12 +85,6 @@ const RESERVATION_STATUSES = [
     icon: CheckCircle,
   },
   {
-    value: "checked_in",
-    label: "Đã check-in",
-    color: "status-ready",
-    icon: UserCheck,
-  },
-  {
     value: "completed",
     label: "Hoàn thành",
     color: "status-completed",
@@ -119,7 +117,13 @@ export default function ReservationDetailPage() {
   const [editedData, setEditedData] = useState<
     Partial<ReservationDetailResponse>
   >({});
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [tables, setTables] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [dishes, setDishes] = useState<any[]>([]);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (reservationId) {
@@ -127,12 +131,43 @@ export default function ReservationDetailPage() {
     }
   }, [reservationId]);
 
+  useEffect(() => {
+    if (isEditing) {
+      loadTablesAndEvents();
+    }
+  }, [isEditing]);
+
+  const loadTablesAndEvents = async () => {
+    try {
+      const [tablesRes, eventsRes, dishesRes] = await Promise.all([
+        api.tables.getAll(),
+        api.events.getAll(),
+        api.dishes.getAll(),
+      ]);
+      setTables((tablesRes as any).data || (tablesRes as any));
+      setEvents((eventsRes as any).data || (eventsRes as any));
+      setDishes((dishesRes as any).data || (dishesRes as any));
+    } catch (error) {
+      console.error("Failed to load tables/events/dishes:", error);
+    }
+  };
+
   const loadReservation = async () => {
     try {
       setIsLoading(true);
       const response = await api.reservations.getById(reservationId);
-      setReservation(response);
-      setEditedData(response);
+      const reservationData = (response as any).data || response;
+      setReservation(reservationData);
+
+      // Format reservation_time for datetime-local input (YYYY-MM-DDTHH:mm)
+      const reservationTime = new Date(reservationData.reservation_time);
+      const formattedTime = format(reservationTime, "yyyy-MM-dd'T'HH:mm");
+
+      setEditedData({
+        ...reservationData,
+        reservation_time: formattedTime,
+        pre_order_items: reservationData.pre_order_items || [],
+      });
     } catch (error) {
       console.error("Failed to load reservation:", error);
       toast({
@@ -186,11 +221,80 @@ export default function ReservationDetailPage() {
   };
 
   const handleSave = async () => {
+    if (!reservation) return;
+
     try {
-      // Note: This would need to be implemented in the API
-      // await api.reservations.update(reservationId, editedData);
-      setReservation((prev) => (prev ? { ...prev, ...editedData } : null));
+      setIsUpdating(true);
+
+      // Format data for API
+      const updateData: any = {};
+
+      if (editedData.table_id && editedData.table_id !== reservation.table_id) {
+        updateData.table_id = editedData.table_id;
+      }
+
+      if (editedData.reservation_time) {
+        // Convert datetime-local string to ISO string
+        const dateTimeString = editedData.reservation_time as string;
+        if (dateTimeString.includes("T")) {
+          // Already in datetime-local format (YYYY-MM-DDTHH:mm)
+          updateData.reservation_time = new Date(dateTimeString).toISOString();
+        } else {
+          updateData.reservation_time = new Date(dateTimeString).toISOString();
+        }
+      }
+
+      if (
+        editedData.duration_minutes !== undefined &&
+        editedData.duration_minutes !== reservation.duration_minutes
+      ) {
+        updateData.duration_minutes = editedData.duration_minutes;
+      }
+
+      if (
+        editedData.num_people !== undefined &&
+        editedData.num_people !== reservation.num_people
+      ) {
+        updateData.num_people = editedData.num_people;
+      }
+
+      if (
+        editedData.event_id !== undefined &&
+        editedData.event_id !== reservation.event_id
+      ) {
+        updateData.event_id = editedData.event_id || null;
+      }
+
+      if (editedData.preferences !== undefined) {
+        // Only include preferences if it's a valid object, not null
+        // Backend validator expects object or undefined, not null
+        if (
+          editedData.preferences &&
+          typeof editedData.preferences === "object" &&
+          editedData.preferences !== null
+        ) {
+          updateData.preferences = editedData.preferences;
+        }
+        // If null or invalid, don't include it - backend will keep existing value
+      }
+
+      if (editedData.pre_order_items !== undefined) {
+        // Strip dish objects from pre_order_items before sending to API
+        // Backend only expects dish_id and quantity
+        updateData.pre_order_items = editedData.pre_order_items.map(
+          (item: any) => ({
+            dish_id: item.dish_id,
+            quantity: item.quantity,
+          })
+        );
+      }
+
+      const response = await api.reservations.update(reservationId, updateData);
+
+      // Reload reservation to get updated data
+      await loadReservation();
       setIsEditing(false);
+
       toast({
         title: "Thành công",
         description: "Cập nhật thông tin đặt bàn thành công",
@@ -202,30 +306,99 @@ export default function ReservationDetailPage() {
         description: "Không thể cập nhật thông tin đặt bàn",
         variant: "destructive",
       });
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   const handleCancel = () => {
-    setEditedData(reservation || {});
+    if (reservation) {
+      // Format reservation_time for datetime-local input
+      const reservationTime = new Date(reservation.reservation_time);
+      const formattedTime = format(reservationTime, "yyyy-MM-dd'T'HH:mm");
+      setEditedData({
+        ...reservation,
+        reservation_time: formattedTime,
+        pre_order_items: reservation.pre_order_items || [],
+      });
+    }
     setIsEditing(false);
   };
 
-  const handleDelete = async () => {
-    try {
-      // Note: This would need to be implemented in the API
-      // await api.reservations.delete(reservationId);
+  const addPreOrderItem = (dishId: string, quantity: number = 1) => {
+    const currentItems =
+      editedData.pre_order_items || reservation?.pre_order_items || [];
+    const existingIndex = currentItems.findIndex(
+      (item: any) => item.dish_id === dishId
+    );
+    let updated: any[];
+    if (existingIndex >= 0) {
+      updated = [...currentItems];
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: (updated[existingIndex].quantity || 0) + quantity,
+      };
+    } else {
+      updated = [...currentItems, { dish_id: dishId, quantity }];
+    }
+    setEditedData((prev) => ({ ...prev, pre_order_items: updated }));
+  };
+
+  const removePreOrderItem = (dishId: string) => {
+    const currentItems =
+      editedData.pre_order_items || reservation?.pre_order_items || [];
+    setEditedData((prev) => ({
+      ...prev,
+      pre_order_items: currentItems.filter(
+        (item: any) => item.dish_id !== dishId
+      ),
+    }));
+  };
+
+  const updatePreOrderQuantity = (dishId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removePreOrderItem(dishId);
+      return;
+    }
+    const currentItems =
+      editedData.pre_order_items || reservation?.pre_order_items || [];
+    setEditedData((prev) => ({
+      ...prev,
+      pre_order_items: currentItems.map((item: any) =>
+        item.dish_id === dishId ? { ...item, quantity } : item
+      ),
+    }));
+  };
+
+  const handleCancelReservation = async () => {
+    if (!cancelReason.trim()) {
       toast({
-        title: "Thành công",
-        description: "Xóa đặt bàn thành công",
-      });
-      router.push("/reservations");
-    } catch (error) {
-      console.error("Failed to delete reservation:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa đặt bàn",
+        title: "Thiếu thông tin",
+        description: "Vui lòng nhập lý do hủy đặt bàn",
         variant: "destructive",
       });
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      await api.reservations.cancel(reservationId, cancelReason.trim());
+      toast({
+        title: "Thành công",
+        description: "Hủy đặt bàn thành công",
+      });
+      setShowCancelDialog(false);
+      setCancelReason("");
+      await loadReservation();
+    } catch (error: any) {
+      console.error("Failed to cancel reservation:", error);
+      toast({
+        title: "Lỗi",
+        description: error?.response?.data?.message || "Không thể hủy đặt bàn",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -291,38 +464,41 @@ export default function ReservationDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-amber-200 pb-6">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
             size="sm"
             onClick={() => router.back()}
-            className="luxury-focus"
+            className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Quay lại
           </Button>
           <div>
-            <h1 className="text-2xl font-bold gold-text">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">
               Đặt bàn #{reservation.id}
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-gray-600 mt-1 flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-amber-500" />
               Tạo lúc {formatDateTime(reservation.created_at)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Badge
-            className={`status-badge ${getStatusColor(reservation.status)}`}
+            className={`status-badge ${getStatusColor(
+              reservation.status
+            )} text-sm px-4 py-2 shadow-sm flex items-center gap-2`}
           >
-            <StatusIcon className="h-3 w-3 mr-1" />
+            <StatusIcon className="h-4 w-4" />
             {getStatusLabel(reservation.status)}
           </Badge>
           <Button
             variant="outline"
             size="sm"
             onClick={loadReservation}
-            className="luxury-focus"
+            className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Làm mới
@@ -334,25 +510,29 @@ export default function ReservationDetailPage() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Reservation Status */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-white">
+            <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <Clock className="h-5 w-5 text-amber-600" />
                 Trạng thái đặt bàn
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4 flex-wrap">
                 <Select
                   value={reservation.status}
                   onValueChange={updateReservationStatus}
                 >
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-52 border-amber-200 focus:ring-amber-500 shadow-sm">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border-amber-200">
                     {RESERVATION_STATUSES.map((status) => (
-                      <SelectItem key={status.value} value={status.value}>
+                      <SelectItem
+                        key={status.value}
+                        value={status.value}
+                        className="focus:bg-amber-50"
+                      >
                         {status.label}
                       </SelectItem>
                     ))}
@@ -361,16 +541,16 @@ export default function ReservationDetailPage() {
                 <Badge
                   className={`status-badge ${getStatusColor(
                     reservation.status
-                  )}`}
+                  )} text-sm px-4 py-2 shadow-sm flex items-center gap-2`}
                 >
-                  <StatusIcon className="h-3 w-3 mr-1" />
+                  <StatusIcon className="h-4 w-4" />
                   {getStatusLabel(reservation.status)}
                 </Badge>
                 {reservation.status === "confirmed" &&
                   isUpcomingReservation && (
                     <Button
                       onClick={checkInReservation}
-                      className="luxury-button"
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md"
                     >
                       <UserCheck className="h-4 w-4 mr-2" />
                       Check-in
@@ -381,11 +561,11 @@ export default function ReservationDetailPage() {
           </Card>
 
           {/* Reservation Details */}
-          <Card className="luxury-card">
-            <CardHeader>
+          <Card className="border-amber-100 shadow-lg bg-white">
+            <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
               <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
+                <span className="flex items-center gap-2 text-amber-900">
+                  <Calendar className="h-5 w-5 text-amber-600" />
                   Chi tiết đặt bàn
                 </span>
                 <div className="flex gap-2">
@@ -412,10 +592,11 @@ export default function ReservationDetailPage() {
                       <Button
                         size="sm"
                         onClick={handleSave}
+                        disabled={isUpdating}
                         className="luxury-button"
                       >
                         <Save className="h-4 w-4 mr-2" />
-                        Lưu
+                        {isUpdating ? "Đang lưu..." : "Lưu"}
                       </Button>
                     </div>
                   )}
@@ -425,11 +606,13 @@ export default function ReservationDetailPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="reservation-date">Ngày đặt bàn</Label>
+                  <Label htmlFor="reservation-datetime">
+                    Thời gian đặt bàn
+                  </Label>
                   {isEditing ? (
                     <Input
-                      id="reservation-date"
-                      type="date"
+                      id="reservation-datetime"
+                      type="datetime-local"
                       value={editedData.reservation_time || ""}
                       onChange={(e) =>
                         setEditedData((prev) => ({
@@ -437,32 +620,39 @@ export default function ReservationDetailPage() {
                           reservation_time: e.target.value,
                         }))
                       }
-                      className="luxury-focus"
+                      className="luxury-focus mt-1"
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground mt-1">
-                      {reservation.reservation_time}
+                      {formatDateTime(reservation.reservation_time)}
                     </p>
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="reservation-time">Giờ đặt bàn</Label>
+                  <Label htmlFor="duration">Thời lượng (phút)</Label>
                   {isEditing ? (
                     <Input
-                      id="reservation-time"
-                      type="time"
-                      value={editedData.reservation_time || ""}
+                      id="duration"
+                      type="number"
+                      min={30}
+                      step={30}
+                      value={
+                        editedData.duration_minutes ||
+                        reservation.duration_minutes
+                      }
                       onChange={(e) =>
                         setEditedData((prev) => ({
                           ...prev,
-                          reservation_time: e.target.value,
+                          duration_minutes: parseInt(e.target.value),
                         }))
                       }
-                      className="luxury-focus"
+                      className="luxury-focus mt-1"
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground mt-1">
-                      {reservation.reservation_time}
+                      {reservation.duration_minutes} phút (
+                      {Math.floor(reservation.duration_minutes / 60)}h{" "}
+                      {reservation.duration_minutes % 60}m)
                     </p>
                   )}
                 </div>
@@ -472,14 +662,15 @@ export default function ReservationDetailPage() {
                     <Input
                       id="party-size"
                       type="number"
-                      value={editedData.num_people || ""}
+                      min={1}
+                      value={editedData.num_people || reservation.num_people}
                       onChange={(e) =>
                         setEditedData((prev) => ({
                           ...prev,
-                          party_size: parseInt(e.target.value),
+                          num_people: parseInt(e.target.value),
                         }))
                       }
-                      className="luxury-focus"
+                      className="luxury-focus mt-1"
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground mt-1">
@@ -489,162 +680,436 @@ export default function ReservationDetailPage() {
                 </div>
                 <div>
                   <Label htmlFor="table">Bàn</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {reservation.table.table_number} (Sức chứa:{" "}
-                    {reservation.table.capacity} người)
-                  </p>
+                  {isEditing ? (
+                    <Select
+                      value={editedData.table_id || reservation.table_id}
+                      onValueChange={(value) =>
+                        setEditedData((prev) => ({
+                          ...prev,
+                          table_id: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="luxury-focus mt-1">
+                        <SelectValue placeholder="Chọn bàn" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tables.map((table: any) => (
+                          <SelectItem key={table.id} value={table.id}>
+                            Bàn {table.table_number} - {table.capacity} người
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.table.table_number} (Sức chứa:{" "}
+                      {reservation.table.capacity} người)
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="event">Sự kiện (tuỳ chọn)</Label>
+                  {isEditing ? (
+                    <Select
+                      value={
+                        editedData.event_id ||
+                        reservation.event_id ||
+                        "__none__"
+                      }
+                      onValueChange={(value) =>
+                        setEditedData((prev) => ({
+                          ...prev,
+                          event_id: value === "__none__" ? null : value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="luxury-focus mt-1">
+                        <SelectValue placeholder="Không chọn sự kiện" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">
+                          Không chọn sự kiện
+                        </SelectItem>
+                        {events.map((event: any) => (
+                          <SelectItem key={event.id} value={event.id}>
+                            {event.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.event
+                        ? reservation.event.name
+                        : "Không có sự kiện"}
+                    </p>
+                  )}
                 </div>
               </div>
-              {/* <div>
-                <Label htmlFor="special-requests">Yêu cầu đặc biệt</Label>
+              <div>
+                <Label htmlFor="notes">Ghi chú / Yêu cầu đặc biệt</Label>
                 {isEditing ? (
                   <Textarea
-                    id="special-requests"
-                    value={editedData.preferences || ""}
+                    id="notes"
+                    value={(editedData.preferences as any)?.note || ""}
                     onChange={(e) =>
                       setEditedData((prev) => ({
                         ...prev,
-                        special_requests: e.target.value,
+                        preferences: {
+                          ...((prev.preferences as any) || {}),
+                          note: e.target.value,
+                        },
                       }))
                     }
-                    placeholder="Nhập yêu cầu đặc biệt..."
-                    className="luxury-focus"
+                    placeholder="Nhập ghi chú hoặc yêu cầu đặc biệt..."
+                    className="luxury-focus mt-1"
+                    rows={3}
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground mt-1">
-                    {reservation.preferences ||
-                      "Không có yêu cầu đặc biệt"}
+                    {(reservation.preferences as any)?.note ||
+                      "Không có ghi chú"}
                   </p>
                 )}
-              </div> */}
-            </CardContent>
-          </Card>
-          {/* Payment details */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Chi tiết thanh toán
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="reservation-date">Transaction id</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {reservation.payments[0].transaction_id}
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="reservation-date">
-                    Phương thức thanh toán
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {reservation.payments[0].method}
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="reservation-date">
-                    Số tiền đã thanh toán
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {reservation.payments[0].amount}
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="reservation-date">Ngày thanh toán</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {formatDateTime(reservation.payments[0].updated_at)}
-                  </p>
-                </div>
-                <div className="flex justify-between">
-                  <span>Trạng thái thanh toán:</span>
-                  <Badge
-                    className={`status-badge ${getStatusColor(
-                      reservation.status,
-                      PAYMENT_STATUSES
-                    )}`}
-                  >
-                    {getStatusLabel(reservation.status, PAYMENT_STATUSES)}
-                  </Badge>
-                </div>
+              </div>
+
+              {/* Pre-order Items */}
+              <div>
+                <Label>Đặt món trước (tuỳ chọn)</Label>
+                {isEditing ? (
+                  <div className="space-y-2 mt-2">
+                    {(
+                      editedData.pre_order_items ||
+                      reservation.pre_order_items ||
+                      []
+                    ).length > 0 && (
+                      <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto bg-gray-50">
+                        {(
+                          editedData.pre_order_items ||
+                          reservation.pre_order_items ||
+                          []
+                        ).map((item: any) => {
+                          // Use dish from item if available (from API), otherwise find from dishes list
+                          const dish =
+                            item.dish ||
+                            dishes.find((d: any) => d.id === item.dish_id);
+                          return (
+                            <div
+                              key={item.dish_id}
+                              className="flex items-center justify-between p-2 bg-white rounded"
+                            >
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">
+                                  {dish?.name || "Unknown"}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {dish?.price &&
+                                    `Giá: ${formatCurrency(dish.price)}`}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    updatePreOrderQuantity(
+                                      item.dish_id,
+                                      (item.quantity || 0) - 1
+                                    )
+                                  }
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center font-medium">
+                                  {item.quantity || 0}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    updatePreOrderQuantity(
+                                      item.dish_id,
+                                      (item.quantity || 0) + 1
+                                    )
+                                  }
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    removePreOrderItem(item.dish_id)
+                                  }
+                                  className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <Select
+                      onValueChange={(dishId) => {
+                        addPreOrderItem(dishId, 1);
+                      }}
+                    >
+                      <SelectTrigger className="luxury-focus">
+                        <SelectValue placeholder="Chọn món để đặt trước" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dishes
+                          .filter(
+                            (d: any) =>
+                              !(
+                                editedData.pre_order_items ||
+                                reservation.pre_order_items ||
+                                []
+                              ).some((item: any) => item.dish_id === d.id)
+                          )
+                          .map((dish: any) => (
+                            <SelectItem key={dish.id} value={dish.id}>
+                              {dish.name} - {formatCurrency(dish.price || 0)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {(reservation.pre_order_items || []).length > 0 ? (
+                      <div className="border rounded-lg p-3 space-y-2">
+                        {(reservation.pre_order_items || []).map(
+                          (item: any) => {
+                            // Use dish from item if available (from API), otherwise find from dishes list
+                            const dish =
+                              item.dish ||
+                              dishes.find((d: any) => d.id === item.dish_id);
+                            return (
+                              <div
+                                key={item.dish_id}
+                                className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {dish?.name || "Unknown"}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    Số lượng: {item.quantity || 0}
+                                  </p>
+                                </div>
+                                <p className="text-sm font-medium">
+                                  {dish?.price &&
+                                    formatCurrency(
+                                      dish.price * (item.quantity || 0)
+                                    )}
+                                </p>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Không có món đặt trước
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
+          {/* Payment details */}
+          {reservation?.payments?.length > 0 && (
+            <Card className="border-emerald-100 shadow-lg bg-white">
+              <CardHeader className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50/30 to-white">
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-emerald-900">
+                    <CreditCard className="h-5 w-5 text-emerald-600" />
+                    Chi tiết thanh toán
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="reservation-date">Transaction id</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.payments[0].transaction_id}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="reservation-date">
+                      Phương thức thanh toán
+                    </Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.payments[0].method}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="reservation-date">
+                      Số tiền đã thanh toán
+                    </Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.payments[0].amount}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="reservation-date">Ngày thanh toán</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {formatDateTime(reservation.payments[0].updated_at)}
+                    </p>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Trạng thái thanh toán:</span>
+                    <Badge
+                      className={`status-badge ${getStatusColor(
+                        reservation.status,
+                        PAYMENT_STATUSES
+                      )}`}
+                    >
+                      {getStatusLabel(reservation.status, PAYMENT_STATUSES)}
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {/* Event details */}
+          {reservation?.event && (
+            <Card className="luxury-card">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-primary" />
+                    Sự kiện
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="reservation-date">Name</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.event.name}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="reservation-date">Description</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {reservation.event.description}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="reservation-date">Chi phí</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {formatCurrency(reservation.event_fee || 0)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Customer Info */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-gradient-to-br from-white to-amber-50/20">
+            <CardHeader className="border-b border-amber-100 bg-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <User className="h-5 w-5 text-amber-600" />
                 Thông tin khách hàng
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium">Tên khách hàng</Label>
-                <p className="text-sm text-muted-foreground">
-                  {reservation.user.username}
-                </p>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-100">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
+                  <User className="h-6 w-6 text-amber-700" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500 uppercase tracking-wide">
+                    Tên khách hàng
+                  </Label>
+                  <p className="text-base font-semibold text-gray-900">
+                    {reservation.user.username}
+                  </p>
+                </div>
               </div>
-              <div>
-                <Label className="text-sm font-medium">Số điện thoại</Label>
-                <p className="text-sm text-muted-foreground">
-                  {reservation.user.phone}
-                </p>
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-100">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                  <Phone className="h-6 w-6 text-blue-700" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500 uppercase tracking-wide">
+                    Số điện thoại
+                  </Label>
+                  <p className="text-base font-semibold text-gray-900">
+                    {reservation.user.phone}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Reservation Summary */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-gradient-to-br from-white to-amber-50/20">
+            <CardHeader className="border-b border-amber-100 bg-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <CalendarDays className="h-5 w-5 text-amber-600" />
                 Tóm tắt đặt bàn
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span>Số đặt bàn:</span>
-                <span className="font-medium">#{reservation.id}</span>
+            <CardContent className="space-y-3 pt-6">
+              <div className="flex justify-between p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Số đặt bàn:</span>
+                <span className="font-bold text-amber-900">
+                  #{reservation.id}
+                </span>
               </div>
-              <div className="flex justify-between">
-                <span>Ngày giờ:</span>
-                <span className="font-medium">
+              <div className="flex justify-between p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Ngày giờ:</span>
+                <span className="font-semibold text-gray-900">
                   {formatDateTime(reservation.reservation_time)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span>Số người:</span>
-                <span className="font-medium">
+              <div className="flex justify-between p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Số người:</span>
+                <span className="font-semibold text-gray-900">
                   {reservation.num_people} người
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span>Bàn:</span>
-                <span className="font-medium">
+              <div className="flex justify-between p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Bàn:</span>
+                <span className="font-semibold text-gray-900">
                   {reservation.table.table_number}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span>Trạng thái:</span>
+              <div className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                <span className="text-emerald-700 font-medium">Đặt cọc:</span>
+                <span className="font-bold text-emerald-700">
+                  {formatCurrency(reservation.deposit_amount || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Trạng thái:</span>
                 <Badge
                   className={`status-badge ${getStatusColor(
                     reservation.status
-                  )}`}
+                  )} text-sm px-3 py-1`}
                 >
                   {getStatusLabel(reservation.status)}
                 </Badge>
               </div>
               {isUpcomingReservation && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-800 font-medium">
+                <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg shadow-sm">
+                  <p className="text-sm text-green-800 font-bold flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4" />
                     Đặt bàn sắp tới
                   </p>
                 </div>
@@ -653,62 +1118,86 @@ export default function ReservationDetailPage() {
           </Card>
 
           {/* Actions */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle>Thao tác</CardTitle>
+          <Card className="border-amber-100 shadow-lg bg-white">
+            <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
+              <CardTitle className="text-amber-900">Thao tác</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 pt-6">
               {reservation.status === "confirmed" && isUpcomingReservation && (
                 <Button
                   onClick={checkInReservation}
-                  className="w-full luxury-button"
+                  className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md"
                 >
                   <UserCheck className="h-4 w-4 mr-2" />
                   Check-in
                 </Button>
               )}
 
-              <Dialog
-                open={showDeleteDialog}
-                onOpenChange={setShowDeleteDialog}
-              >
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full text-destructive hover:text-destructive"
+              {reservation.status !== "cancelled" &&
+                reservation.status !== "completed" && (
+                  <Dialog
+                    open={showCancelDialog}
+                    onOpenChange={setShowCancelDialog}
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Xóa đặt bàn
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <AlertCircle className="h-5 w-5 text-destructive" />
-                      Xác nhận xóa đặt bàn
-                    </DialogTitle>
-                    <DialogDescription>
-                      Bạn có chắc chắn muốn xóa đặt bàn #{reservation.id}? Hành
-                      động này không thể hoàn tác.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowDeleteDialog(false)}
-                    >
-                      Hủy
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={handleDelete}
-                      className="bg-destructive hover:bg-destructive/90"
-                    >
-                      Xóa đặt bàn
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 shadow-sm"
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Hủy đặt bàn
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <AlertCircle className="h-5 w-5 text-orange-600" />
+                          Hủy đặt bàn
+                        </DialogTitle>
+                        <DialogDescription>
+                          Bạn có chắc chắn muốn hủy đặt bàn #
+                          {reservation.id.slice(0, 8)}? Vui lòng nhập lý do hủy.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div>
+                          <Label htmlFor="cancel-reason">
+                            Lý do hủy đặt bàn{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            id="cancel-reason"
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Nhập lý do hủy đặt bàn (ví dụ: Khách hàng không đến, Thay đổi kế hoạch, ...)"
+                            className="luxury-focus mt-2"
+                            rows={4}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowCancelDialog(false);
+                            setCancelReason("");
+                          }}
+                          disabled={isCancelling}
+                        >
+                          Đóng
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleCancelReservation}
+                          disabled={isCancelling || !cancelReason.trim()}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          {isCancelling ? "Đang hủy..." : "Xác nhận hủy"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
             </CardContent>
           </Card>
         </div>

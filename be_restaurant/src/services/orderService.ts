@@ -59,12 +59,12 @@ class OrderService {
 
   async getOrderById(id: string) {
     if (!id) {
-      throw new AppError("Order ID is required",400);
+      throw new AppError("Order ID is required", 400);
     }
 
     const order = await orderRepository.findById(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     // Get detailed information with all related data
@@ -120,7 +120,7 @@ class OrderService {
 
   async getOrderByTable(tableId: string, status?: string) {
     if (!tableId) {
-      throw new AppError("Table ID is required",400);
+      throw new AppError("Table ID is required", 400);
     }
 
     return await orderRepository.findByTableId(tableId, status);
@@ -128,7 +128,7 @@ class OrderService {
 
   async getOrderByTableGroup(tableGroupId: string, status?: string) {
     if (!tableGroupId) {
-      throw new AppError("Table Group ID is required",400);
+      throw new AppError("Table Group ID is required", 400);
     }
 
     return await orderRepository.findByTableGroupId(tableGroupId, status);
@@ -137,14 +137,14 @@ class OrderService {
   async createOrder(data: CreateOrderData) {
     // Validate required fields - items are now optional
     if (!data.table_id) {
-      throw new AppError("table_id is required",400);
+      throw new AppError("table_id is required", 400);
     }
 
     // Validate table/table group
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
       if (!table) {
-        throw new AppError("Table not found",404);
+        throw new AppError("Table not found", 404);
       }
 
       // Validate order overlap for table
@@ -154,7 +154,7 @@ class OrderService {
     if (data.table_group_id) {
       const tableGroup = await TableGroup.findByPk(data.table_group_id);
       if (!tableGroup) {
-        throw new AppError("Table group not found",404);
+        throw new AppError("Table group not found", 404);
       }
 
       // Validate order overlap for table group
@@ -168,7 +168,7 @@ class OrderService {
       final_amount: 0,
       voucher_id: null,
       voucher_discount_amount: 0,
-      status: data.status || "pending",
+      status: data.status || "dining",
       payment_status: "pending",
     });
 
@@ -194,14 +194,14 @@ class OrderService {
   async updateOrder(id: string, data: UpdateOrderData) {
     const order = await orderRepository.findById(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     // Validate table/table group changes
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
       if (!table) {
-        throw new AppError("Table not found",404);
+        throw new AppError("Table not found", 404);
       }
 
       // Validate order overlap for new table (if changing table)
@@ -218,7 +218,7 @@ class OrderService {
     if (data.table_group_id) {
       const tableGroup = await TableGroup.findByPk(data.table_group_id);
       if (!tableGroup) {
-        throw new AppError("Table group not found",404);
+        throw new AppError("Table group not found", 404);
       }
 
       // Validate order overlap for new table group (if changing table group)
@@ -254,18 +254,11 @@ class OrderService {
 
   async updateOrderStatus(
     id: string,
-    status:
-      | "pending"
-      | "dining"
-      | "waiting_payment"
-      | "preparing"
-      | "ready"
-      | "paid"
-      | "cancelled"
+    status: "pending" | "paid" | "dining" | "waiting_payment" | "cancelled"
   ) {
     const order = await orderRepository.findById(id);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     const oldStatus = order.status;
@@ -295,20 +288,20 @@ class OrderService {
   async addItemToOrder(orderId: string, data: AddItemData) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     if (!["pending", "preparing", "dining"].includes(order.status)) {
-      throw new AppError("Order is not modifiable",400  );
+      throw new AppError("Order is not modifiable", 400);
     }
 
     const dish = await Dish.findByPk(data.dish_id);
     if (!dish || !dish.active) {
-      throw new AppError("Dish not found or inactive",404);
+      throw new AppError("Dish not found or inactive", 404);
     }
 
     if (data.quantity < 1) {
-      throw new AppError("Quantity must be at least 1",400);
+      throw new AppError("Quantity must be at least 1", 400);
     }
 
     const item = await orderRepository.addItem(
@@ -334,7 +327,7 @@ class OrderService {
 
   async updateItemQuantity(itemId: string, quantity: number) {
     if (quantity < 0) {
-      throw new AppError("Quantity cannot be negative",400);
+      throw new AppError("Quantity cannot be negative", 400);
     }
 
     const item = await orderRepository.updateItemQuantity(itemId, quantity);
@@ -350,11 +343,18 @@ class OrderService {
     return item;
   }
 
-  async updateItemStatus(itemId: string, status: "pending" | "completed" | "preparing" | "ready") {
-    if (!["pending", "preparing","ready", "completed"].includes(status)) {
+  async updateItemStatus(
+    itemId: string,
+    status: "pending" | "completed" | "preparing" | "ready"
+  ) {
+    if (!["pending", "preparing", "ready", "completed"].includes(status)) {
       throw new AppError("Invalid item status", 400);
     }
-
+    const itemOrder = await OrderItem.findByPk(itemId);
+    if (!itemOrder) {
+      throw new AppError("Order item not found", 404);
+    }
+    await this.recalculateOrderTotals(itemOrder.order_id as string);
     const item = await orderRepository.updateItemStatus(itemId, status);
 
     return item;
@@ -363,7 +363,7 @@ class OrderService {
   async deleteItem(itemId: string) {
     const item = await OrderItem.findByPk(itemId);
     if (!item) {
-      throw new AppError("Order item not found",404);
+      throw new AppError("Order item not found", 404);
     }
 
     await orderRepository.deleteItem(itemId);
@@ -387,11 +387,11 @@ class OrderService {
   async applyVoucher(orderId: string, data: ApplyVoucherData) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     if (order.voucher_id) {
-      throw new AppError("Order already has a voucher applied",400);
+      throw new AppError("Order already has a voucher applied", 400);
     }
 
     const voucher = await Voucher.findOne({
@@ -399,22 +399,22 @@ class OrderService {
     });
 
     if (!voucher) {
-      throw new AppError("Invalid voucher code",400);
+      throw new AppError("Invalid voucher code", 400);
     }
 
     // Check voucher validity
     const now = new Date();
     if (voucher.expiry_date && new Date(voucher.expiry_date) < now) {
-      throw new AppError("Voucher expired",400);
+      throw new AppError("Voucher expired", 400);
     }
     if (voucher.max_uses && voucher.current_uses >= voucher.max_uses) {
-      throw new AppError("Voucher usage limit reached",400);
+      throw new AppError("Voucher usage limit reached", 400);
     }
     if (
       voucher.min_order_value &&
       order.total_amount < voucher.min_order_value
     ) {
-      throw new AppError("Order does not meet voucher minimum value",400);
+      throw new AppError("Order does not meet voucher minimum value", 400);
     }
 
     // Calculate discount
@@ -442,7 +442,7 @@ class OrderService {
     });
 
     await voucher.update({ current_uses: voucher.current_uses + 1 });
-
+    await this.recalculateOrderTotals(orderId);
     await notificationService.notifyOrderUpdated(updatedOrder);
     try {
       orderEvents.voucherApplied(getIO(), updatedOrder);
@@ -456,15 +456,15 @@ class OrderService {
   async removeVoucher(orderId: string) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     if (!order.voucher_id) {
-      throw new AppError("No voucher applied to this order",400);
+      throw new AppError("No voucher applied to this order", 400);
     }
 
     const updatedOrder = await orderRepository.removeVoucher(orderId);
-
+    await this.recalculateOrderTotals(orderId);
     await notificationService.notifyOrderUpdated(updatedOrder);
     try {
       orderEvents.voucherRemoved(getIO(), updatedOrder);
@@ -477,18 +477,18 @@ class OrderService {
 
   async mergeOrders(sourceOrderId: string, targetOrderId: string) {
     if (sourceOrderId === targetOrderId) {
-      throw new AppError("Cannot merge order with itself",400 );
+      throw new AppError("Cannot merge order with itself", 400);
     }
 
     const sourceOrder = await orderRepository.findById(sourceOrderId);
     const targetOrder = await orderRepository.findById(targetOrderId);
 
     if (!sourceOrder || !targetOrder) {
-      throw new AppError("One or both orders not found",404);
+      throw new AppError("One or both orders not found", 404);
     }
 
     if (sourceOrder.status === "paid" || targetOrder.status === "paid") {
-      throw new AppError("Cannot merge paid orders",400);
+      throw new AppError("Cannot merge paid orders", 400);
     }
 
     const updatedOrder = await orderRepository.mergeOrders(
@@ -509,7 +509,7 @@ class OrderService {
   async requestSupport(orderId: string) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     await notificationService.notifySupportRequest(order);
@@ -559,7 +559,7 @@ class OrderService {
   async handlePaymentSuccess(orderId: string) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     // Update order status
@@ -590,7 +590,7 @@ class OrderService {
   async handlePaymentFailure(orderId: string) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     // Revert order status back to dining
@@ -610,7 +610,7 @@ class OrderService {
   async completePayment(orderId: string) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
     const updatedOrder = await orderRepository.update(orderId, {
@@ -623,21 +623,39 @@ class OrderService {
     return updatedOrder;
   }
 
-  async getRevenueStats(startDate: Date, endDate: Date) {
-    if (startDate >= endDate) {
-      throw new AppError("Start date must be before end date",400);
-    }
+  async getRevenueStats() {
+    return await orderRepository.getRevenueStats();
+  }
 
-    return await orderRepository.getRevenueStats(startDate, endDate);
+  // 1. Thống kê theo tháng (12 tháng gần đây)
+  async getMonthlyStats() {
+    return await orderRepository.getMonthlyStats();
+  }
+
+  // 2. Thống kê theo giờ (24h, mỗi 2h)
+  async getHourlyStats() {
+    return await orderRepository.getHourlyStats();
+  }
+
+  // 3. Thống kê khách hàng (7 ngày)
+  async getCustomerStats() {
+    return await orderRepository.getCustomerStats();
+  }
+
+  // 4. Thống kê hôm nay
+  async getTodayStats() {
+    return await orderRepository.getTodayStats();
   }
 
   private async recalculateOrderTotals(orderId: string) {
     const order = await Order.findByPk(orderId);
     if (!order) {
-      throw new AppError("Order not found",404);
+      throw new AppError("Order not found", 404);
     }
 
-    const items = await OrderItem.findAll({ where: { order_id: orderId , status: "completed" } });
+    const items = await OrderItem.findAll({
+      where: { order_id: orderId, status: "completed" },
+    });
     const subtotal = items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0

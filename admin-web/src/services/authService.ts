@@ -1,15 +1,25 @@
-"use client"
+"use client";
 
-import apiClient from "./apiClient"
+import apiClient from "./apiClient";
 
-type LoginPayload = { email: string; password: string }
-type SignupPayload = { email: string; password: string; username: string }
+type LoginPayload = { email: string; password: string };
+type SignupPayload = { email: string; password: string; username: string };
 
-export const authService = {
-    login: (data: LoginPayload) => apiClient.post("/auth/login", data),
-    signup: (data: SignupPayload) => apiClient.post("/auth/signup", data),
+interface CurrentUserResponse {
+  id: string;
+  username: string;
+  email: string;
+  phone?: string;
+  role: "admin" | "employee" | "customer"; // Backend uses "employee", frontend maps to "staff"
+  full_name?: string;
+  ranking?: string;
+  points?: number;
 }
 
-export type { LoginPayload, SignupPayload }
+export const authService = {
+  login: (data: LoginPayload) => apiClient.post("/auth/login", data),
+  signup: (data: SignupPayload) => apiClient.post("/auth/signup", data),
+  getCurrentUser: (): Promise<CurrentUserResponse> => apiClient.get("/auth/me"),
+};
 
-
+export type { LoginPayload, SignupPayload, CurrentUserResponse };

@@ -89,6 +89,16 @@ ChatSession.init(
     sequelize,
     tableName: "chat_sessions",
     timestamps: false,
+    indexes: [
+      {
+        unique: true,
+        fields: ["user_id"],
+        where: {
+          status: "active",
+        },
+        name: "unique_active_user_session",
+      },
+    ],
   }
 );
 

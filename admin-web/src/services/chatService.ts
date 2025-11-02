@@ -4,27 +4,48 @@ import apiClient from "./apiClient";
 
 export const chatService = {
   // Chat Sessions
+  getAllSessions: (params?: {
+    page?: number;
+    limit?: number;
+    customer_name?: string;
+    status?: string;
+    sort_by?: "start_time" | "last_message";
+    sort_order?: "ASC" | "DESC";
+  }) => apiClient.get("/chat/sessions/all", { params }),
   listSessions: (params?: { page?: number; limit?: number }) =>
     apiClient.get("/chat/sessions", { params }),
   getSession: (id: string) => apiClient.get(`/chat/sessions/${id}`),
-  createSession: (data: { device_id?: string; name?: string }) =>
-    apiClient.post("/chat/sessions", data),
+  createSession: (data: {
+    channel?: "web" | "app" | "zalo";
+    context?: any;
+    botEnabled?: boolean;
+  }) => apiClient.post("/chat/session", data),
+  enableBot: (id: string) => apiClient.post(`/chat/sessions/${id}/enable-bot`),
+  disableBot: (id: string) =>
+    apiClient.post(`/chat/sessions/${id}/disable-bot`),
   updateSession: (id: string, data: any) =>
     apiClient.put(`/chat/sessions/${id}`, data),
-  deleteSession: (id: string) => apiClient.delete(`/chat/sessions/${id}`),
+  closeSession: (id: string) => apiClient.post(`/chat/sessions/${id}/close`),
+  reopenSession: (id: string) => apiClient.post(`/chat/sessions/${id}/reopen`),
 
   // Chat Messages
-  getMessages: (sessionId: string) =>
-    apiClient.get(`/chat/messages/session/${sessionId}`),
-  getMessage: (id: string) => apiClient.get(`/chat/messages/${id}`),
-  createMessage: (data: {
-    session_id: string;
-    sender_type: "user" | "bot" | "human";
-    message_text: string;
-  }) => apiClient.post("/chat/messages", data),
-  updateMessage: (id: string, data: any) =>
-    apiClient.put(`/chat/messages/${id}`, data),
-  deleteMessage: (id: string) => apiClient.delete(`/chat/messages/${id}`),
+  getMessages: (
+    sessionId: string,
+    params?: { page?: number; limit?: number }
+  ) => apiClient.get(`/chat/sessions/${sessionId}/messages`, { params }),
+  sendMessage: (
+    sessionId: string,
+    data: { message_text: string; sender_type?: "user" | "bot" | "human" }
+  ) => apiClient.post(`/chat/sessions/${sessionId}/messages`, data),
+  markMessagesRead: (sessionId: string, messageIds?: string[]) =>
+    apiClient.patch(`/chat/sessions/${sessionId}/messages/read`, {
+      messageIds,
+    }),
+
+  // User Session Management
+  getUserSession: () => apiClient.get("/chat/user/session"),
+  getActiveUserSession: () => apiClient.get("/chat/user/session/active"),
+  closeUserSession: () => apiClient.post("/chat/user/session/close"),
 
   // AI Chatbot APIs
   chatWithBot: (data: {
@@ -33,40 +54,33 @@ export const chatService = {
     session_id?: string;
     user_id?: string;
   }) => apiClient.post("/chat/messages/bot/chat", data),
-
-  createChatSession: (data: { device_id?: string; name?: string }) =>
-    apiClient.post("/chat/messages/sessions", data),
-
-  getChatHistory: (sessionId: string) =>
-    apiClient.get(`/chat/messages/sessions/${sessionId}/history`),
-
-  closeChatSession: (sessionId: string) =>
-    apiClient.put(`/chat/messages/sessions/${sessionId}/close`, {}),
-
-  getMenuRecommendations: (params?: { preferences?: string }) =>
-    apiClient.get("/chat/messages/recommendations/menu", { params }),
-
-  getRestaurantInfo: () => apiClient.get("/chat/messages/restaurant/info"),
-
-  checkChatbotAvailability: () =>
-    apiClient.get("/chat/messages/bot/availability"),
 };
 
 export type ChatSession = {
   id: string;
   user_id?: string;
-  device_id?: string;
-  name?: string;
   is_authenticated: boolean;
-  created_at: string;
-  updated_at: string;
+  channel: "web" | "app" | "zalo";
+  context?: any;
+  start_time?: string;
+  end_time?: string;
+  status: "active" | "closed";
+  handled_by: "bot" | "human";
+  bot_enabled?: boolean;
+  user?: {
+    id: string;
+    username: string;
+    full_name?: string;
+    email?: string;
+    phone?: string;
+  };
 };
 
 export type ChatMessage = {
   id: string;
-  session_id: string;
+  session_id?: string;
   sender_type: "user" | "bot" | "human";
+  sender_id?: string | null;
   message_text: string;
-  created_at: string;
-  updated_at: string;
+  timestamp: string;
 };

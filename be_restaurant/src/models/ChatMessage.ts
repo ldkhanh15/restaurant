@@ -1,22 +1,28 @@
-import { DataTypes, Model, type Optional } from "sequelize"
-import sequelize from "../config/database"
+import { DataTypes, Model, type Optional } from "sequelize";
+import sequelize from "../config/database";
 
 interface ChatMessageAttributes {
-  id: string
-  session_id?: string
-  sender_type: "user" | "bot" | "human"
-  message_text: string
-  timestamp?: Date
+  id: string;
+  session_id?: string;
+  sender_type: "user" | "bot" | "human";
+  sender_id?: string | null;
+  message_text: string;
+  timestamp?: Date;
 }
 
-interface ChatMessageCreationAttributes extends Optional<ChatMessageAttributes, "id"> {}
+interface ChatMessageCreationAttributes
+  extends Optional<ChatMessageAttributes, "id"> {}
 
-class ChatMessage extends Model<ChatMessageAttributes, ChatMessageCreationAttributes> implements ChatMessageAttributes {
-  public id!: string
-  public session_id?: string
-  public sender_type!: "user" | "bot" | "human"
-  public message_text!: string
-  public timestamp?: Date
+class ChatMessage
+  extends Model<ChatMessageAttributes, ChatMessageCreationAttributes>
+  implements ChatMessageAttributes
+{
+  public id!: string;
+  public session_id?: string;
+  public sender_type!: "user" | "bot" | "human";
+  public sender_id?: string | null;
+  public message_text!: string;
+  public timestamp?: Date;
 }
 
 ChatMessage.init(
@@ -34,6 +40,15 @@ ChatMessage.init(
         key: "id",
       },
       onDelete: "CASCADE",
+    },
+    sender_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "users",
+        key: "id",
+      },
+      onDelete: "SET NULL",
     },
     sender_type: {
       type: DataTypes.ENUM("user", "bot", "human"),
@@ -54,7 +69,7 @@ ChatMessage.init(
     timestamps: true,
     createdAt: "timestamp",
     updatedAt: false,
-  },
-)
+  }
+);
 
-export default ChatMessage
+export default ChatMessage;
