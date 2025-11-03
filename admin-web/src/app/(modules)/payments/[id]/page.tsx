@@ -284,7 +284,10 @@ export default function PaymentDetailPage() {
                 <div>
                   <Label className="text-sm font-medium">Số đơn hàng</Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    #{payment.order_number}
+                    #
+                    {(payment as any).order?.id.slice(0, 8) ||
+                      (payment as any).reservation?.id.slice(0, 8) ||
+                      "N/A"}
                   </p>
                 </div>
                 <div>
@@ -410,13 +413,17 @@ export default function PaymentDetailPage() {
               <div>
                 <Label className="text-sm font-medium">Tên khách hàng</Label>
                 <p className="text-sm text-muted-foreground">
-                  {payment.customer_name || "Khách vãng lai"}
+                  {(payment as any).order?.user?.username ||
+                    (payment as any).reservation?.user?.username ||
+                    "Khách vãng lai"}
                 </p>
               </div>
               <div>
                 <Label className="text-sm font-medium">Bàn</Label>
                 <p className="text-sm text-muted-foreground">
-                  {payment.table_name || "N/A"}
+                  {(payment as any).order?.table?.table_number ||
+                    (payment as any).reservation?.table?.table_number ||
+                    "N/A"}
                 </p>
               </div>
             </CardContent>

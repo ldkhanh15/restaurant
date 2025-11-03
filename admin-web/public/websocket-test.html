@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Page</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .module {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .log-container {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log {
+            font-family: monospace;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Test Page</h1>
+    <div id="connection-status"></div>
+    
+    <div class="container">
+        <!-- Chat Module -->
+        <div class="module">
+            <h2>Chat Module <span id="chat-status" class="status"></span></h2>
+            <div>
+                <input type="text" id="chat-session-id" placeholder="Session ID">
+                <input type="text" id="chat-message" placeholder="Message">
+                <button onclick="sendChatMessage()">Send Message</button>
+                <button onclick="joinChatSession()">Join Session</button>
+                <button onclick="leaveChatSession()">Leave Session</button>
+            </div>
+            <div class="log-container" id="chat-logs"></div>
+        </div>
+
+        <!-- Order Module -->
+        <div class="module">
+            <h2>Order Module <span id="order-status" class="status"></span></h2>
+            <div>
+                <input type="text" id="order-id" placeholder="Order ID">
+                <select id="order-status-select">
+                    <option value="pending">Pending</option>
+                    <option value="preparing">Preparing</option>
+                    <option value="ready">Ready</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+                <button onclick="updateOrderStatus()">Update Status</button>
+                <button onclick="joinOrder()">Join Order</button>
+                <button onclick="leaveOrder()">Leave Order</button>
+            </div>
+            <div class="log-container" id="order-logs"></div>
+        </div>
+
+        <!-- Reservation Module -->
+        <div class="module">
+            <h2>Reservation Module <span id="reservation-status" class="status"></span></h2>
+            <div>
+                <input type="text" id="reservation-id" placeholder="Reservation ID">
+                <select id="reservation-status-select">
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="completed">Completed</option>
+                </select>
+                <button onclick="updateReservationStatus()">Update Status</button>
+                <button onclick="joinReservation()">Join Reservation</button>
+                <button onclick="leaveReservation()">Leave Reservation</button>
+            </div>
+            <div class="log-container" id="reservation-logs"></div>
+        </div>
+
+        <!-- Notification Module -->
+        <div class="module">
+            <h2>Notification Module <span id="notification-status" class="status"></span></h2>
+            <div>
+                <input type="text" id="notification-title" placeholder="Title">
+                <input type="text" id="notification-message" placeholder="Message">
+                <input type="text" id="notification-type" placeholder="Type">
+                <button onclick="sendNotification()">Send Notification</button>
+            </div>
+            <div class="log-container" id="notification-logs"></div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = 'http://localhost:8000';
+        let socket;
+        let currentChatSession = null;
+        let currentOrder = null;
+        let currentReservation = null;
+
+        // Initialize socket connection
+        function connect(role = 'admin') {
+            const token = 'your-auth-token'; // Replace with actual token
+            socket = io(`${baseUrl}/${role}`, {
+                path: '/socket.io',
+                auth: { token },
+                transports: ['websocket', 'polling']
+            });
+
+            setupSocketListeners();
+        }
+
+        function setupSocketListeners() {
+            socket.on('connect', () => {
+                updateConnectionStatus(true);
+                log('main', 'Connected to server');
+            });
+
+            socket.on('disconnect', () => {
+                updateConnectionStatus(false);
+                log('main', 'Disconnected from server');
+            });
+
+            // Chat events
+            socket.on('chat:message', (data) => {
+                log('chat', `Received message: ${JSON.stringify(data)}`);
+            });
+
+            socket.on('chat:typing', (data) => {
+                log('chat', `User typing: ${JSON.stringify(data)}`);
+            });
+
+            // Order events
+            socket.on('order:status_updated', (data) => {
+                log('order', `Order status updated: ${JSON.stringify(data)}`);
+            });
+
+            socket.on('order:item_status_updated', (data) => {
+                log('order', `Order item status updated: ${JSON.stringify(data)}`);
+            });
+
+            // Reservation events
+            socket.on('reservation:status_updated', (data) => {
+                log('reservation', `Reservation status updated: ${JSON.stringify(data)}`);
+            });
+
+            socket.on('reservation:table_assigned', (data) => {
+                log('reservation', `Table assigned: ${JSON.stringify(data)}`);
+            });
+
+            // Notification events
+            socket.on('notification:new', (data) => {
+                log('notification', `New notification: ${JSON.stringify(data)}`);
+            });
+
+            socket.on('error', (error) => {
+                log('main', `Error: ${JSON.stringify(error)}`);
+            });
+        }
+
+        // Chat functions
+        function joinChatSession() {
+            const sessionId = document.getElementById('chat-session-id').value;
+            if (sessionId) {
+                socket.emit('chat:join', sessionId);
+                currentChatSession = sessionId;
+                log('chat', `Joined chat session: ${sessionId}`);
+            }
+        }
+
+        function leaveChatSession() {
+            if (currentChatSession) {
+                socket.emit('chat:leave', currentChatSession);
+                log('chat', `Left chat session: ${currentChatSession}`);
+                currentChatSession = null;
+            }
+        }
+
+        function sendChatMessage() {
+            const message = document.getElementById('chat-message').value;
+            if (currentChatSession && message) {
+                socket.emit('chat:message', {
+                    sessionId: currentChatSession,
+                    message
+                });
+                log('chat', `Sent message: ${message}`);
+            }
+        }
+
+        // Order functions
+        function joinOrder() {
+            const orderId = document.getElementById('order-id').value;
+            if (orderId) {
+                socket.emit('order:join', orderId);
+                currentOrder = orderId;
+                log('order', `Joined order: ${orderId}`);
+            }
+        }
+
+        function leaveOrder() {
+            if (currentOrder) {
+                socket.emit('order:leave', currentOrder);
+                log('order', `Left order: ${currentOrder}`);
+                currentOrder = null;
+            }
+        }
+
+        function updateOrderStatus() {
+            const orderId = document.getElementById('order-id').value;
+            const status = document.getElementById('order-status-select').value;
+            if (orderId && status) {
+                socket.emit('order:update_status', {
+                    orderId,
+                    status
+                });
+                log('order', `Updated order status: ${orderId} -> ${status}`);
+            }
+        }
+
+        // Reservation functions
+        function joinReservation() {
+            const reservationId = document.getElementById('reservation-id').value;
+            if (reservationId) {
+                socket.emit('reservation:join', reservationId);
+                currentReservation = reservationId;
+                log('reservation', `Joined reservation: ${reservationId}`);
+            }
+        }
+
+        function leaveReservation() {
+            if (currentReservation) {
+                socket.emit('reservation:leave', currentReservation);
+                log('reservation', `Left reservation: ${currentReservation}`);
+                currentReservation = null;
+            }
+        }
+
+        function updateReservationStatus() {
+            const reservationId = document.getElementById('reservation-id').value;
+            const status = document.getElementById('reservation-status-select').value;
+            if (reservationId && status) {
+                socket.emit('reservation:update_status', {
+                    reservationId,
+                    status
+                });
+                log('reservation', `Updated reservation status: ${reservationId} -> ${status}`);
+            }
+        }
+
+        // Notification functions
+        function sendNotification() {
+            const title = document.getElementById('notification-title').value;
+            const message = document.getElementById('notification-message').value;
+            const type = document.getElementById('notification-type').value;
+            if (title && message) {
+                socket.emit('notification:broadcast', {
+                    title,
+                    message,
+                    type: type || 'info'
+                });
+                log('notification', `Sent notification: ${title}`);
+            }
+        }
+
+        // Utility functions
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            status.innerHTML = connected ? 
+                '<span class="status connected">Connected</span>' : 
+                '<span class="status disconnected">Disconnected</span>';
+        }
+
+        function log(module, message) {
+            const container = document.getElementById(`${module}-logs`);
+            if (container) {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log';
+                logEntry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+                container.insertBefore(logEntry, container.firstChild);
+            }
+        }
+
+        // Connect on page load
+        connect();
+    </script>
+</body>
+</html>

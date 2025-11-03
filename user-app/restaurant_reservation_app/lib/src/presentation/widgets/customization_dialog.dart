@@ -64,20 +64,24 @@ class _CustomizationDialogState extends State<CustomizationDialog> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      widget.item.image,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          width: 60,
-                          height: 60,
-                          color: Colors.grey[300],
-                          child: const Icon(Icons.restaurant, color: Colors.white),
-                        );
-                      },
-                    ),
+                      child: Image.network(
+                        widget.item.image,
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(width: 60, height: 60, alignment: Alignment.center, child: SizedBox(width:16,height:16, child: CircularProgressIndicator(strokeWidth:2)));
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 60,
+                            height: 60,
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.restaurant, color: Colors.white),
+                          );
+                        },
+                      ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

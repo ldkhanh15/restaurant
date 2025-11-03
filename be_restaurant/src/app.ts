@@ -48,6 +48,7 @@ import chatMessageAppUserRoutes from "./routes/chatMessage_app_userRoutes";
 import chatSessionAppUserRoutes from "./routes/chatSession_app_userRoutes";
 import loyaltyAppUserRoutes from "./routes/loyalty_app_userRoutes";
 import paymentAppUserRoutes from "./routes/payment_app_userRoutes";
+import * as paymentAppUserController from "./controllers/payment_app_userController";
 
 // Import models to initialize associations
 import "./models/index";
@@ -77,6 +78,11 @@ app.use((req, res, next) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Dev-only top-level payment success page for local testing.
+// This mirrors the app user payment success endpoint and helps when the frontend
+// is not running. It is intentionally available only in non-production.
+app.get('/payment/success', paymentAppUserController.devSuccessPage);
 
 // API Routes
 app.use("/api/auth", authRoutes);

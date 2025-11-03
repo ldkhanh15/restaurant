@@ -397,8 +397,9 @@ class Order {
       case 'momo':
         return PaymentMethodType.momo;
       case 'banking':
-      case 'vnpay':
         return PaymentMethodType.banking;
+      case 'vnpay':
+        return PaymentMethodType.vnpay;
       default:
         return null;
     }

@@ -1,104 +1,154 @@
 import type { Server } from "socket.io";
+import { forwardToAdmin, forwardToCustomer, broadcastToAdmin } from "./index";
 
+/**
+ * Register Reservation Socket Handlers
+ * Implements namespace-based routing for reservation events
+ */
 export default function registerReservationSocket(io: Server) {
-  const nsp = io.of("/reservations");
+  const adminNsp = io.of("/admin");
+  const customerNsp = io.of("/customer");
 
-  nsp.on("connection", (socket) => {
-    // Join reservation room
-    socket.on("joinReservation", (reservationId: string) => {
+  // ============================================
+  // ADMIN NAMESPACE HANDLERS
+  // ============================================
+  adminNsp.on("connection", (socket) => {
+    const userId = socket.data?.user?.id;
+    if (!userId) return;
+
+    console.log(`[Reservation] /admin: Connected user=${userId}`);
+
+    // Admin joins reservation room
+    socket.on("reservation:join", (reservationId: string) => {
+      if (!reservationId) return;
       socket.join(`reservation:${reservationId}`);
     });
 
-    // Join table room for reservations
-    socket.on("joinTable", (tableId: string) => {
-      socket.join(`table:${tableId}`);
-    });
-
-    // Join table group room for reservations
-    socket.on("joinTableGroup", (tableGroupId: string) => {
-      socket.join(`table_group:${tableGroupId}`);
-    });
-
-    // Leave reservation room
-    socket.on("leaveReservation", (reservationId: string) => {
+    socket.on("reservation:leave", (reservationId: string) => {
+      if (!reservationId) return;
       socket.leave(`reservation:${reservationId}`);
     });
 
-    // Leave table room
-    socket.on("leaveTable", (tableId: string) => {
-      socket.leave(`table:${tableId}`);
+    // Admin joins table room
+    socket.on("reservation:join_table", (tableId: string) => {
+      if (!tableId) return;
+      socket.join(`table:${tableId}`);
     });
 
-    // Leave table group room
-    socket.on("leaveTableGroup", (tableGroupId: string) => {
-      socket.leave(`table_group:${tableGroupId}`);
+    socket.on("reservation:join_table_group", (tableGroupId: string) => {
+      if (!tableGroupId) return;
+      socket.join(`table_group:${tableGroupId}`);
+    });
+  });
+
+  // ============================================
+  // CUSTOMER NAMESPACE HANDLERS
+  // ============================================
+  customerNsp.on("connection", (socket) => {
+    const userId = socket.data?.user?.id;
+    const userRole = socket.data?.user?.role;
+
+    if (!userId || userRole !== "customer") {
+      return; // Only authenticated customers
+    }
+
+    console.log(`[Reservation] /customer: Connected user=${userId}`);
+
+    // Customer joins their reservation room
+    socket.on("reservation:join", (reservationId: string) => {
+      if (!reservationId) return;
+      socket.join(`reservation:${reservationId}`);
+
+      // Notify admin
+      forwardToAdmin(io, "reservation:customer_joined", {
+        customer_id: userId,
+        reservationId,
+      });
+    });
+
+    socket.on("reservation:leave", (reservationId: string) => {
+      if (!reservationId) return;
+      socket.leave(`reservation:${reservationId}`);
     });
   });
 }
 
+/**
+ * Event Emitters (for use in services/controllers)
+ */
 export const reservationEvents = {
-  // Emit to reservation room
   reservationCreated: (io: Server, reservation: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("reservationCreated", reservation);
-    if (reservation.table_id) {
-      io.of("/reservations")
-        .to(`table:${reservation.table_id}`)
-        .emit("reservationCreated", reservation);
-    }
-    if (reservation.table_group_id) {
-      io.of("/reservations")
-        .to(`table_group:${reservation.table_group_id}`)
-        .emit("reservationCreated", reservation);
+    const payload = {
+      reservationId: reservation.id,
+      ...reservation,
+    };
+
+    broadcastToAdmin(io, "admin:reservation:created", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:created",
+        payload
+      );
     }
   },
 
   reservationUpdated: (io: Server, reservation: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("reservationUpdated", reservation);
-    if (reservation.table_id) {
-      io.of("/reservations")
-        .to(`table:${reservation.table_id}`)
-        .emit("reservationUpdated", reservation);
-    }
-    if (reservation.table_group_id) {
-      io.of("/reservations")
-        .to(`table_group:${reservation.table_group_id}`)
-        .emit("reservationUpdated", reservation);
+    const payload = {
+      reservationId: reservation.id,
+      ...reservation,
+    };
+
+    broadcastToAdmin(io, "admin:reservation:updated", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:updated",
+        payload
+      );
     }
   },
 
   reservationStatusChanged: (io: Server, reservation: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("reservationStatusChanged", reservation);
-    if (reservation.table_id) {
-      io.of("/reservations")
-        .to(`table:${reservation.table_id}`)
-        .emit("reservationStatusChanged", reservation);
-    }
-    if (reservation.table_group_id) {
-      io.of("/reservations")
-        .to(`table_group:${reservation.table_group_id}`)
-        .emit("reservationStatusChanged", reservation);
+    const payload = {
+      reservationId: reservation.id,
+      status: reservation.status,
+      changes: { status: reservation.status },
+      ...reservation,
+    };
+
+    broadcastToAdmin(io, "admin:reservation:status_changed", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:status_changed",
+        payload
+      );
     }
   },
 
   reservationCheckedIn: (io: Server, reservation: any, order: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("reservationCheckedIn", { reservation, order });
-    if (reservation.table_id) {
-      io.of("/reservations")
-        .to(`table:${reservation.table_id}`)
-        .emit("reservationCheckedIn", { reservation, order });
-    }
-    if (reservation.table_group_id) {
-      io.of("/reservations")
-        .to(`table_group:${reservation.table_group_id}`)
-        .emit("reservationCheckedIn", { reservation, order });
+    const payload = {
+      reservationId: reservation.id,
+      reservation,
+      order,
+    };
+
+    broadcastToAdmin(io, "admin:reservation:checked_in", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:checked_in",
+        payload
+      );
     }
   },
 
@@ -107,33 +157,65 @@ export const reservationEvents = {
     reservation: any,
     paymentUrl: string
   ) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("depositPaymentRequested", {
-        reservation,
-        payment_url: paymentUrl,
-      });
+    const payload = {
+      reservationId: reservation.id,
+      reservation,
+      payment_url: paymentUrl,
+    };
+
+    broadcastToAdmin(
+      io,
+      "admin:reservation:deposit_payment_requested",
+      payload
+    );
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:deposit_payment_requested",
+        payload
+      );
+    }
   },
 
   depositPaymentCompleted: (io: Server, reservation: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("depositPaymentCompleted", reservation);
-    if (reservation.table_id) {
-      io.of("/reservations")
-        .to(`table:${reservation.table_id}`)
-        .emit("depositPaymentCompleted", reservation);
-    }
-    if (reservation.table_group_id) {
-      io.of("/reservations")
-        .to(`table_group:${reservation.table_group_id}`)
-        .emit("depositPaymentCompleted", reservation);
+    const payload = {
+      reservationId: reservation.id,
+      ...reservation,
+    };
+
+    broadcastToAdmin(
+      io,
+      "admin:reservation:deposit_payment_completed",
+      payload
+    );
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:deposit_payment_completed",
+        payload
+      );
     }
   },
 
   depositPaymentFailed: (io: Server, reservation: any) => {
-    io.of("/reservations")
-      .to(`reservation:${reservation.id}`)
-      .emit("depositPaymentFailed", reservation);
+    const payload = {
+      reservationId: reservation.id,
+      ...reservation,
+    };
+
+    broadcastToAdmin(io, "admin:reservation:deposit_payment_failed", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:deposit_payment_failed",
+        payload
+      );
+    }
   },
 };

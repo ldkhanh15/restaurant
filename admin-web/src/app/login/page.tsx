@@ -10,10 +10,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff, Lock, Mail, Crown } from "lucide-react";
 import { authService, LoginPayload } from "@/services/authService";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { setToken, setUser } = useAuthStore();
 
   const [formData, setFormData] = useState<LoginPayload>({
     email: "",
@@ -29,12 +31,49 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const { data: response } = await authService.login(formData);
-      // const response = await authService.login(formData);
-      console.log("Login response:", response);
-      if (response.token) {
-        localStorage.setItem("token", response.token);
-        localStorage.setItem("user", JSON.stringify(response.user));
+      const response = await authService.login(formData);
+      console.log(response);
+      if (response?.token) {
+        // Set token and user in auth store
+        setToken(response.token);
+
+        // Get full user info from API
+        try {
+          const userInfo = await authService.getCurrentUser();
+          // Map backend role "employee" to frontend role "staff"
+          const mappedRole =
+            userInfo.role === "employee"
+              ? "staff"
+              : userInfo.role === "admin"
+              ? "admin"
+              : "customer";
+
+          setUser({
+            id: userInfo.id,
+            email: userInfo.email,
+            username: userInfo.username,
+            role: mappedRole,
+          });
+          console.log("✅ User info loaded:", userInfo);
+        } catch (error) {
+          console.error("Failed to get current user:", error);
+          // Fallback to user from login response
+          if (response.user) {
+            const mappedRole =
+              response.user.role === "employee"
+                ? "staff"
+                : response.user.role === "admin"
+                ? "admin"
+                : "customer";
+
+            setUser({
+              id: response.user.id,
+              email: response.user.email,
+              username: response.user.username,
+              role: mappedRole,
+            });
+          }
+        }
 
         toast({
           title: "Đăng nhập thành công",

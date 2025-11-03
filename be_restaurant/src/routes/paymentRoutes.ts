@@ -65,17 +65,6 @@ router.get(
   "/stats/revenue",
   authenticate,
   authorize("admin"),
-  [
-    query("start_date")
-      .optional()
-      .isISO8601()
-      .withMessage("start_date must be a valid date"),
-    query("end_date")
-      .optional()
-      .isISO8601()
-      .withMessage("end_date must be a valid date"),
-    validate,
-  ],
   paymentController.getRevenueStats
 );
 

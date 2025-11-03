@@ -51,19 +51,43 @@ import {
   Edit,
   Save,
   X,
+  HelpCircle,
 } from "lucide-react";
 import { api, Order, OrderItem, Voucher } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 
 const ORDER_STATUSES = [
-  { value: "pending", label: "Chờ xử lý", color: "status-pending" },
-  { value: "confirmed", label: "Đã xác nhận", color: "status-confirmed" },
-  { value: "preparing", label: "Đang chuẩn bị", color: "status-preparing" },
-  { value: "ready", label: "Sẵn sàng", color: "status-ready" },
-  { value: "served", label: "Đã phục vụ", color: "status-served" },
-  { value: "completed", label: "Hoàn thành", color: "status-completed" },
-  { value: "cancelled", label: "Đã hủy", color: "status-cancelled" },
+  {
+    value: "pending",
+    label: "Chờ xử lý",
+    color: "status-pending",
+    icon: Clock,
+  },
+  {
+    value: "paid",
+    label: "Đã thanh toán",
+    color: "status-ready",
+    icon: CheckCircle,
+  },
+  {
+    value: "dining",
+    label: "Đang ăn",
+    color: "status-served",
+    icon: CheckCircle,
+  },
+  {
+    value: "waiting_payment",
+    label: "Chờ thanh toán",
+    color: "status-completed",
+    icon: CheckCircle,
+  },
+  {
+    value: "cancelled",
+    label: "Đã hủy",
+    color: "status-cancelled",
+    icon: XCircle,
+  },
 ];
 
 const ITEM_STATUSES = [
@@ -71,6 +95,7 @@ const ITEM_STATUSES = [
   { value: "preparing", label: "Đang làm", color: "status-preparing" },
   { value: "ready", label: "Sẵn sàng", color: "status-ready" },
   { value: "completed", label: "Đã lên", color: "status-served" },
+  { value: "cancelled", label: "Đã hủy", color: "status-cancelled" },
 ];
 
 export default function OrderDetailPage() {
@@ -87,6 +112,13 @@ export default function OrderDetailPage() {
   const [showVoucherDialog, setShowVoucherDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  // Add item dialog state
+  const [showAddItemDialog, setShowAddItemDialog] = useState(false);
+  const [dishes, setDishes] = useState<any[]>([]);
+  const [selectedDishId, setSelectedDishId] = useState<string>("");
+  const [newItemQuantity, setNewItemQuantity] = useState<number>(1);
+  const [newItemInstructions, setNewItemInstructions] = useState<string>("");
+  const [isAddingItem, setIsAddingItem] = useState(false);
 
   useEffect(() => {
     if (orderId) {
@@ -94,11 +126,23 @@ export default function OrderDetailPage() {
     }
   }, [orderId]);
 
+  useEffect(() => {
+    if (!showAddItemDialog) return;
+    (async () => {
+      try {
+        const res = await api.dishes.getAll();
+        const data = (res as any).data || (res as any);
+        setDishes(data);
+      } catch (e) {
+        console.error("Failed to load dishes", e);
+      }
+    })();
+  }, [showAddItemDialog]);
+
   const loadOrder = async () => {
     try {
       setIsLoading(true);
       const response = await api.orders.getById(orderId);
-      console.log(response);
       setOrder(response);
     } catch (error) {
       console.error("Failed to load order:", error);
@@ -137,7 +181,7 @@ export default function OrderDetailPage() {
         if (!prev) return null;
         return {
           ...prev,
-          items: prev.items.map((item) =>
+          items: prev.items?.map((item) =>
             item.id === itemId ? { ...item, status: status as any } : item
           ),
         };
@@ -163,7 +207,7 @@ export default function OrderDetailPage() {
         if (!prev) return null;
         return {
           ...prev,
-          items: prev.items.map((item) =>
+          items: prev.items?.map((item) =>
             item.id === itemId ? { ...item, quantity } : item
           ),
         };
@@ -189,7 +233,7 @@ export default function OrderDetailPage() {
         if (!prev) return null;
         return {
           ...prev,
-          items: prev.items.filter((item) => item.id !== itemId),
+          items: prev.items?.filter((item) => item.id !== itemId),
         };
       });
       toast({
@@ -226,22 +270,104 @@ export default function OrderDetailPage() {
     }
   };
 
-  const requestPayment = async () => {
+  const removeVoucher = async () => {
     try {
-      await api.orders.requestPayment(orderId, {
-        method: paymentMethod,
-        amount: order?.total_amount || 0,
-      });
-      setShowPaymentDialog(false);
+      await api.orders.removeVoucher(orderId);
+      await loadOrder();
       toast({
         title: "Thành công",
-        description: "Yêu cầu thanh toán đã được gửi",
+        description: "Đã xóa voucher khỏi đơn hàng",
       });
+    } catch (error) {
+      console.error("Failed to remove voucher:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể xóa voucher",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const requestSupport = async () => {
+    try {
+      await api.orders.requestSupport(orderId);
+      toast({
+        title: "Thành công",
+        description: "Yêu cầu hỗ trợ đã được gửi",
+      });
+    } catch (error) {
+      console.error("Failed to request support:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể gửi yêu cầu hỗ trợ",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addItemToOrder = async () => {
+    if (!selectedDishId || newItemQuantity < 1) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Chọn món và số lượng hợp lệ",
+      });
+      return;
+    }
+    try {
+      setIsAddingItem(true);
+      await api.orders.addItem(orderId, {
+        dish_id: selectedDishId,
+        quantity: newItemQuantity,
+        special_instructions: newItemInstructions || undefined,
+      });
+      setShowAddItemDialog(false);
+      setSelectedDishId("");
+      setNewItemQuantity(1);
+      setNewItemInstructions("");
+      await loadOrder();
+      toast({ title: "Thành công", description: "Đã thêm món vào đơn hàng" });
+    } catch (error) {
+      console.error("Failed to add item:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể thêm món",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingItem(false);
+    }
+  };
+
+  const requestPayment = async () => {
+    if (!order) return;
+
+    try {
+      if (paymentMethod === "cash") {
+        // Thanh toán tiền mặt - gọi API complete payment
+        await api.orders.updateStatus(orderId, "paid");
+        toast({
+          title: "Thành công",
+          description: "Đã xác nhận thanh toán tiền mặt",
+        });
+        setShowPaymentDialog(false);
+        loadOrder();
+      } else if (paymentMethod === "vnpay") {
+        // Thanh toán VNPAY - gọi API để lấy redirect URL
+        const response = await api.orders.requestPayment(orderId, {
+          method: paymentMethod,
+          amount: order.final_amount,
+        });
+
+        // Redirect đến VNPay
+        if (response?.redirect_url) {
+          window.location.href = response.redirect_url;
+        }
+      }
     } catch (error) {
       console.error("Failed to request payment:", error);
       toast({
         title: "Lỗi",
-        description: "Không thể gửi yêu cầu thanh toán",
+        description: "Không thể xử lý thanh toán",
         variant: "destructive",
       });
     }
@@ -311,35 +437,40 @@ export default function OrderDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-amber-200 pb-6">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
             size="sm"
             onClick={() => router.back()}
-            className="luxury-focus"
+            className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Quay lại
           </Button>
           <div>
-            <h1 className="text-2xl font-bold gold-text">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">
               Đơn hàng #{order.id}
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-gray-600 mt-1 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-500" />
               Tạo lúc {formatDateTime(order.created_at)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className={`status-badge ${getStatusColor(order.status)}`}>
+        <div className="flex items-center gap-3">
+          <Badge
+            className={`status-badge ${getStatusColor(
+              order.status
+            )} text-sm px-4 py-2 shadow-sm`}
+          >
             {getStatusLabel(order.status)}
           </Badge>
           <Button
             variant="outline"
             size="sm"
             onClick={loadOrder}
-            className="luxury-focus"
+            className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Làm mới
@@ -351,29 +482,35 @@ export default function OrderDetailPage() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Order Status */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-white">
+            <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <Clock className="h-5 w-5 text-amber-600" />
                 Trạng thái đơn hàng
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <Select value={order.status} onValueChange={updateOrderStatus}>
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-52 border-amber-200 focus:ring-amber-500 shadow-sm">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border-amber-200">
                     {ORDER_STATUSES.map((status) => (
-                      <SelectItem key={status.value} value={status.value}>
+                      <SelectItem
+                        key={status.value}
+                        value={status.value}
+                        className="focus:bg-amber-50"
+                      >
                         {status.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Badge
-                  className={`status-badge ${getStatusColor(order.status)}`}
+                  className={`status-badge ${getStatusColor(
+                    order.status
+                  )} text-sm px-4 py-2 shadow-sm`}
                 >
                   {getStatusLabel(order.status)}
                 </Badge>
@@ -382,14 +519,28 @@ export default function OrderDetailPage() {
           </Card>
 
           {/* Order Items */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-white">
+            <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <ShoppingCart className="h-5 w-5 text-amber-600" />
                 Danh sách món ăn
+                <Badge
+                  variant="secondary"
+                  className="bg-amber-100 text-amber-900 font-semibold ml-2"
+                >
+                  {order.items?.length || 0} món
+                </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
+              <div className="p-4 flex justify-end">
+                <Button
+                  onClick={() => setShowAddItemDialog(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Thêm món
+                </Button>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -401,17 +552,29 @@ export default function OrderDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">
-                        {item.dish_name}
-                        {item.special_instructions && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Ghi chú: {item.special_instructions}
-                          </p>
-                        )}
+                  {order.items?.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="hover:bg-amber-50/30 transition-colors"
+                    >
+                      <TableCell className="font-medium py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center shadow-sm">
+                            <ShoppingCart className="h-5 w-5 text-amber-700" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              {(item as any).dish?.name || "Unknown Dish"}
+                            </p>
+                            {item.special_instructions && (
+                              <p className="text-sm text-amber-600 mt-0.5 flex items-center gap-1">
+                                <span>📝</span> {item.special_instructions}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-4">
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
@@ -423,10 +586,11 @@ export default function OrderDetailPage() {
                               )
                             }
                             disabled={item.quantity <= 1}
+                            className="h-8 w-8 p-0 border-amber-300 hover:bg-amber-50"
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
-                          <span className="w-8 text-center">
+                          <span className="w-10 text-center font-bold text-amber-900">
                             {item.quantity}
                           </span>
                           <Button
@@ -435,12 +599,15 @@ export default function OrderDetailPage() {
                             onClick={() =>
                               updateItemQuantity(item.id, item.quantity + 1)
                             }
+                            className="h-8 w-8 p-0 border-amber-300 hover:bg-amber-50"
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell>{formatCurrency(item.price)}</TableCell>
+                      <TableCell className="py-4 font-semibold text-emerald-700">
+                        {formatCurrency(item.price)}
+                      </TableCell>
                       <TableCell>
                         <Select
                           value={item.status}
@@ -484,52 +651,73 @@ export default function OrderDetailPage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Customer Info */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-primary" />
+          <Card className="border-amber-100 shadow-lg bg-gradient-to-br from-white to-amber-50/20">
+            <CardHeader className="border-b border-amber-100 bg-white">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <User className="h-5 w-5 text-amber-600" />
                 Thông tin khách hàng
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium">Tên khách hàng</Label>
-                <p className="text-sm text-muted-foreground">
-                  {order.user.username || "Khách vãng lai"}
-                </p>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-100">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
+                  <User className="h-6 w-6 text-amber-700" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500 uppercase tracking-wide">
+                    Khách hàng
+                  </Label>
+                  <p className="text-base font-semibold text-gray-900">
+                    {order.user?.username || "Khách vãng lai"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <Label className="text-sm font-medium">Bàn</Label>
-                <p className="text-sm text-muted-foreground">
-                  {order.table.table_number || "Chưa chọn bàn"}
-                </p>
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-100">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                  <MapPin className="h-6 w-6 text-blue-700" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500 uppercase tracking-wide">
+                    Bàn
+                  </Label>
+                  <p className="text-base font-semibold text-gray-900">
+                    {order.table?.table_number || "Chưa chọn bàn"}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Order Summary */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
+          <Card className="border-emerald-100 shadow-lg bg-gradient-to-br from-white to-emerald-50/20">
+            <CardHeader className="border-b border-emerald-100 bg-white">
+              <CardTitle className="flex items-center gap-2 text-emerald-900">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
                 Tổng kết đơn hàng
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span>Tạm tính:</span>
-                <span>{formatCurrency(order.total_amount)}</span>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex justify-between p-3 bg-white rounded-lg">
+                <span className="text-gray-600">Tạm tính:</span>
+                <span className="font-semibold text-gray-900">
+                  {formatCurrency(order.total_amount)}
+                </span>
               </div>
               {order.voucher && (
-                <div className="flex justify-between text-green-600">
-                  <span>Giảm giá ({order.voucher.code}):</span>
-                  <span>-{formatCurrency(order.voucher.value)}</span>
+                <div className="flex justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                  <span className="text-green-700 flex items-center gap-2">
+                    <Gift className="h-4 w-4" />
+                    Giảm giá ({order.voucher.code}):
+                  </span>
+                  <span className="font-semibold text-green-700">
+                    -{formatCurrency(order.voucher.value)}
+                  </span>
                 </div>
               )}
-              <div className="border-t pt-3">
-                <div className="flex justify-between font-semibold text-lg">
-                  <span>Tổng cộng:</span>
-                  <span className="gold-text">
+              <div className="border-t-2 border-emerald-200 pt-4">
+                <div className="flex justify-between p-4 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg shadow-md">
+                  <span className="text-white font-medium">Tổng cộng:</span>
+                  <span className="text-white font-bold text-xl">
                     {formatCurrency(order.final_amount)}
                   </span>
                 </div>
@@ -538,112 +726,298 @@ export default function OrderDetailPage() {
           </Card>
 
           {/* Actions */}
-          <Card className="luxury-card">
-            <CardHeader>
-              <CardTitle>Thao tác</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Dialog
-                open={showVoucherDialog}
-                onOpenChange={setShowVoucherDialog}
-              >
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full luxury-focus">
-                    <Gift className="h-4 w-4 mr-2" />
-                    Áp dụng Voucher
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Áp dụng Voucher</DialogTitle>
-                    <DialogDescription>
-                      Nhập mã voucher để áp dụng giảm giá cho đơn hàng này.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="voucher-code">Mã voucher</Label>
-                      <Input
-                        id="voucher-code"
-                        value={voucherCode}
-                        onChange={(e) => setVoucherCode(e.target.value)}
-                        placeholder="Nhập mã voucher"
-                        className="luxury-focus"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
+          {order.status !== "paid" && (
+            <Card className="border-amber-100 shadow-lg bg-white">
+              <CardHeader className="border-b border-amber-100 bg-gradient-to-r from-amber-50/30 to-white">
+                <CardTitle className="text-amber-900">Thao tác</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-6">
+                <Dialog
+                  open={showVoucherDialog}
+                  onOpenChange={setShowVoucherDialog}
+                >
+                  <DialogTrigger asChild>
                     <Button
                       variant="outline"
-                      onClick={() => setShowVoucherDialog(false)}
+                      className="w-full border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
                     >
-                      Hủy
+                      <Gift className="h-4 w-4 mr-2" />
+                      Áp dụng Voucher
                     </Button>
-                    <Button onClick={applyVoucher} className="luxury-button">
-                      Áp dụng
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              <Dialog
-                open={showPaymentDialog}
-                onOpenChange={setShowPaymentDialog}
-              >
-                <DialogTrigger asChild>
-                  <Button className="w-full luxury-button">
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Yêu cầu thanh toán
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Yêu cầu thanh toán</DialogTitle>
-                    <DialogDescription>
-                      Gửi yêu cầu thanh toán cho khách hàng.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="payment-method">
-                        Phương thức thanh toán
-                      </Label>
-                      <Select
-                        value={paymentMethod}
-                        onValueChange={setPaymentMethod}
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Áp dụng Voucher</DialogTitle>
+                      <DialogDescription>
+                        Nhập mã voucher để áp dụng giảm giá cho đơn hàng này.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="voucher-code">Mã voucher</Label>
+                        <Input
+                          id="voucher-code"
+                          value={voucherCode}
+                          onChange={(e) => setVoucherCode(e.target.value)}
+                          placeholder="Nhập mã voucher"
+                          className="luxury-focus"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowVoucherDialog(false)}
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">Tiền mặt</SelectItem>
-                          <SelectItem value="card">Thẻ</SelectItem>
-                          <SelectItem value="vnpay">VNPay</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Số tiền</Label>
-                      <p className="text-lg font-semibold gold-text">
-                        {formatCurrency(order.total_amount)}
-                      </p>
-                    </div>
-                  </div>
-                  <DialogFooter>
+                        Hủy
+                      </Button>
+                      <Button onClick={applyVoucher} className="luxury-button">
+                        Áp dụng
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {order.voucher_id && (
+                  <Button
+                    variant="outline"
+                    onClick={removeVoucher}
+                    className="w-full border-red-300 hover:bg-red-50 hover:text-red-900 shadow-sm"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Xóa Voucher
+                  </Button>
+                )}
+
+                {/* Add Item Dialog */}
+                <Dialog
+                  open={showAddItemDialog}
+                  onOpenChange={setShowAddItemDialog}
+                >
+                  <DialogTrigger asChild>
                     <Button
                       variant="outline"
-                      onClick={() => setShowPaymentDialog(false)}
+                      className="w-full border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
                     >
-                      Hủy
+                      <Plus className="h-4 w-4 mr-2" /> Thêm món
                     </Button>
-                    <Button onClick={requestPayment} className="luxury-button">
-                      Gửi yêu cầu
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Thêm món vào đơn hàng</DialogTitle>
+                      <DialogDescription>
+                        Chọn món ăn và số lượng, có thể nhập ghi chú cho bếp.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Món ăn</Label>
+                        <Select
+                          value={selectedDishId}
+                          onValueChange={setSelectedDishId}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Chọn món" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {dishes.map((d: any) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                {d.name} - {formatCurrency(d.price)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Số lượng</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={newItemQuantity}
+                          onChange={(e) =>
+                            setNewItemQuantity(
+                              Math.max(1, Number(e.target.value))
+                            )
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Ghi chú (tuỳ chọn)</Label>
+                        <Input
+                          placeholder="Ít cay, thêm sốt..."
+                          value={newItemInstructions}
+                          onChange={(e) =>
+                            setNewItemInstructions(e.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowAddItemDialog(false)}
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        onClick={addItemToOrder}
+                        disabled={isAddingItem || !selectedDishId}
+                      >
+                        {isAddingItem ? "Đang thêm..." : "Thêm món"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog
+                  open={showPaymentDialog}
+                  onOpenChange={setShowPaymentDialog}
+                >
+                  <DialogTrigger asChild>
+                    <Button className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md">
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Yêu cầu thanh toán
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </CardContent>
-          </Card>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-bold text-amber-900">
+                        Hóa đơn thanh toán
+                      </DialogTitle>
+                      <DialogDescription>
+                        Đơn hàng #{order.id.slice(0, 8)}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Invoice Details */}
+                    <div className="space-y-4 py-4">
+                      {/* Items Summary */}
+                      <div className="bg-amber-50 rounded-lg p-4 space-y-2">
+                        <h4 className="font-semibold text-sm text-amber-900 mb-3">
+                          Chi tiết đơn hàng
+                        </h4>
+                        {order.items?.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="text-gray-700">
+                              {(item as any).dish?.name || "Unknown"} x
+                              {item.quantity}
+                            </span>
+                            <span className="font-medium">
+                              {formatCurrency(item.price * item.quantity)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Price Breakdown */}
+                      <div className="space-y-2 border-t pt-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">
+                            Tổng tiền món ăn:
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(order.total_amount)}
+                          </span>
+                        </div>
+
+                        {(order.voucher_discount_amount ?? 0) > 0 && (
+                          <div className="flex justify-between text-sm text-emerald-600">
+                            <span>Giảm giá (Voucher):</span>
+                            <span className="font-medium">
+                              -
+                              {formatCurrency(
+                                order.voucher_discount_amount ?? 0
+                              )}
+                            </span>
+                          </div>
+                        )}
+
+                        {(order.event_fee ?? 0) > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Phí sự kiện:</span>
+                            <span className="font-medium">
+                              {formatCurrency(order.event_fee ?? 0)}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between text-base font-bold border-t pt-2 mt-2">
+                          <span className="text-gray-900">
+                            Tổng thanh toán:
+                          </span>
+                          <span className="text-emerald-600 text-lg">
+                            {formatCurrency(order.final_amount)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Selection */}
+                      <div className="border-t pt-4">
+                        <Label
+                          htmlFor="payment-method"
+                          className="text-base font-semibold mb-3 block"
+                        >
+                          Phương thức thanh toán
+                        </Label>
+                        <Select
+                          value={paymentMethod}
+                          onValueChange={setPaymentMethod}
+                        >
+                          <SelectTrigger className="h-12">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">
+                              <div className="flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" />
+                                Tiền mặt
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="vnpay">
+                              <div className="flex items-center gap-2">
+                                <CreditCard className="h-4 w-4" />
+                                VNPay
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <DialogFooter className="gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPaymentDialog(false)}
+                        className="flex-1"
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        onClick={requestPayment}
+                        className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
+                      >
+                        {paymentMethod === "cash"
+                          ? "Xác nhận thanh toán"
+                          : "Thanh toán VNPay"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Button
+                  variant="outline"
+                  onClick={requestSupport}
+                  className="w-full border-orange-300 hover:bg-orange-50 hover:text-orange-900 shadow-sm"
+                >
+                  <HelpCircle className="h-4 w-4 mr-2" />
+                  Yêu cầu hỗ trợ
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

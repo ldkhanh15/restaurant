@@ -8,7 +8,20 @@ const router = Router();
 
 router.use(authenticate);
 
-// Get all reservations with filters
+// Get my reservations (user-specific, requires auth only)
+router.get(
+  "/my-reservations",
+  [
+    query("date").optional().isISO8601().withMessage("Invalid date format"),
+    query("status")
+      .optional()
+      .isIn(["pending", "confirmed", "cancelled", "no_show"]),
+    validate,
+  ],
+  reservationController.getMyReservations
+);
+
+// Get all reservations with filters (admin/employee only)
 router.get(
   "/",
   authorize("admin", "employee"),
@@ -64,7 +77,7 @@ router.post(
 );
 
 // Update reservation
-router.put(
+router.patch(
   "/:id",
   [
     param("id").isUUID().withMessage("Invalid reservation ID"),
@@ -104,7 +117,7 @@ router.patch(
   [
     param("id").isUUID().withMessage("Invalid reservation ID"),
     body("status")
-      .isIn(["pending", "confirmed", "cancelled", "no_show"])
+      .isIn(["pending", "confirmed", "completed", "cancelled", "no_show"])
       .withMessage("Invalid status"),
     validate,
   ],
@@ -119,8 +132,23 @@ router.post(
   reservationController.checkInReservation
 );
 
-// Delete reservation
-router.delete("/:id", [param("id").isUUID().withMessage("Invalid reservation ID"), validate], reservationController.deleteReservation);
+// Cancel reservation
+router.post(
+  "/:id/cancel",
+  authorize("admin", "employee"),
+  [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
+    body("reason").notEmpty().withMessage("Cancellation reason is required"),
+    validate,
+  ],
+  reservationController.cancelReservation
+);
 
+// Delete reservation
+router.delete(
+  "/:id",
+  [param("id").isUUID().withMessage("Invalid reservation ID"), validate],
+  reservationController.deleteReservation
+);
 
 export default router;

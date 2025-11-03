@@ -35,6 +35,7 @@ export const vnpayCallback = async (
       if (isSuccess) {
         await OrderService.handlePaymentSuccess(order.id);
         await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
+        return res.redirect(`${clientUrl}/payment/success?order_id=${order.id}`);
       } else {
         await OrderService.handlePaymentFailure(order.id);
         await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
@@ -212,12 +213,7 @@ export const getRevenueStats = async (
   next: NextFunction
 ) => {
   try {
-    const { start_date, end_date } = req.query;
-
-    const stats = await statisticsService.getRevenueStats(
-      start_date ? new Date(start_date as string) : undefined,
-      end_date ? new Date(end_date as string) : undefined
-    );
+    const stats = await statisticsService.getRevenueStats();
 
     res.json({
       status: "success",

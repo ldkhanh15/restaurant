@@ -59,7 +59,7 @@ class ReservationService {
   async getReservationById(id: string) {
     const reservation = await reservationRepository.findById(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Get detailed information with all related data
@@ -106,6 +106,44 @@ class ReservationService {
       ],
     });
 
+    // Populate dish information for pre_order_items
+    if (detailedReservation && detailedReservation.pre_order_items) {
+      const preOrderItems = detailedReservation.pre_order_items;
+      if (Array.isArray(preOrderItems) && preOrderItems.length > 0) {
+        const dishIds = preOrderItems
+          .map((item: any) => item.dish_id)
+          .filter(Boolean);
+        if (dishIds.length > 0) {
+          const dishes = await Dish.findAll({
+            where: { id: dishIds },
+            attributes: [
+              "id",
+              "name",
+              "price",
+              "description",
+              "media_urls",
+              "category_id",
+              "is_best_seller",
+              "seasonal",
+              "active",
+            ],
+          });
+
+          const dishesMap = new Map(
+            dishes.map((dish: any) => [dish.id, dish.toJSON()])
+          );
+
+          // Replace pre_order_items with populated dish information
+          detailedReservation.pre_order_items = preOrderItems.map(
+            (item: any) => ({
+              ...item,
+              dish: dishesMap.get(item.dish_id) || null,
+            })
+          );
+        }
+      }
+    }
+
     return detailedReservation;
   }
 
@@ -114,16 +152,13 @@ class ReservationService {
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
       if (!table) {
-        throw new AppError("Table not found",404);
-      }
-      if (table.status !== "available") {
-        throw new AppError("Table is not available",400);
+        throw new AppError("Table not found", 404);
       }
       if (data.num_people > table.capacity) {
-        throw new AppError("Number of people exceeds table capacity",400);
+        throw new AppError("Number of people exceeds table capacity", 400);
       }
 
-      // Validate reservation time overlap
+      // Validate reservation time overlap - this will check for existing reservations
       const durationMinutes = data.duration_minutes || 90;
       await validateReservationOverlap(
         data.table_id,
@@ -135,13 +170,10 @@ class ReservationService {
     if (data.table_group_id) {
       const tableGroup = await TableGroup.findByPk(data.table_group_id);
       if (!tableGroup) {
-        throw new AppError("Table group not found",404);
-      }
-      if (tableGroup.status !== "available") {
-        throw new AppError("Table group is not available",400);
+        throw new AppError("Table group not found", 404);
       }
 
-      // Validate table group reservation time overlap
+      // Validate table group reservation time overlap - this will check for existing reservations
       const durationMinutes = data.duration_minutes || 90;
       await validateTableGroupReservationOverlap(
         data.table_group_id,
@@ -154,7 +186,7 @@ class ReservationService {
     if (data.event_id) {
       const event = await Event.findByPk(data.event_id);
       if (!event) {
-        throw new AppError("Event not found",404);
+        throw new AppError("Event not found", 404);
       }
       eventFee = Number(event.price);
     }
@@ -164,17 +196,17 @@ class ReservationService {
       for (const item of data.pre_order_items) {
         const dish = await Dish.findByPk(item.dish_id);
         if (!dish || !dish.active) {
-          throw new AppError(`Dish ${item.dish_id} not found or inactive`,404);
+          throw new AppError(`Dish ${item.dish_id} not found or inactive`, 404);
         }
         if (item.quantity < 1) {
-          throw new AppError("Item quantity must be at least 1",400);
+          throw new AppError("Item quantity must be at least 1", 400);
         }
         price_dish = Number(price_dish) + Number(dish.price * item.quantity);
       }
     }
     // Check if user is VIP
     const user = data.user_id ? await User.findByPk(data.user_id) : null;
-    const isVip = user?.ranking === "vip";
+    const isVip = user?.ranking === "vip" || user?.role === "admin";
 
     let requiredDeposit = eventFee + price_dish * 0.3;
     if (data.table_id) {
@@ -228,13 +260,8 @@ class ReservationService {
         final_amount: totalAmount,
       });
 
-      // Update table/table group status to reserved for VIP
-      if (data.table_id) {
-        await Table.update(
-          { status: "reserved" },
-          { where: { id: data.table_id } }
-        );
-      }
+      // Note: Table status will be updated to "reserved" when reservation is confirmed
+      // This prevents conflicts during the reservation creation process
 
       // Send notification and WebSocket event
       await notificationService.notifyReservationCreated(reservation);
@@ -295,13 +322,13 @@ class ReservationService {
   async updateReservation(id: string, data: UpdateReservationData) {
     const reservation = await reservationRepository.findById(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Check if reservation can be modified
     const canModify = await reservationRepository.canModify(id);
     if (!canModify) {
-      throw new AppError("Reservation cannot be modified at this time",400);
+      throw new AppError("Reservation cannot be modified at this time", 400);
     }
 
     // Validate updates
@@ -309,25 +336,25 @@ class ReservationService {
       const now = new Date();
       const reservationTime = new Date(data.reservation_time);
       if (reservationTime <= now) {
-        throw new AppError("Reservation time must be in the future",400);
+        throw new AppError("Reservation time must be in the future", 400);
       }
     }
 
     if (data.num_people && data.num_people < 1) {
-      throw new AppError("Number of people must be at least 1",400);
+      throw new AppError("Number of people must be at least 1", 400);
     }
 
     // Validate table/table group if changing
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
       if (!table) {
-        throw new AppError("Table not found",404);
+        throw new AppError("Table not found", 404);
       }
       if (table.status !== "available" && table.id !== reservation.table_id) {
-        throw new AppError("Table is not available",400);
+        throw new AppError("Table is not available", 400);
       }
       if (data.num_people && data.num_people > table.capacity) {
-        throw new AppError("Number of people exceeds table capacity",400);
+        throw new AppError("Number of people exceeds table capacity", 400);
       }
 
       // Validate reservation time overlap for new table
@@ -346,13 +373,13 @@ class ReservationService {
     if (data.table_group_id) {
       const tableGroup = await TableGroup.findByPk(data.table_group_id);
       if (!tableGroup) {
-        throw new AppError("Table group not found",404);
+        throw new AppError("Table group not found", 404);
       }
       if (
         tableGroup.status !== "available" &&
         tableGroup.id !== reservation.table_group_id
       ) {
-        throw new AppError("Table group is not available",400);
+        throw new AppError("Table group is not available", 400);
       }
 
       // Validate table group reservation time overlap
@@ -386,10 +413,13 @@ class ReservationService {
         for (const item of data.pre_order_items) {
           const dish = await Dish.findByPk(item.dish_id);
           if (!dish || !dish.active) {
-            throw new AppError(`Dish ${item.dish_id} not found or inactive`,404);
+            throw new AppError(
+              `Dish ${item.dish_id} not found or inactive`,
+              404
+            );
           }
           if (item.quantity < 1) {
-            throw new AppError("Item quantity must be at least 1",400);
+            throw new AppError("Item quantity must be at least 1", 400);
           }
         }
 
@@ -453,17 +483,55 @@ class ReservationService {
   }
 
   async updateReservationStatus(id: string, status: string) {
-    if (!["pending", "confirmed", "cancelled", "no_show"].includes(status)) {
-      throw new AppError("Invalid status",400);
+    if (
+      !["pending", "confirmed", "completed", "cancelled", "no_show"].includes(
+        status
+      )
+    ) {
+      throw new AppError("Invalid status", 400);
     }
 
     const reservation = await reservationRepository.updateStatus(
       id,
-      status as "pending" | "cancelled" | "confirmed" | "no_show"
+      status as "pending" | "cancelled" | "confirmed" | "no_show" | "completed"
     );
 
     // Update table/table group status based on reservation status
-    if (status === "cancelled" || status === "no_show") {
+    if (status === "confirmed") {
+      if (reservation.table_id) {
+        await Table.update(
+          { status: "reserved" },
+          { where: { id: reservation.table_id } }
+        );
+      }
+      if (reservation.table_group_id) {
+        await TableGroup.update(
+          { status: "reserved" },
+          { where: { id: reservation.table_group_id } }
+        );
+      }
+    } else if (status === "cancelled" || status === "no_show") {
+      if (reservation.table_id) {
+        await Table.update(
+          { status: "available" },
+          { where: { id: reservation.table_id } }
+        );
+      }
+      if (reservation.table_group_id) {
+        await TableGroup.update(
+          { status: "available" },
+          { where: { id: reservation.table_group_id } }
+        );
+      }
+    } else if (status === "completed") {
+      if (reservation.table_id) {
+        await Table.update(
+          { status: "occupied" },
+          { where: { id: reservation.table_id } }
+        );
+      }
+    }
+    if (status === "no_show") {
       if (reservation.table_id) {
         await Table.update(
           { status: "available" },
@@ -484,11 +552,11 @@ class ReservationService {
   async checkInReservation(id: string) {
     const reservation = await reservationRepository.findById(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     if (reservation.status !== "confirmed") {
-      throw new AppError("Reservation is not confirmed",400);
+      throw new AppError("Reservation is not confirmed", 400);
     }
 
     const result = await reservationRepository.checkIn(id);
@@ -508,16 +576,76 @@ class ReservationService {
     return result;
   }
 
+  async cancelReservation(id: string, reason: string) {
+    const reservation = await reservationRepository.findById(id);
+    if (!reservation) {
+      throw new AppError("Reservation not found", 404);
+    }
+
+    // Check if reservation can be cancelled
+    if (reservation.status === "cancelled") {
+      throw new AppError("Reservation is already cancelled", 400);
+    }
+
+    if (reservation.status === "completed") {
+      throw new AppError("Cannot cancel a completed reservation", 400);
+    }
+
+    // Update preferences to include cancellation reason
+    const preferences = reservation.preferences || {};
+    const updatedPreferences = {
+      ...preferences,
+      cancellation_reason: reason,
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: "admin", // Could be enhanced to use req.user.id
+    };
+
+    // Update reservation status to cancelled and save reason
+    const updatedReservation = await reservationRepository.update(id, {
+      status: "cancelled",
+      preferences: updatedPreferences,
+    });
+
+    // Update table/table group status to available
+    if (reservation.table_id) {
+      await Table.update(
+        { status: "available" },
+        { where: { id: reservation.table_id } }
+      );
+    }
+    if (reservation.table_group_id) {
+      await TableGroup.update(
+        { status: "available" },
+        { where: { id: reservation.table_group_id } }
+      );
+    }
+
+    // Send notification and WebSocket event
+    try {
+      await notificationService.notifyReservationUpdated(updatedReservation);
+    } catch (error) {
+      console.error("Failed to send cancellation notification:", error);
+    }
+
+    try {
+      reservationEvents.reservationStatusChanged(getIO(), updatedReservation);
+    } catch (error) {
+      console.error("Failed to emit reservation cancelled event:", error);
+    }
+
+    return updatedReservation;
+  }
+
   async deleteReservation(id: string) {
     const reservation = await reservationRepository.findById(id);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Check if reservation can be modified
     const canModify = await reservationRepository.canModify(id);
     if (!canModify) {
-      throw new AppError("Reservation cannot be cancelled at this time",400);
+      throw new AppError("Reservation cannot be cancelled at this time", 400);
     }
 
     // Update table/table group status
@@ -538,13 +666,13 @@ class ReservationService {
   ) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Check if user is VIP (you need to implement VIP check logic)
     const user = await User.findByPk(reservation.user_id);
     if (user && user.ranking === "vip") {
-      throw new AppError("VIP users do not need to pay deposit",400);
+      throw new AppError("VIP users do not need to pay deposit", 400);
     }
 
     // Get deposit amount from table or table group
@@ -557,7 +685,7 @@ class ReservationService {
     }
 
     if (amount < requiredDeposit) {
-      throw new AppError(`Minimum deposit amount is ${requiredDeposit}`,400);
+      throw new AppError(`Minimum deposit amount is ${requiredDeposit}`, 400);
     }
 
     // Create VNPay payment URL
@@ -575,7 +703,7 @@ class ReservationService {
   async handleDepositPaymentSuccess(reservationId: string) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Create order with pre-order items if they exist
@@ -625,6 +753,20 @@ class ReservationService {
     // Update reservation status
     await reservationRepository.update(reservation.id, { status: "confirmed" });
 
+    // Update table/table group status to reserved when deposit payment is completed
+    if (reservation.table_id) {
+      await Table.update(
+        { status: "reserved" },
+        { where: { id: reservation.table_id } }
+      );
+    }
+    if (reservation.table_group_id) {
+      await TableGroup.update(
+        { status: "reserved" },
+        { where: { id: reservation.table_group_id } }
+      );
+    }
+
     // Send notification and WebSocket event
     await notificationService.notifyReservationUpdated(reservation);
     try {
@@ -639,7 +781,7 @@ class ReservationService {
   async handleDepositPaymentFailure(reservationId: string) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
-      throw new AppError("Reservation not found",404);
+      throw new AppError("Reservation not found", 404);
     }
 
     // Keep reservation as pending, no order created

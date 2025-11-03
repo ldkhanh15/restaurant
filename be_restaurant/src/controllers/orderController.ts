@@ -31,6 +31,39 @@ export const getAllOrders = async (
   }
 };
 
+export const getMyOrders = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ status: "error", message: "Unauthorized" });
+    }
+
+    const { page = 1, limit = 10, ...filters } = getPaginationParams(req.query);
+
+    // Only return orders for the authenticated user
+    const result = await orderService.getAllOrders({
+      ...filters,
+      user_id: userId, // Force filter by current user
+      page,
+      limit,
+    });
+
+    const paginatedResult = buildPaginationResult(
+      result.rows,
+      result.count,
+      page,
+      limit
+    );
+    res.json({ status: "success", data: paginatedResult });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getOrderById = async (
   req: Request,
   res: Response,
@@ -60,7 +93,6 @@ export const getOrderByTable = async (
     next(error);
   }
 };
-
 
 export const createOrder = async (
   req: Request,
@@ -278,19 +310,63 @@ export const getRevenueStats = async (
   next: NextFunction
 ) => {
   try {
-    const { start_date, end_date } = req.query;
+    const stats = await orderService.getRevenueStats();
+    res.json({ status: "success", data: stats });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    if (!start_date || !end_date) {
-      return res.status(400).json({
-        status: "error",
-        message: "start_date and end_date are required",
-      });
-    }
+// 1. Thống kê doanh thu, khách hàng, đơn hàng theo tháng (12 tháng gần đây)
+export const getMonthlyStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const stats = await orderService.getMonthlyStats();
+    res.json({ status: "success", data: stats });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const startDate = new Date(start_date as string);
-    const endDate = new Date(end_date as string);
+// 2. Thống kê đơn hàng và doanh thu theo giờ (24h, mỗi 2h)
+export const getHourlyStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const stats = await orderService.getHourlyStats();
+    res.json({ status: "success", data: stats });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const stats = await orderService.getRevenueStats(startDate, endDate);
+// 3. Thống kê khách hàng trong 7 ngày (có tài khoản vs vãng lai)
+export const getCustomerStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const stats = await orderService.getCustomerStats();
+    res.json({ status: "success", data: stats });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 4. Thống kê hôm nay (doanh thu, đơn hàng, đặt bàn)
+export const getTodayStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const stats = await orderService.getTodayStats();
     res.json({ status: "success", data: stats });
   } catch (error) {
     next(error);

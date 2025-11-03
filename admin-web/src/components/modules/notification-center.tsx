@@ -18,7 +18,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useNotificationWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocketContext } from "@/providers/WebSocketProvider";
 import { notificationService } from "@/services/notificationService";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -78,12 +78,14 @@ function NotificationCenter({ className }: NotificationCenterProps) {
   const { toast } = useToast();
 
   // WebSocket integration
+  const { notificationSocket } = useWebSocketContext();
   const {
     isConnected: isWebSocketConnected,
-    joinStaffRoom,
     onNewNotification,
-    onNotificationRead,
-  } = useNotificationWebSocket();
+    onNotificationOrder,
+    onNotificationReservation,
+    onNotificationChat,
+  } = notificationSocket;
 
   // Load notifications on component mount
   useEffect(() => {
@@ -93,9 +95,6 @@ function NotificationCenter({ className }: NotificationCenterProps) {
   // WebSocket event listeners
   useEffect(() => {
     if (!isWebSocketConnected) return;
-
-    // Join staff room to receive notifications
-    joinStaffRoom();
 
     const handleNewNotification = (notification: Notification) => {
       setNotifications((prev) => [notification, ...prev]);
@@ -116,28 +115,30 @@ function NotificationCenter({ className }: NotificationCenterProps) {
       });
     };
 
-    const handleNotificationRead = (notification: Notification) => {
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notification.id ? { ...n, is_read: true } : n
-        )
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-      setLastUpdate(new Date());
-    };
-
-    onNewNotification(handleNewNotification);
-    onNotificationRead(handleNotificationRead);
+    // Listen to all notification types
+    onNewNotification((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationOrder((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationReservation((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationChat((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
 
     return () => {
       // Cleanup listeners
     };
   }, [
     isWebSocketConnected,
-    joinStaffRoom,
-    toast,
     onNewNotification,
-    onNotificationRead,
+    onNotificationOrder,
+    onNotificationReservation,
+    onNotificationChat,
+    toast,
   ]);
 
   // Request notification permission
@@ -299,8 +300,8 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                 )}
               </Badge>
 
-            <Button
-              variant="outline"
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={loadNotifications}
                 disabled={isLoading}
@@ -314,15 +315,15 @@ function NotificationCenter({ className }: NotificationCenterProps) {
               {unreadCount > 0 && (
                 <Button variant="outline" size="sm" onClick={markAllAsRead}>
                   <CheckCircle className="h-4 w-4 mr-1" />
-              Đánh dấu tất cả đã đọc
-            </Button>
-          )}
-        </div>
-      </div>
+                  Đánh dấu tất cả đã đọc
+                </Button>
+              )}
+            </div>
+          </div>
 
           <div className="text-sm text-gray-500">
             Cập nhật lần cuối: {lastUpdate.toLocaleTimeString("vi-VN")}
-      </div>
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -331,8 +332,8 @@ function NotificationCenter({ className }: NotificationCenterProps) {
               <TabsTrigger value="unread">Chưa đọc ({unreadCount})</TabsTrigger>
               <TabsTrigger value="all">
                 Tất cả ({notifications.length})
-                </TabsTrigger>
-              </TabsList>
+              </TabsTrigger>
+            </TabsList>
 
             <TabsContent value="unread" className="mt-4">
               <ScrollArea className="h-96">
@@ -398,7 +399,7 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                         </CardContent>
                       </Card>
                     ))}
-          </div>
+                  </div>
                 )}
               </ScrollArea>
             </TabsContent>
@@ -418,15 +419,15 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                 ) : (
                   <div className="space-y-3">
                     {notifications.map((notification) => (
-                <Card
-                  key={notification.id}
+                      <Card
+                        key={notification.id}
                         className={`${
                           notification.is_read
                             ? "bg-gray-50"
                             : "border-l-4 border-l-blue-500 bg-blue-50"
-                  }`}
-                >
-                  <CardContent className="p-4">
+                        }`}
+                      >
+                        <CardContent className="p-4">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
@@ -436,19 +437,19 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                                 <Badge
                                   className={getTypeColor(notification.type)}
                                 >
-                          {getTypeLabel(notification.type)}
-                        </Badge>
+                                  {getTypeLabel(notification.type)}
+                                </Badge>
                                 <span className="text-xs text-gray-500">
                                   {formatRelativeTime(notification.created_at)}
                                 </span>
                                 {notification.is_read ? (
-                        <Badge
-                          variant="outline"
+                                  <Badge
+                                    variant="outline"
                                     className="bg-green-50 text-green-700"
-                        >
+                                  >
                                     <CheckCircle className="h-3 w-3 mr-1" />
                                     Đã đọc
-                        </Badge>
+                                  </Badge>
                                 ) : (
                                   <Badge
                                     variant="outline"
@@ -456,9 +457,9 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                                   >
                                     <Clock className="h-3 w-3 mr-1" />
                                     Chưa đọc
-                          </Badge>
-                        )}
-                      </div>
+                                  </Badge>
+                                )}
+                              </div>
                               <h4
                                 className={`font-semibold mb-1 ${
                                   notification.is_read
@@ -482,32 +483,32 @@ function NotificationCenter({ className }: NotificationCenterProps) {
                               </p>
                             </div>
                             <div className="flex gap-1 ml-4">
-                        {!notification.is_read && (
-                          <Button
-                            size="sm"
+                              {!notification.is_read && (
+                                <Button
+                                  size="sm"
                                   variant="outline"
-                            onClick={() => markAsRead(notification.id)}
-                          >
+                                  onClick={() => markAsRead(notification.id)}
+                                >
                                   <Eye className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
                                 variant="outline"
                                 onClick={() =>
                                   deleteNotification(notification.id)
                                 }
                               >
                                 <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-                </div>
-              )}
-          </ScrollArea>
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </CardContent>
