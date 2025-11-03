@@ -66,7 +66,7 @@ export function MenuManagement() {
 
         <TabsContent value="dishes">
           <DishManagement
-            dishes={dishes}
+            dishes={dishes as any}
             setDishes={setDishes}
             categories={categories}
             setCategories={setCategories}

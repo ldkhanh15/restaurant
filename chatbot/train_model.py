@@ -219,104 +219,91 @@ def evaluate_ranking(model, users_val, pos_per_user, X_content_all, id2item, top
     summary = {k: np.mean(v) for k, v in results.items()}
     return summary
 
-# ---------------------- Main flow ----------------------
-print("Loading data...")
-df = load_and_prepare(DATA_PATH)
-print("Data shape:", df.shape)
-print("Unique users:", df['user_id'].nunique(), "Unique items:", df['food_norm'].nunique())
+def train_model(data_path="../model_recommend/data/data_train.csv",
+                out_dir="../model_recommend/result",
+                epochs=100):
+    # ============ CONFIG ============
+    SEED = 42
+    USER_EMB = 64
+    ITEM_EMB = 64
+    CONTENT_DIM = 64
+    MLP_DIMS = [256, 128, 64]
+    LR = 1e-3
+    BATCH_SIZE = 2048
+    NEG_PER_POS = 4
+    TEST_SIZE = 0.15
+    TOPK_EVAL = [5, 10, 20]
+    RANDOM_NEG = True
+    # ================================================
 
-user2id, item2id, id2item = build_maps(df)
-df['user_idx'] = df['user_id'].astype(str).map(user2id).astype(int)
-df['item_idx'] = df['food_norm'].map(item2id).astype(int)
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+    random.seed(SEED)
+    os.makedirs(out_dir, exist_ok=True)
 
-# split by users to avoid leakage: do user-based split so val users unseen or seen?
-# We'll do random split of interactions (common approach) but ensure each user has at least one train pos
-train_df, val_df = train_test_split(df, test_size=TEST_SIZE, random_state=SEED, stratify=None)
-print("Train interactions:", train_df.shape[0], "Val interactions:", val_df.shape[0])
+    print("Loading data...")
+    df = load_and_prepare(data_path)
+    print("Data shape:", df.shape)
 
-item_meta = build_item_meta(df, item2id)
-tfidf, svd, content_emb = build_content_embeddings(item_meta, CONTENT_DIM)
-# content_emb indexed by item_meta row order; item_meta.item_idx gives item_idx -> align:
-content_map = {int(item_meta.loc[i, 'item_idx']): content_emb[i] for i in range(len(item_meta))}
-n_items = len(item2id)
-content_dim = content_emb.shape[1]
-# Build X_content_all: (n_items, content_dim)
-X_content_all = np.zeros((n_items, content_dim), dtype=np.float32)
-for i in range(n_items):
-    vect = content_map.get(i, np.zeros(content_dim, dtype=np.float32))
-    X_content_all[i] = vect
+    user2id, item2id, id2item = build_maps(df)
+    df['user_idx'] = df['user_id'].astype(str).map(user2id).astype(int)
+    df['item_idx'] = df['food_norm'].map(item2id).astype(int)
 
-# Create positive-only map for training negative sampling
-train_pos = train_df[train_df['label'] == 1].copy()
-if train_pos.empty:
-    # fallback: consider count_search > 0 as positive if no orders exist
-    train_pos = train_df[train_df['count_search'] > 0].copy()
-    train_pos['label'] = 1
+    from sklearn.model_selection import train_test_split
+    train_df, val_df = train_test_split(df, test_size=TEST_SIZE, random_state=SEED)
 
-# create negative-sampled training set
-print("Generating negative samples...")
-df_samples = negative_sampling(train_pos, user2id, item2id, neg_per_pos=NEG_PER_POS, seed=SEED)
-print("Sampled rows:", len(df_samples), "Pos ratio:", df_samples['label'].mean())
+    item_meta = build_item_meta(df, item2id)
+    tfidf, svd, content_emb = build_content_embeddings(item_meta, CONTENT_DIM)
+    content_map = {int(item_meta.loc[i, 'item_idx']): content_emb[i] for i in range(len(item_meta))}
+    n_items = len(item2id)
+    content_dim = content_emb.shape[1]
+    X_content_all = np.zeros((n_items, content_dim), dtype=np.float32)
+    for i in range(n_items):
+        vect = content_map.get(i, np.zeros(content_dim, dtype=np.float32))
+        X_content_all[i] = vect
 
-# Create tf dataset for training
-train_ds = make_tf_dataset(df_samples, X_content_all, batch_size=BATCH_SIZE, shuffle=True)
+    # positives + negatives
+    train_pos = train_df[train_df['label'] == 1].copy()
+    if train_pos.empty:
+        train_pos = train_df[train_df['count_search'] > 0].copy()
+        train_pos['label'] = 1
 
-# For validation we will evaluate by ranking across all items per user.
-# Build pos items per user from val set (only consider label==1)
-val_pos = val_df[val_df['label'] == 1]
-pos_per_user_val = val_pos.groupby('user_idx')['item_idx'].apply(lambda s: list(dict.fromkeys(s.tolist()))).to_dict()
-val_users = list(pos_per_user_val.keys())
-print("Val users with positive interactions:", len(val_users))
+    print("Generating negative samples...")
+    df_samples = negative_sampling(train_pos, user2id, item2id, neg_per_pos=NEG_PER_POS, seed=SEED)
+    train_ds = make_tf_dataset(df_samples, X_content_all, batch_size=BATCH_SIZE, shuffle=True)
 
-# Build model
-model = build_model(n_users=len(user2id), n_items=n_items, user_emb=USER_EMB, item_emb=ITEM_EMB,
-                    content_dim=content_dim, mlp_dims=MLP_DIMS, lr=LR)
-model.summary()
+    val_pos = val_df[val_df['label'] == 1]
+    pos_per_user_val = val_pos.groupby('user_idx')['item_idx'].apply(list).to_dict()
+    val_users = list(pos_per_user_val.keys())
 
-# callbacks
-checkpoint = os.path.join(OUT_DIR, "best_model.keras")
-cbs = [
-    keras.callbacks.ModelCheckpoint(checkpoint, monitor='loss', save_best_only=True),
-    keras.callbacks.EarlyStopping(monitor='loss', patience=3, restore_best_weights=True),
-    keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=2, min_lr=1e-6)
-]
+    model = build_model(n_users=len(user2id),
+                        n_items=n_items,
+                        user_emb=USER_EMB,
+                        item_emb=ITEM_EMB,
+                        content_dim=content_dim,
+                        mlp_dims=MLP_DIMS,
+                        lr=LR)
 
-print("Start training...")
-history = model.fit(train_ds, epochs=EPOCHS, callbacks=cbs, verbose=2)
+    checkpoint = os.path.join(out_dir, "best_model.keras")
+    cbs = [
+        keras.callbacks.ModelCheckpoint(checkpoint, monitor='loss', save_best_only=True),
+        keras.callbacks.EarlyStopping(monitor='loss', patience=3, restore_best_weights=True),
+    ]
 
-# Save final model
-final_model_path = os.path.join(OUT_DIR, "product_recommender_rank.keras")
-model.save(final_model_path)
-print("Saved model to:", final_model_path)
+    print("Start training...")
+    history = model.fit(train_ds, epochs=epochs, callbacks=cbs, verbose=2)
 
-# Save artifacts
-joblib.dump(user2id, os.path.join(OUT_DIR, "user2id.joblib"))
-joblib.dump(item2id, os.path.join(OUT_DIR, "item2id.joblib"))
-joblib.dump(id2item, os.path.join(OUT_DIR, "id2item.joblib"))
-joblib.dump(tfidf, os.path.join(OUT_DIR, "tfidf.joblib"))
-joblib.dump(svd, os.path.join(OUT_DIR, "svd.joblib"))
-item_meta.to_pickle(os.path.join(OUT_DIR, "item_meta.pkl"))
-print("Saved artifacts.")
+    # Save artifacts
+    model.save(os.path.join(out_dir, "product_recommender_rank.keras"))
+    joblib.dump(user2id, os.path.join(out_dir, "user2id.joblib"))
+    joblib.dump(item2id, os.path.join(out_dir, "item2id.joblib"))
+    joblib.dump(id2item, os.path.join(out_dir, "id2item.joblib"))
+    joblib.dump(tfidf, os.path.join(out_dir, "tfidf.joblib"))
+    joblib.dump(svd, os.path.join(out_dir, "svd.joblib"))
+    item_meta.to_pickle(os.path.join(out_dir, "item_meta.pkl"))
 
-# Evaluate ranking on validation users (this scores all items per user)
-if len(val_users) > 0:
-    print("Evaluating ranking metrics on validation users... (this may take time depending on n_items)")
-    summary = evaluate_ranking(model, val_users, pos_per_user_val, X_content_all, id2item, topk_list=TOPK_EVAL)
-    print("Ranking results (averages):")
-    for k in TOPK_EVAL:
-        print(f"HR@{k}: {summary.get(f'HR@{k}', 0):.4f}, NDCG@{k}: {summary.get(f'NDCG@{k}', 0):.4f}, PREC@{k}: {summary.get(f'PREC@{k}', 0):.4f}")
-else:
-    print("No positive users in validation to evaluate ranking metrics.")
+    print("✅ Training done.")
 
-# Plot training AUC curve
-plt.figure(figsize=(8,4))
-if 'auc' in history.history:
-    plt.plot(history.history['auc'], label='train_auc')
-plt.title("Training Metrics")
-plt.legend()
-plt.show()
-
- print("✅ Training done.")
     return {
         "n_users": len(user2id),
         "n_items": len(item2id),

@@ -52,11 +52,19 @@ export function EventManagement() {
     name: "",
     description: "",
     price: "",
-    inclusions: {} as Record<any, any>,
-    decorations: {} as Record<any, any>,
+    inclusions: {} as Record<string, string>,
+    decorations: {} as Record<string, string>,
   })
 
-  // 🔹 Load dữ liệu
+  // Validation errors
+  const [errors, setErrors] = useState({
+    name: "",
+    price: "",
+    inclusions: [] as string[],
+    decorations: [] as string[],
+  })
+
+  // Load dữ liệu
   const getAllEvents = async () => {
     try {
       const response = await eventService.getAllNoPaging()
@@ -76,13 +84,12 @@ export function EventManagement() {
     getAllEvents()
   }, [])
 
-  // 🔹 Lọc dữ liệu
+  // Lọc dữ liệu
   const filteredEvents = events.filter((event) => {
     const matchesSearch =
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.description?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // Nếu bật "hiện đã xóa" => hiện tất cả, ngược lại chỉ hiện event chưa xóa
     if (showDeleted) return matchesSearch
     return matchesSearch && !event.deleted_at
   })
@@ -95,10 +102,65 @@ export function EventManagement() {
     }).format(price)
   }
 
+  // Validation functions
+  const validateName = (name: string, editingId?: string): string => {
+    const trimmed = name.trim()
+    if (!trimmed) return "Tên sự kiện không được để trống"
+
+    const isDuplicate = events.some(e => {
+      const sameName = e.name.trim().toLowerCase() === trimmed.toLowerCase()
+      const differentId = !editingId || e.id !== editingId
+      return sameName && differentId
+    })
+
+    return isDuplicate ? "Tên sự kiện đã tồn tại" : ""
+  }
+
+  const validatePrice = (price: string): string => {
+    const num = Number(price)
+    if (!price.trim()) return "Giá không được để trống"
+    if (isNaN(num) || num <= 0) return "Giá phải là số dương"
+    return ""
+  }
+
+  const validateKeyValue = (obj: Record<string, string>): string[] => {
+    const errors: string[] = []
+    Object.entries(obj).forEach(([key, value], index) => {
+      if (!key.trim()) errors.push(`Dòng ${index + 1}: Tên mục không được trống`)
+      if (!value.trim()) errors.push(`Dòng ${index + 1}: Giá trị không được trống`)
+    })
+    return errors
+  }
+
+  const validateForm = (editingId?: string): boolean => {
+    const nameError = validateName(newEvent.name, editingId)
+    const priceError = validatePrice(newEvent.price)
+    const inclusionsErrors = validateKeyValue(newEvent.inclusions)
+    const decorationsErrors = validateKeyValue(newEvent.decorations)
+
+    setErrors({
+      name: nameError,
+      price: priceError,
+      inclusions: inclusionsErrors,
+      decorations: decorationsErrors,
+    })
+
+    const hasError = nameError || priceError || inclusionsErrors.length > 0 || decorationsErrors.length > 0
+    if (hasError) toast.error("Vui lòng kiểm tra lại thông tin!")
+    return !hasError
+  }
+
+  // Handle dynamic rows
   const handleAddRow = (field: "inclusions" | "decorations") => {
+    const current = newEvent[field]
+    const hasEmpty = Object.entries(current).some(([k, v]) => !k.trim() || !v.trim())
+    if (hasEmpty) {
+      toast.warn("Vui lòng điền đầy đủ dòng hiện tại trước khi thêm mới")
+      return
+    }
     setNewEvent({
       ...newEvent,
-      [field]: { ...newEvent[field], "": "" },
+      [field]: { ...current, "": "" },
     })
   }
 
@@ -134,35 +196,39 @@ export function EventManagement() {
       inclusions: {},
       decorations: {},
     })
+    setErrors({ name: "", price: "", inclusions: [], decorations: [] })
   }
 
   const handleCreateEvent = async () => {
-    if (!newEvent.name.trim() || !newEvent.price) {
-      toast.error("Vui lòng nhập đầy đủ thông tin!")
-      return
-    }
+    if (!validateForm()) return
 
     const event: Event = {
       id: uuidv4(),
-      name: newEvent.name,
-      description: newEvent.description,
+      name: newEvent.name.trim(),
+      description: newEvent.description.trim() || undefined,
       price: Number(newEvent.price),
-      inclusions: newEvent.inclusions,
-      decorations: newEvent.decorations,
+      inclusions: Object.fromEntries(
+        Object.entries(newEvent.inclusions).filter(([k, v]) => k.trim() && v.trim())
+      ),
+      decorations: Object.fromEntries(
+        Object.entries(newEvent.decorations).filter(([k, v]) => k.trim() && v.trim())
+      ),
       created_at: new Date().toISOString().split("T")[0],
     }
 
-    const response = await eventService.create(event)
-    if (!response) {
-      toast.error("Tạo sự kiện thất bại!")
-      return
+    try {
+      const response = await eventService.create(event)
+      if (!response) {
+        toast.error("Tạo sự kiện thất bại!")
+        return
+      }
+      setEvents(prev => [...prev, event])
+      toast.success("Tạo sự kiện thành công!")
+      resetForm()
+      setIsCreateDialogOpen(false)
+    } catch (err) {
+      toast.error("Lỗi khi tạo sự kiện")
     }
-
-    setEvents([...events, event])
-    toast.success("Tạo sự kiện thành công!")
-
-    resetForm()
-    setIsCreateDialogOpen(false)
   }
 
   const handleEditEvent = (event: Event) => {
@@ -171,158 +237,224 @@ export function EventManagement() {
       name: event.name,
       description: event.description || "",
       price: event.price?.toString() || "",
-      inclusions: event.inclusions || {},
-      decorations: event.decorations || {},
+      inclusions: (event.inclusions as Record<string, string>) || {},
+      decorations: (event.decorations as Record<string, string>) || {},
     })
+    setErrors({ name: "", price: "", inclusions: [], decorations: [] })
     setIsEditDialogOpen(true)
   }
 
   const handleUpdateEvent = async () => {
-    if (!selectedEvent) return
+    if (!selectedEvent || !validateForm(selectedEvent.id)) return
 
     const updatedEvent: Event = {
       ...selectedEvent,
-      name: newEvent.name,
-      description: newEvent.description,
+      name: newEvent.name.trim(),
+      description: newEvent.description.trim() || undefined,
       price: Number(newEvent.price),
-      inclusions: newEvent.inclusions,
-      decorations: newEvent.decorations,
+      inclusions: Object.fromEntries(
+        Object.entries(newEvent.inclusions).filter(([k, v]) => k.trim() && v.trim())
+      ),
+      decorations: Object.fromEntries(
+        Object.entries(newEvent.decorations).filter(([k, v]) => k.trim() && v.trim())
+      ),
     }
 
-    const response = await eventService.update(selectedEvent.id, updatedEvent)
-    if (!response) {
-      toast.error("Cập nhật sự kiện thất bại!")
-      return
+    try {
+      const response = await eventService.update(selectedEvent.id, updatedEvent)
+      if (!response) {
+        toast.error("Cập nhật thất bại!")
+        return
+      }
+      setEvents(prev => prev.map(e => e.id === selectedEvent.id ? updatedEvent : e))
+      toast.success("Cập nhật thành công!")
+      setIsEditDialogOpen(false)
+      resetForm()
+    } catch (err) {
+      toast.error("Lỗi khi cập nhật")
     }
-
-    setEvents(events.map(e => e.id === selectedEvent.id ? updatedEvent : e))
-    toast.success("Cập nhật sự kiện thành công!")
-    setIsEditDialogOpen(false)
-    resetForm()
   }
 
   const handleDeleteEvent = async (eventId: string) => {
-    const response = await eventService.remove(eventId)
-    if (!response) {
-      toast.error("Xóa sự kiện thất bại!")
-      return
-    }
-    toast.success("Xóa sự kiện thành công!")
-    setEvents(
-      events.map((event) =>
-        event.id === eventId
-          ? { ...event, deleted_at: new Date().toISOString().split("T")[0] }
-          : event
+    try {
+      const response = await eventService.remove(eventId)
+      if (!response) {
+        toast.error("Xóa thất bại!")
+        return
+      }
+      toast.success("Xóa thành công!")
+      setEvents(prev =>
+        prev.map(e =>
+          e.id === eventId
+            ? { ...e, deleted_at: new Date().toISOString().split("T")[0] }
+            : e
+        )
       )
-    )
+    } catch (err) {
+      toast.error("Lỗi khi xóa")
+    }
   }
 
-  const renderEventForm = (isEdit = false) => (
-    <div className="grid gap-4 py-4">
-      <div className="grid gap-2">
-        <Label>Tên sự kiện</Label>
-        <Input
-          value={newEvent.name}
-          onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
-          placeholder="Nhập tên sự kiện"
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>Mô tả</Label>
-        <Input
-          value={newEvent.description}
-          onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-          placeholder="Nhập mô tả sự kiện"
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>Giá gói</Label>
-        <Input
-          type="number"
-          value={newEvent.price}
-          onChange={(e) => setNewEvent({ ...newEvent, price: e.target.value })}
-          placeholder="Nhập giá gói"
-        />
-      </div>
-
-      {/* Inclusions */}
-      <div className="grid gap-2">
-        <Label>Dịch vụ kèm theo</Label>
-        {Object.entries(newEvent.inclusions).map(([key, value], index) => (
-          <div key={index} className="flex gap-2 items-center">
-            <Input
-              placeholder="Tên mục"
-              value={key}
-              onChange={(e) => handleKeyChange("inclusions", index, e.target.value)}
-            />
-            <Input
-              placeholder="Giá trị"
-              value={value}
-              onChange={(e) => handleValueChange("inclusions", index, e.target.value)}
-            />
-            <Button variant="ghost" size="icon" onClick={() => handleDeleteRow("inclusions", index)}>
-              <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-          </div>
-        ))}
-        <Button variant="outline" onClick={() => handleAddRow("inclusions")}>
-          + Thêm dòng
-        </Button>
-      </div>
-
-      {/* Decorations */}
-      <div className="grid gap-2">
-        <Label>Phụ kiện trang trí</Label>
-        {Object.entries(newEvent.decorations).map(([key, value], index) => (
-          <div key={index} className="flex gap-2 items-center">
-            <Input
-              placeholder="Tên mục"
-              value={key}
-              onChange={(e) => handleKeyChange("decorations", index, e.target.value)}
-            />
-            <Input
-              placeholder="Giá trị"
-              value={value}
-              onChange={(e) => handleValueChange("decorations", index, e.target.value)}
-            />
-            <Button variant="ghost" size="icon" onClick={() => handleDeleteRow("decorations", index)}>
-              <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-          </div>
-        ))}
-        <Button variant="outline" onClick={() => handleAddRow("decorations")}>
-          + Thêm dòng
-        </Button>
-      </div>
-
-      <DialogFooter>
-        <Button onClick={isEdit ? handleUpdateEvent : handleCreateEvent}>
-          {isEdit ? "Cập nhật sự kiện" : "Tạo sự kiện"}
-        </Button>
-      </DialogFooter>
-    </div>
-  )
-
-  // 🔹 Hàm hiển thị danh sách key-value cho inclusions/decorations
   const renderKeyValueList = (items: Record<string, string | string[]> | undefined) => {
     if (!items || Object.keys(items).length === 0) {
-      return <p className="text-muted-foreground">Không có dữ liệu</p>
+      return <p className="text-muted-foreground text-sm">Không có dữ liệu</p>
     }
     return (
-      <ul className="space-y-2">
+      <ul className="space-y-1 text-sm">
         {Object.entries(items).map(([key, value], index) => (
-          <li key={index} className="flex items-center gap-2">
-            <span className="font-semibold">{key}:</span>
-            <span>
+          <li key={index} className="flex gap-2">
+            <span className="font-medium">{key}:</span>
+            <span className="text-muted-foreground">
               {Array.isArray(value)
-                ? value.length > 0
-                  ? value.join(", ")
-                  : "Không có giá trị"
-                : value || "Không có giá trị"}
+                ? value.join(", ") || "Không có"
+                : value || "Không có"}
             </span>
           </li>
         ))}
       </ul>
+    )
+  }
+
+  const renderEventForm = (isEdit = false) => {
+    const hasError = errors.name || errors.price || errors.inclusions.length > 0 || errors.decorations.length > 0
+
+    return (
+      <div className="grid gap-5 py-4">
+        {/* Tên sự kiện */}
+        <div className="grid gap-2">
+          <Label htmlFor="name">Tên sự kiện *</Label>
+          <Input
+            id="name"
+            value={newEvent.name}
+            onChange={(e) => {
+              setNewEvent({ ...newEvent, name: e.target.value })
+              setErrors({ ...errors, name: validateName(e.target.value, isEdit ? selectedEvent?.id : undefined) })
+            }}
+            placeholder="Nhập tên sự kiện"
+            className={errors.name ? "border-red-500" : ""}
+          />
+          {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+        </div>
+
+        {/* Mô tả */}
+        <div className="grid gap-2">
+          <Label htmlFor="description">Mô tả</Label>
+          <Input
+            id="description"
+            value={newEvent.description}
+            onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+            placeholder="Nhập mô tả (không bắt buộc)"
+          />
+        </div>
+
+        {/* Giá */}
+        <div className="grid gap-2">
+          <Label htmlFor="price">Giá gói (VND) *</Label>
+          <Input
+            id="price"
+            type="number"
+            value={newEvent.price}
+            onChange={(e) => {
+              setNewEvent({ ...newEvent, price: e.target.value })
+              setErrors({ ...errors, price: validatePrice(e.target.value) })
+            }}
+            placeholder="Nhập giá"
+            className={errors.price ? "border-red-500" : ""}
+          />
+          {errors.price && <p className="text-sm text-red-500">{errors.price}</p>}
+        </div>
+
+        {/* Inclusions */}
+        <div className="grid gap-3">
+          <Label>Dịch vụ kèm theo</Label>
+          {Object.entries(newEvent.inclusions).map(([key, value], index) => (
+            <div key={index} className="flex gap-2 items-start">
+              <div className="flex-1">
+                <Input
+                  placeholder="Tên mục"
+                  value={key}
+                  onChange={(e) => handleKeyChange("inclusions", index, e.target.value)}
+                  className={errors.inclusions.some(err => err.includes(`Dòng ${index + 1}`)) ? "border-red-500" : ""}
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Giá trị"
+                  value={value}
+                  onChange={(e) => handleValueChange("inclusions", index, e.target.value)}
+                  className={errors.inclusions.some(err => err.includes(`Dòng ${index + 1}`)) ? "border-red-500" : ""}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDeleteRow("inclusions", index)}
+                className="mt-1"
+              >
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </Button>
+            </div>
+          ))}
+          {errors.inclusions.map((err, i) => (
+            <p key={i} className="text-sm text-red-500 -mt-2">{err}</p>
+          ))}
+          <Button variant="outline" size="sm" onClick={() => handleAddRow("inclusions")}>
+            + Thêm dịch vụ
+          </Button>
+        </div>
+
+        {/* Decorations */}
+        <div className="grid gap-3">
+          <Label>Phụ kiện trang trí</Label>
+          {Object.entries(newEvent.decorations).map(([key, value], index) => (
+            <div key={index} className="flex gap-2 items-start">
+              <div className="flex-1">
+                <Input
+                  placeholder="Tên mục"
+                  value={key}
+                  onChange={(e) => handleKeyChange("decorations", index, e.target.value)}
+                  className={errors.decorations.some(err => err.includes(`Dòng ${index + 1}`)) ? "border-red-500" : ""}
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Giá trị"
+                  value={value}
+                  onChange={(e) => handleValueChange("decorations", index, e.target.value)}
+                  className={errors.decorations.some(err => err.includes(`Dòng ${index + 1}`)) ? "border-red-500" : ""}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDeleteRow("decorations", index)}
+                className="mt-1"
+              >
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </Button>
+            </div>
+          ))}
+          {errors.decorations.map((err, i) => (
+            <p key={i} className="text-sm text-red-500 -mt-2">{err}</p>
+          ))}
+          <Button variant="outline" size="sm" onClick={() => handleAddRow("decorations")}>
+            + Thêm phụ kiện
+          </Button>
+        </div>
+
+        <DialogFooter className="mt-6">
+          <Button
+            onClick={isEdit ? handleUpdateEvent : handleCreateEvent}
+            disabled={
+              Boolean(hasError) ||
+              !Boolean(newEvent.name?.trim()) ||
+              !Boolean(newEvent.price?.trim())
+            }
+          >
+            {isEdit ? "Cập nhật" : "Tạo"} sự kiện
+          </Button>
+        </DialogFooter>
+      </div>
     )
   }
 
@@ -350,12 +482,11 @@ export function EventManagement() {
           </Button>
         </div>
 
-        {/* Dialog Thêm */}
         <Dialog
           open={isCreateDialogOpen}
           onOpenChange={(open) => {
             setIsCreateDialogOpen(open)
-            if (open) resetForm() // reset form mỗi khi mở create
+            if (open) resetForm()
           }}
         >
           <DialogTrigger asChild>
@@ -364,10 +495,10 @@ export function EventManagement() {
               Thêm sự kiện
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Thêm sự kiện mới</DialogTitle>
-              <DialogDescription>Tạo gói sự kiện mới</DialogDescription>
+              <DialogDescription>Tạo gói sự kiện mới cho khách hàng</DialogDescription>
             </DialogHeader>
             {renderEventForm(false)}
           </DialogContent>
@@ -393,71 +524,82 @@ export function EventManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEvents.map((event) => (
-                <TableRow key={event.id} className={event.deleted_at ? "opacity-50" : ""}>
-                  <TableCell>{event.name}</TableCell>
-                  <TableCell>{event.description}</TableCell>
-                  <TableCell>{formatPrice(event.price)}</TableCell>
-                  <TableCell>{event.created_at}</TableCell>
-                  <TableCell>
-                    {event.deleted_at ? (
-                      <Badge variant="destructive">Đã xóa</Badge>
-                    ) : (
-                      <Badge variant="secondary">Hoạt động</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => { setSelectedEvent(event); setIsViewDialogOpen(true) }}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {!event.deleted_at && (
-                        <Button variant="ghost" size="sm" onClick={() => handleEditEvent(event)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteEvent(event.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+              {filteredEvents.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                    Không tìm thấy sự kiện nào.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredEvents.map((event) => (
+                  <TableRow key={event.id} className={event.deleted_at ? "opacity-50" : ""}>
+                    <TableCell className="font-medium">{event.name}</TableCell>
+                    <TableCell className="max-w-xs truncate">{event.description || "-"}</TableCell>
+                    <TableCell>{formatPrice(event.price)}</TableCell>
+                    <TableCell>{event.created_at}</TableCell>
+                    <TableCell>
+                      {event.deleted_at ? (
+                        <Badge variant="destructive">Đã xóa</Badge>
+                      ) : (
+                        <Badge variant="secondary">Hoạt động</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => { setSelectedEvent(event); setIsViewDialogOpen(true) }}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {!event.deleted_at && (
+                          <Button variant="ghost" size="sm" onClick={() => handleEditEvent(event)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteEvent(event.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* Dialog xem chi tiết */}
+      {/* View Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Chi tiết sự kiện</DialogTitle>
           </DialogHeader>
           {selectedEvent && (
-            <div className="space-y-4">
-              <p><b>Tên:</b> {selectedEvent.name}</p>
-              <p><b>Mô tả:</b> {selectedEvent.description || "Không có mô tả"}</p>
-              <p><b>Giá:</b> {formatPrice(selectedEvent.price)}</p>
+            <div className="space-y-4 text-sm">
+              <div><b>Tên:</b> {selectedEvent.name}</div>
+              <div><b>Mô tả:</b> {selectedEvent.description || "Không có"}</div>
+              <div><b>Giá:</b> {formatPrice(selectedEvent.price)}</div>
               <div>
-                <Label><b>Dịch vụ kèm theo:</b></Label>
+                <b>Dịch vụ kèm theo:</b>
                 {renderKeyValueList(selectedEvent.inclusions)}
               </div>
               <div>
-                <Label><b>Phụ kiện trang trí:</b></Label>
+                <b>Phụ kiện trang trí:</b>
                 {renderKeyValueList(selectedEvent.decorations)}
               </div>
             </div>
           )}
+          <DialogFooter>
+            <Button onClick={() => setIsViewDialogOpen(false)}>Đóng</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog chỉnh sửa */}
+      {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chỉnh sửa sự kiện</DialogTitle>
-            <DialogDescription>Cập nhật thông tin sự kiện</DialogDescription>
+            <DialogDescription>Cập nhật thông tin gói sự kiện</DialogDescription>
           </DialogHeader>
           {renderEventForm(true)}
         </DialogContent>
