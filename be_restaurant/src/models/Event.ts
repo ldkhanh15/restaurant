@@ -65,7 +65,7 @@ Event.init(
     sequelize,
     tableName: "events",
     timestamps: true,
-    paranoid: true,
+    paranoid: false,
     createdAt: "created_at",
     updatedAt: false,
     deletedAt: "deleted_at",

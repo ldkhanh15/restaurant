@@ -9,6 +9,7 @@ import { Suspense } from "react";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import GlobalChatWidget from "@/components/global-chat-widget";
+import SocketListeners from "@/components/socket/SocketListeners";
 
 export const metadata: Metadata = {
   title: "HIWELL - Fine Dining Experience",
@@ -43,6 +44,7 @@ export default function RootLayout({
           <AuthProvider>
             <WebSocketProvider>
               <RouterProvider>
+                <SocketListeners />
                 <div className="min-h-screen flex flex-col">
                   <Header />
                   <main className="flex-1">{children}</main>

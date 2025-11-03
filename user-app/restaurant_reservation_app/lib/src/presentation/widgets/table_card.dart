@@ -19,6 +19,8 @@ class TableCard extends StatelessWidget {
         return Colors.orange;
       case TableStatus.occupied:
         return Colors.red;
+      case TableStatus.cleaning:
+        return Colors.blue;
     }
   }
 
@@ -29,7 +31,9 @@ class TableCard extends StatelessWidget {
       case TableStatus.reserved:
         return 'Đã đặt';
       case TableStatus.occupied:
-        return 'Đang sử dụng';
+        return 'Sử dụng';
+      case TableStatus.cleaning:
+        return 'Dọn dẹp';
     }
   }
 
@@ -46,20 +50,8 @@ class TableCard extends StatelessWidget {
     }
   }
 
-  Color _getTypeColor(TableType type) {
-    switch (type) {
-      case TableType.vip:
-        return Colors.yellow;
-      case TableType.couple:
-        return Colors.pink;
-      case TableType.group:
-        return Colors.green;
-      default:
-        return Colors.blue;
-    }
-  }
-
   String _formatPrice(double price) {
+    if (price == 0) return 'Miễn phí';
     return '${price.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]}.',
@@ -70,60 +62,53 @@ class TableCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16.0),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header: Icon, Name, Location, Status
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _getTypeColor(table.type).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _getTypeColor(table.type),
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    _getTypeIcon(table.type),
-                    color: _getTypeColor(table.type),
-                    size: 20,
-                  ),
-                ),
+                Icon(_getTypeIcon(table.type), color: Theme.of(context).colorScheme.primary, size: 32),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
+                        // Some data sources include the word "Bàn" inside the name already
+                        // so display the name as-is. If the name does not contain the word
+                        // we keep it unchanged (the design already shows the word inside
+                        // mock data). This prevents "Bàn Bàn VIP 1" duplicates.
                         table.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         table.location,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: _getStatusColor(table.status).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _getStatusColor(table.status),
-                      width: 1,
-                    ),
                   ),
                   child: Text(
                     _getStatusText(table.status),
@@ -132,53 +117,91 @@ class TableCard extends StatelessWidget {
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+
+            // Description
+            if (table.description != null && table.description!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Text(
+                  table.description!,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+
+            const Divider(),
+            const SizedBox(height: 12),
+
+            // Details: Capacity, Deposit, Cancellation
+              // Use Wrap instead of Row so chips can wrap on small screens and avoid overflow
+              Wrap(
+                spacing: 8.0,
+                runSpacing: 6.0,
+                children: [
+                  _buildInfoChip(context, Icons.people_outline, '${table.capacity} người'),
+                  if (table.deposit != null && table.deposit! > 0)
+                    _buildInfoChip(context, Icons.account_balance_wallet_outlined, 'Cọc: ${_formatPrice(table.deposit!)}'),
+                  if (table.cancel_minutes != null)
+                    _buildInfoChip(context, Icons.history, 'Hủy trước ${table.cancel_minutes} phút'),
+                ],
+              ),
+            
+            // Amenities
+            if (table.amenities != null && table.amenities!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Tiện ích', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: table.amenities!.map((amenity) => _buildInfoChip(context, _getAmenityIcon(amenity), amenity)).toList(),
+              )
+            ],
+
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(
-                  Icons.people,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${table.capacity} người',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(width: 16),
-                Icon(
-                  Icons.attach_money,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _formatPrice(table.price),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const Spacer(),
-                if (table.status == TableStatus.available)
-                  ElevatedButton(
-                    onPressed: () => onBook(table),
-                    child: const Text('Đặt bàn'),
-                  )
-                else
-                  OutlinedButton(
-                    onPressed: null,
-                    child: const Text('Không khả dụng'),
-                  ),
-              ],
+
+            // Action Button: always allow opening booking dialog. Availability is checked per-date/time
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: () => onBook(table),
+                icon: const Icon(Icons.bookmark_add_outlined),
+                label: const Text('Đặt ngay'),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildInfoChip(BuildContext context, IconData icon, String label) {
+    return Chip(
+      avatar: Icon(icon, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      label: Text(label),
+      backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      labelStyle: Theme.of(context).textTheme.bodySmall,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  IconData _getAmenityIcon(String amenity) {
+    // Simple mapping, can be expanded
+    final lowerAmenity = amenity.toLowerCase();
+    if (lowerAmenity.contains('wifi')) return Icons.wifi;
+    if (lowerAmenity.contains('cửa sổ') || lowerAmenity.contains('window')) return Icons.window;
+    if (lowerAmenity.contains('riêng tư') || lowerAmenity.contains('private')) return Icons.lock_outline;
+    if (lowerAmenity.contains('ổ cắm') || lowerAmenity.contains('power')) return Icons.power_outlined;
+    if (lowerAmenity.contains('ban công') || lowerAmenity.contains('balcony')) return Icons.balcony;
+    return Icons.check_box_outline_blank;
   }
 }

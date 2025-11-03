@@ -3,6 +3,9 @@ import inventoryService from "../services/inventoryService"
 import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 import logger from "../config/logger"
 import inventoryImportService from "../services/inventoryImportService"
+import Ingredient from "../models/Ingredient"
+import { Employee, InventoryImportIngredient, Supplier, User } from "../models"
+import { json, Op, Sequelize, where } from "sequelize"
 
 
 export const getAllInventoryImport = async (req: Request, res: Response, next: NextFunction) => {
@@ -15,8 +18,9 @@ export const getAllInventoryImport = async (req: Request, res: Response, next: N
       offset,
       order: [[sortBy, sortOrder]],
     })
-
+    
     const result = buildPaginationResult(rows, count, page, limit)
+
     res.json({ status: "success", data: result })
   } catch (error) {
     next(error)
@@ -25,8 +29,44 @@ export const getAllInventoryImport = async (req: Request, res: Response, next: N
 
 export const getInventoryById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const category = await inventoryService.findById((req.params.id))
-    res.json({ status: "success", data: category })
+    const inventory = await inventoryService.findById(req.params.id, {
+      include: [
+        { 
+          model: Supplier, 
+          as: "supplier",
+          where: { deleted_at: null },
+          required: true
+        },
+        { model: Employee, as: "employee",
+          where: { deleted_at: null },
+          required: true,
+          include:[
+            {
+              model : User, as : "user",
+              attributes: ["full_name"]
+            }
+          ]
+        },
+        {
+          model: InventoryImportIngredient,
+          as: "ingredients",
+          include: [
+            { 
+              model: Ingredient, 
+              as: "ingredient", 
+              attributes: ["id", "name", "unit"] 
+            }
+          ],
+          attributes: ["id", "quantity", "total_price"]
+        }
+      ]
+    })
+
+    if (!inventory) {
+      return res.status(404).json({ status: "error", message: "Inventory import not found" })
+    }
+
+    res.json({ status: "success", data: inventory })
   } catch (error) {
     next(error)
   }

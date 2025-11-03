@@ -5,12 +5,38 @@ import {
   buildPaginationResult,
 } from "../utils/pagination";
 import { Op } from "sequelize";
+import User from "../models/User";
 
 export const getAllEmployees = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
+  if (req.query.all === 'true') {
+    const result = await employeeService.findAll({
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "full_name"],
+          },
+        ],
+      });
+    const data =
+    result?.rows && Array.isArray(result.rows)
+      ? result.rows.map((employee: any) => employee.toJSON())
+      : Array.isArray(result)
+      ? result.map((employee: any) => employee.toJSON())
+      : []
+
+    const count = result?.count ?? data.length
+
+    return res.status(200).json({
+      status: "success",
+      count,
+      data,
+    })
+  }
   try {
     const {
       page = 1,

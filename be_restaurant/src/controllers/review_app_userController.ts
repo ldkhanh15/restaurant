@@ -37,6 +37,11 @@ export const createReview = async (req: Request, res: Response, next: NextFuncti
     // Ensure user is attached by authenticate middleware
     const user = (req as any).user
     if (!user || !user.id) return res.status(401).json({ status: "error", message: "Authentication required" })
+    // Basic validation: client must reference a target for the review
+    const { dish_id, order_id, table_id, order_item_id } = req.body || {}
+    if (!dish_id && !order_id && !table_id && !order_item_id) {
+      return res.status(400).json({ status: "error", message: "Review must reference dish_id/order_item_id or table_id/order_id" })
+    }
 
     const created = await reviewAppUserService.createReview(user.id, req.body)
     res.status(201).json({ status: "success", data: created })

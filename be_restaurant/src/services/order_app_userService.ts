@@ -7,6 +7,7 @@ import { Op, type FindOptions, type WhereOptions } from "sequelize"
 
 export const ORDER_ALLOWED_STATUSES = [
   "pending",
+  "waiting_kitchen_confirmation",
   "preparing",
   "ready",
   "delivered",
@@ -69,6 +70,7 @@ class OrderService extends BaseService<Order> {
       where: { ...(options?.where || {}), status },
     })
   }
+  
 
   async searchOrders(search?: string, options?: FindOptions) {
     const where = this.buildSearchWhere(search)

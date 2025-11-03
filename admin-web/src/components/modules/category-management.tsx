@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -75,6 +74,7 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
     created_at: "",
     updated_at: "",
   })
+  const [nameError, setNameError] = useState("")
   const [viewCategory, setViewCategory] = useState<Category | null>(null)
   const [categoryDishes, setCategoryDishes] = useState<Dish[]>([])
   const [isLoadingDishes, setIsLoadingDishes] = useState(false)
@@ -83,9 +83,8 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
     setIsLoadingDishes(true)
     try {
       const response = await dishService.getDishesByCategoryId(categoryId)
-      console.log(response)
-      if (response.data?.data) {
-        setCategoryDishes(response.data.data)
+      if (response) {
+        setCategoryDishes(response as any)
       } else {
         setCategoryDishes([])
       }
@@ -100,12 +99,12 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
 
   const getCategories = async () => {
     try {
-      const categoriesResponse = await categoryService.getAll()
-      if (!categoriesResponse || !categoriesResponse.data) {
+      const categoriesResponse = await categoryService.getAllNoPaging()
+      if (!categoriesResponse) {
         toast.error("Lấy danh mục thất bại")
         return
       }
-      setCategories(categoriesResponse.data.data.data)
+      setCategories(categoriesResponse as any)
     } catch (error) {
       toast.error("Lấy danh mục thất bại")
     }
@@ -121,41 +120,78 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
     return matchSearch && matchStatus
   })
 
+  // Hàm validate tên danh mục
+  const validateCategoryName = (name: string, editingId?: string): boolean => {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setNameError("Tên danh mục không được để trống")
+      return false
+    }
+
+    const isDuplicate = categories.some((cat) => {
+      const isSameName = cat.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      const isDifferentId = !editingId || cat.id !== editingId
+      return isSameName && isDifferentId
+    })
+
+    if (isDuplicate) {
+      setNameError("Tên danh mục đã tồn tại")
+      return false
+    }
+
+    setNameError("")
+    return true
+  }
+
   const openCreateCategory = () => {
     setCategoryForm({
       id: "",
       name: "",
       description: "",
       is_active: true,
-      created_at: new Date().toISOString().split("T")[0],
-      updated_at: new Date().toISOString().split("T")[0],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
+    setNameError("")
     setIsCreateCategoryDialogOpen(true)
   }
 
   const handleCreateCategory = async () => {
-    const name = categoryForm.name.trim()
-    const description = categoryForm.description.trim()
-    if (!name || !description) {
-      toast.error("Vui lòng nhập đầy đủ thông tin")
+    const trimmedName = categoryForm.name.trim()
+    const trimmedDesc = categoryForm.description.trim()
+
+    if (!trimmedName || !trimmedDesc) {
+      toast.error("Vui lòng nhập đầy đủ tên và mô tả")
       return
     }
+
+    if (!validateCategoryName(trimmedName)) {
+      toast.error(nameError)
+      return
+    }
+
     const newCategory: Category = {
-      id: uuidv4() as string,
-      name,
-      description: categoryForm.description.trim(),
-      is_active: !!categoryForm.is_active,
-      created_at: new Date().toISOString().split("T")[0],
-      updated_at: new Date().toISOString().split("T")[0],
+      id: uuidv4(),
+      name: trimmedName,
+      description: trimmedDesc,
+      is_active: categoryForm.is_active,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }
-    const responseCat = await categoryService.create(newCategory)
-    if (!responseCat) {
+
+    try {
+      const responseCat = await categoryService.create(newCategory)
+      if (!responseCat) {
+        toast.error("Tạo danh mục thất bại")
+        return
+      }
+      toast.success("Tạo danh mục thành công")
+      setCategories((prev) => [...prev, newCategory])
+      setIsCreateCategoryDialogOpen(false)
+      setNameError("")
+    } catch (error) {
       toast.error("Tạo danh mục thất bại")
-      return
     }
-    toast.success("Tạo danh mục thành công")
-    setCategories((prev) => [...prev, newCategory])
-    setIsCreateCategoryDialogOpen(false)
   }
 
   const handleEditCategory = (cat: Category) => {
@@ -167,40 +203,55 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
       created_at: cat.created_at,
       updated_at: cat.updated_at,
     })
+    setNameError("")
     setIsEditDialogOpen(true)
   }
 
   const handleUpdateCategory = async () => {
-    const name = categoryForm.name.trim()
-    const description = categoryForm.description.trim()
-    if (!name || !description) {
-      toast.error("Vui lòng nhập đầy đủ thông tin")
+    const trimmedName = categoryForm.name.trim()
+    const trimmedDesc = categoryForm.description.trim()
+
+    if (!trimmedName || !trimmedDesc) {
+      toast.error("Vui lòng nhập đầy đủ tên và mô tả")
       return
     }
-    const response = await categoryService.update(categoryForm.id, {
-      name,
-      description,
-      is_active: categoryForm.is_active,
-    })
-    if (!response) {
-      toast.error("Cập nhật danh mục thất bại")
+
+    if (!validateCategoryName(trimmedName, categoryForm.id)) {
+      toast.error(nameError)
       return
     }
-    toast.success("Cập nhật danh mục thành công")
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === categoryForm.id
-          ? {
-              ...c,
-              name,
-              description: categoryForm.description.trim(),
-              is_active: !!categoryForm.is_active,
-              updated_at: new Date().toISOString().split("T")[0],
-            }
-          : c
+
+    try {
+      const response = await categoryService.update(categoryForm.id, {
+        name: trimmedName,
+        description: trimmedDesc,
+        is_active: categoryForm.is_active,
+      })
+
+      if (!response) {
+        toast.error("Cập nhật danh mục thất bại")
+        return
+      }
+
+      toast.success("Cập nhật danh mục thành công")
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === categoryForm.id
+            ? {
+                ...c,
+                name: trimmedName,
+                description: trimmedDesc,
+                is_active: categoryForm.is_active,
+                updated_at: new Date().toISOString(),
+              }
+            : c
+        )
       )
-    )
-    setIsEditDialogOpen(false)
+      setIsEditDialogOpen(false)
+      setNameError("")
+    } catch (error) {
+      toast.error("Cập nhật danh mục thất bại")
+    }
   }
 
   const handleDeleteCategory = async (id: string) => {
@@ -264,49 +315,58 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCategories.map((category) => (
-                <TableRow key={category.id} className={!category.is_active ? "opacity-50" : ""}>
-                  <TableCell>
-                    <p className="font-medium">{category.name}</p>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground line-clamp-1">
-                    {category.description}
-                  </TableCell>
-                  <TableCell>
-                    {category.is_active ? (
-                      <Badge variant="secondary">Hoạt động</Badge>
-                    ) : (
-                      <Badge variant="outline">Tạm dừng</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={async () => {
-                          setViewCategory(category)
-                          setIsViewCategoryDialogOpen(true)
-                          await getCategoryDishes(category.id)
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCategory(category.id.toString())}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+              {filteredCategories.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                    Không tìm thấy danh mục nào.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredCategories.map((category) => (
+                  <TableRow key={category.id} className={!category.is_active ? "opacity-50" : ""}>
+                    <TableCell>
+                      <p className="font-medium">{category.name}</p>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground line-clamp-1">
+                      {category.description}
+                    </TableCell>
+                    <TableCell>
+                      {category.is_active ? (
+                        <Badge variant="secondary">Hoạt động</Badge>
+                      ) : (
+                        <Badge variant="outline">Tạm dừng</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={async () => {
+                            setViewCategory(category)
+                            setIsViewCategoryDialogOpen(true)
+                            await getCategoryDishes(category.id)
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCategory(category.id.toString())}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
+      {/* Dialog Tạo mới */}
       <Dialog open={isCreateCategoryDialogOpen} onOpenChange={setIsCreateCategoryDialogOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -314,16 +374,19 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
             <DialogDescription>Tạo danh mục mới cho thực đơn</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="category-name">Tên danh mục</Label>
-                <Input
-                  id="category-name"
-                  placeholder="Nhập tên danh mục"
-                  value={categoryForm.name}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                />
-              </div>
+            <div className="grid gap-2">
+              <Label htmlFor="category-name">Tên danh mục</Label>
+              <Input
+                id="category-name"
+                placeholder="Nhập tên danh mục"
+                value={categoryForm.name}
+                onChange={(e) => {
+                  setCategoryForm({ ...categoryForm, name: e.target.value })
+                  if (nameError) validateCategoryName(e.target.value)
+                }}
+                className={nameError ? "border-red-500" : ""}
+              />
+              {nameError && <p className="text-sm text-red-500">{nameError}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="category-description">Mô tả</Label>
@@ -345,11 +408,17 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
           </div>
           <DialogFooter>
             <Button onClick={() => setIsCreateCategoryDialogOpen(false)}>Hủy</Button>
-            <Button onClick={handleCreateCategory}>Tạo danh mục</Button>
+            <Button 
+              onClick={handleCreateCategory}
+              disabled={!categoryForm.name.trim() || !categoryForm.description.trim() || !!nameError}
+            >
+              Tạo danh mục
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Chỉnh sửa */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -357,16 +426,19 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
             <DialogDescription>Chỉnh sửa thông tin danh mục</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-category-name">Tên danh mục</Label>
-                <Input
-                  id="edit-category-name"
-                  placeholder="Nhập tên danh mục"
-                  value={categoryForm.name}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                />
-              </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-category-name">Tên danh mục</Label>
+              <Input
+                id="edit-category-name"
+                placeholder="Nhập tên danh mục"
+                value={categoryForm.name}
+                onChange={(e) => {
+                  setCategoryForm({ ...categoryForm, name: e.target.value })
+                  if (nameError) validateCategoryName(e.target.value, categoryForm.id)
+                }}
+                className={nameError ? "border-red-500" : ""}
+              />
+              {nameError && <p className="text-sm text-red-500">{nameError}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-category-description">Mô tả</Label>
@@ -388,11 +460,17 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
           </div>
           <DialogFooter>
             <Button onClick={() => setIsEditDialogOpen(false)}>Hủy</Button>
-            <Button onClick={handleUpdateCategory}>Lưu</Button>
+            <Button 
+              onClick={handleUpdateCategory}
+              disabled={!categoryForm.name.trim() || !categoryForm.description.trim() || !!nameError}
+            >
+              Lưu
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Xem chi tiết */}
       <Dialog open={isViewCategoryDialogOpen} onOpenChange={setIsViewCategoryDialogOpen}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>

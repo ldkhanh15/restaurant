@@ -23,6 +23,29 @@ export const authenticate = (
   }
 };
 
+// Optional authentication: if token present and valid, attach req.user; otherwise continue as guest
+export const authenticateOptional = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      // no token: continue as guest
+      return next();
+    }
+
+    const token = authHeader.substring(7);
+    const decoded = verifyToken(token);
+    req.user = decoded;
+    return next();
+  } catch (error) {
+    // invalid token: treat as guest (don't block)
+    return next();
+  }
+};
+
 export const authorize = (
   ...roles: Array<"customer" | "employee" | "admin">
 ) => {

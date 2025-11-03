@@ -8,6 +8,7 @@ export const supplierService = {
     create: (data: any) => apiClient.post("/suppliers", data),
     update: (id: string, data: any) => apiClient.put(`/suppliers/${id}`, data),
     remove: (id: string) => apiClient.delete(`/suppliers/${id}`),
+    getAllNoPaging: () => apiClient.get("/suppliers?all=true"),
 }
 
 export type Supplier = {

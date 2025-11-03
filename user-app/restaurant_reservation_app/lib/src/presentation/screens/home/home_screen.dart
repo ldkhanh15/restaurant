@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../widgets/app_bottom_navigation.dart';
+import '../../widgets/main_navigation.dart';
 import '../../../domain/models/event.dart';
 import '../../../domain/models/menu.dart';
 
@@ -50,6 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final user = ref.watch(userProvider);
     final events = ref.watch(eventsProvider);
     final menuCategories = ref.watch(menuCategoriesProvider);
+  final blogsAsync = ref.watch(blogsProvider);
     final unreadNotifications = ref.watch(unreadNotificationsProvider);
 
     return Scaffold(
@@ -325,6 +328,98 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 const SizedBox(height: 24),
 
+                // Blog section
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Bài viết',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          TextButton(onPressed: () => context.push('/blog'), child: const Text('Xem tất cả')),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 140,
+                        child: blogsAsync.when(
+                          data: (blogs) {
+                            final list = blogs.take(3).toList();
+                            if (list.isEmpty) return const Center(child: Text('Chưa có bài viết'));
+                            return ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: list.length,
+                              itemBuilder: (context, index) {
+                                final b = list[index];
+                                return Container(
+                                  width: 260,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  child: Card(
+                                    clipBehavior: Clip.antiAlias,
+                                    child: InkWell(
+                                      onTap: () => context.push('/blog/${b.id}', extra: b),
+                                      child: Row(
+                                        children: [
+                                          if (b.imageUrl.isNotEmpty)
+                                            Container(
+                                              width: 100,
+                                              height: 140,
+                                              decoration: BoxDecoration(
+                                                image: DecorationImage(image: NetworkImage(b.imageUrl), fit: BoxFit.cover),
+                                              ),
+                                            ),
+                                          Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(b.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                                                  const SizedBox(height: 6),
+                                                  Text(b.summary, maxLines: 3, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                          loading: () => const Center(child: CircularProgressIndicator()),
+                          error: (error, stack) => Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Không thể tải bài viết'),
+                                const SizedBox(height: 8),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    // Invalidate the blogs provider to retry fetching
+                                    ref.invalidate(blogsProvider);
+                                  },
+                                  child: const Text('Thử lại'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+
                 // Upcoming Events
                 if (events.isNotEmpty) ...[
                   Padding(
@@ -445,6 +540,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
+  bottomNavigationBar: (context.findAncestorWidgetOfExactType<MainNavigation>() == null)
+      ? const AppBottomNavigation(selectedIndex: 0)
+      : null,
     );
   }
 

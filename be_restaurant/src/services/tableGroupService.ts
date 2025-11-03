@@ -20,6 +20,16 @@ class TableGroupService extends BaseService<TableGroup> {
       },
     })
   }
+
+  async getAllTableGroup() {
+    const tableGroups = await this.model.findAll();
+    return tableGroups;
+  }
+
+   async getTableGroupById(id:string) {
+    const tableGroup = await TableGroup.findByPk(id)
+    return tableGroup;
+  }
 }
 
 export default new TableGroupService()

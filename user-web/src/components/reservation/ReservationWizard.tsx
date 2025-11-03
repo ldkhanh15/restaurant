@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
@@ -22,6 +22,11 @@ import {
   CreditCard,
   CheckCircle,
 } from "lucide-react";
+import {
+  pageVariants,
+  buttonVariants,
+  viewportOptions,
+} from "@/lib/motion-variants";
 
 const steps = [
   { id: 1, name: "Thông Tin", icon: Users },
@@ -113,56 +118,98 @@ export default function ReservationWizard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <motion.div
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+      className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100"
+    >
       <ProgressStepper steps={steps} currentStep={currentStep} />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <AnimatePresence mode="wait">{renderStep()}</AnimatePresence>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{
+              duration: 0.4,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+          >
+            {renderStep()}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Navigation Buttons */}
         {currentStep < 7 && (
-          <div className="flex justify-between mt-8">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={currentStep === 1}
-              className="border-accent/20 hover:bg-accent/5"
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="flex justify-between mt-8"
+          >
+            <motion.div
+              variants={buttonVariants}
+              whileHover="hover"
+              whileTap="tap"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Quay Lại
-            </Button>
+              <Button
+                variant="outline"
+                onClick={handleBack}
+                disabled={currentStep === 1}
+                className="border-accent/20 hover:bg-accent/5 disabled:opacity-50"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Quay Lại
+              </Button>
+            </motion.div>
 
             {currentStep === 6 ? (
-              <Button
-                onClick={handleSubmit}
-                disabled={!canProceedToNext() || isSubmitting}
-                className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+              <motion.div
+                variants={buttonVariants}
+                whileHover="hover"
+                whileTap="tap"
               >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary-foreground mr-2" />
-                    Đang xử lý...
-                  </>
-                ) : (
-                  <>
-                    Hoàn Tất Đặt Bàn
-                    <CheckCircle className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!canProceedToNext() || isSubmitting}
+                  className="bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary-foreground mr-2" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    <>
+                      Hoàn Tất Đặt Bàn
+                      <CheckCircle className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </motion.div>
             ) : (
-              <Button
-                onClick={handleNext}
-                disabled={!canProceedToNext()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              <motion.div
+                variants={buttonVariants}
+                whileHover="hover"
+                whileTap="tap"
               >
-                Tiếp Theo
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
+                <Button
+                  onClick={handleNext}
+                  disabled={!canProceedToNext()}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+                >
+                  Tiếp Theo
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </motion.div>
             )}
-          </div>
+          </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -49,7 +49,6 @@ class DishIngredientService extends BaseService<DishIngredient> {
       ...options,
       where: {
         dish_id: id,
-        deleted_at: null,
       },
       include: [
         { model: Dish, as: "dish" },

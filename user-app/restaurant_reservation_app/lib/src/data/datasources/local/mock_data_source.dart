@@ -76,6 +76,15 @@ class MockDataSource {
     return _reservations;
   }
 
+  Future<List<Reservation>> getReservationsByTableAndDate(String tableId, DateTime date) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return _reservations.where((r) =>
+        r.table.id == tableId &&
+        r.dateTime.year == date.year &&
+        r.dateTime.month == date.month &&
+        r.dateTime.day == date.day).toList();
+  }
+
   Future<Reservation> createReservation(Reservation reservation) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final newReservation = Reservation(

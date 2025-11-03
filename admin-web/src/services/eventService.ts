@@ -8,6 +8,7 @@ export const eventService = {
     create: (data: any) => apiClient.post("/events", data),
     update: (id: string, data: any) => apiClient.put(`/events/${id}`, data),
     remove: (id: string) => apiClient.delete(`/events/${id}`),
+    getAllNoPaging: () => apiClient.get("/events?all=true"),
 }
 
 export type Event = {

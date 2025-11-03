@@ -1,12 +1,12 @@
 import { Router } from "express"
-import * as chatSessionController from "../controllers/chatSessionController"
-import { authenticate, authorize } from "../middlewares/auth"
+import * as chatSessionController from "../controllers/chatSession_app_userController"
+import { authenticateOptional } from "../middlewares/auth"
 
 const router = Router()
 
-router.use(authenticate)
+router.use(authenticateOptional)
 
-router.get("/", authorize("admin", "employee"), chatSessionController.getAllChatSessions)
+router.get("/", chatSessionController.getAllChatSessions)
 router.get("/:id", chatSessionController.getChatSessionById)
 router.post("/", chatSessionController.createChatSession)
 router.put("/:id", chatSessionController.updateChatSession)

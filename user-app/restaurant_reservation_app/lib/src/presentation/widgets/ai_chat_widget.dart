@@ -291,14 +291,34 @@ class _AIChatWidgetState extends ConsumerState<AIChatWidget> {
                     : Theme.of(context).colorScheme.surfaceVariant,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(
-                message['text'] as String,
-                style: TextStyle(
-                  color: isUser 
-                      ? Colors.white
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+              // Sanitize message content: sometimes code/path/debug may push raw
+              // Map/List objects or their toString() (e.g. "{id: 1111..., name: ...}").
+              // Hide those to avoid exposing internal IDs in the UI.
+              child: (() {
+                final raw = message['text'];
+
+                // If the message payload is a Map or List, don't render it.
+                if (raw is Map || raw is List) {
+                  return const SizedBox.shrink();
+                }
+
+                final text = raw?.toString() ?? '';
+
+                // If it looks like an object dump containing an 'id' field, hide it.
+                final objectLike = RegExp(r"^\s*\{[^}]*\bid\b\s*[:=]").hasMatch(text);
+                if (objectLike) {
+                  return const SizedBox.shrink();
+                }
+
+                return Text(
+                  text,
+                  style: TextStyle(
+                    color: isUser 
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                );
+              })(),
             ),
           ),
           if (isUser) ...[

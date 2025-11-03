@@ -3911,49 +3911,82 @@ components:
           format: date-time
           example: "2024-01-01T00:00:00Z"
 
+    Supplier:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "sup_001"
+        name:
+          type: string
+          example: "Fresh Farm Co."
+        contact:
+          type: string
+          nullable: true
+          example: "contact@freshfarm.com | +84 987 654 321"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
     Table:
       type: object
       properties:
         id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "table_001"
         table_number:
           type: string
-          example: "T001"
+          example: "T01"
         capacity:
           type: integer
           example: 4
         deposit:
-          type: integer
-          example: 100000
+          type: number
+          format: decimal
+          example: 200000
         cancel_minutes:
           type: integer
-          example: 15
+          example: 30
         location:
           type: object
           nullable: true
+          example: { "x": 10, "y": 20, "floor": 1 }
         status:
           type: string
           enum: [available, occupied, cleaning, reserved]
-          example: available
+          example: "available"
         panorama_urls:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "https://example.com/panorama/table01.jpg"
         amenities:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "Air conditioner"
         description:
           type: string
-          nullable: true
+          example: "VIP table near window"
         created_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:00:00Z"
         updated_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:20:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
 
     TableGroup:
       type: object
@@ -3995,26 +4028,25 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "dish_001"
         name:
           type: string
-          example: "Pho Bo"
+          example: "Grilled Salmon"
         description:
           type: string
-          nullable: true
-          example: "Traditional Vietnamese beef noodle soup"
+          example: "Delicious grilled salmon with herbs"
         price:
           type: number
           format: decimal
-          example: 45000
+          example: 150000
         category_id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "cat_001"
         media_urls:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "https://example.com/images/salmon.jpg"
         is_best_seller:
           type: boolean
           example: true
@@ -4027,11 +4059,22 @@ components:
         created_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:00:00Z"
         updated_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:15:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        CategoryDish:
+          $ref: "#/components/schemas/CategoryDish"
+        Ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ingredient"
 
     Voucher:
       type: object
@@ -4176,6 +4219,139 @@ components:
           type: string
           format: date-time
           example: "2024-01-01T00:00:00Z"
+
+    CategoryDish:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cat_001"
+        name:
+          type: string
+          example: "Main Dishes"
+        description:
+          type: string
+          example: "Includes all main meal dishes"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:30:00Z"
+    
+    Ingredient:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "ing_001"
+        name:
+          type: string
+          example: "Tomato"
+        unit:
+          type: string
+          example: "kg"
+        barcode:
+          type: string
+          example: "8938505970012"
+        rfid:
+          type: string
+          example: "RF1234567890"
+        min_stock_level:
+          type: number
+          example: 10
+        current_stock:
+          type: number
+          example: 50
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:15:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    InventoryImport:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "inv_001"
+        reason:
+          type: string
+          example: "Restocking ingredients"
+        total_price:
+          type: number
+          example: 1500000
+        employee_id:
+          type: string
+          example: "emp_001"
+        supplier_id:
+          type: string
+          example: "sup_001"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:30:00Z"
+        Supplier:
+          $ref: "#/components/schemas/Supplier"
+        Employee:
+          $ref: "#/components/schemas/Employee"
+        Ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ingredient"
+
+    InventoryImportIngredient:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "inv_ing_001"
+        ingredient_id:
+          type: string
+          example: "ing_001"
+        inventory_imports_id:
+          type: string
+          example: "inv_001"
+        quantity:
+          type: number
+          example: 20
+        total_price:
+          type: number
+          example: 100000
+        Ingredient:
+          $ref: "#/components/schemas/Ingredient"
+        InventoryImport:
+          $ref: "#/components/schemas/InventoryImport"
+
+    DishIngredient:
+      type: object
+      properties:
+        dish_id:
+          type: string
+          example: "dish_001"
+        ingredient_id:
+          type: string
+          example: "ing_001"
+        quantity:
+          type: number
+          example: 50
+        Dish:
+          $ref: "#/components/schemas/Dish"
+        Ingredient:
+          $ref: "#/components/schemas/Ingredient"
 
     # Main schemas with relations
     Notification:
@@ -4585,3 +4761,17 @@ tags:
     description: Payment and statistics operations
   - name: Chat
     description: Chat and messaging operations
+  - name: Event
+    description: Event management operations
+  - name: Supplier
+    description: Supplier management operations
+  - name: Category
+    description: Category management operations
+  - name: Dish
+    description: Dish management operations
+  - name: Ingredient
+    description: Ingredient management operations
+  - name: Table
+    description: Ingredient management operations
+  - name: InventoryImport
+    description: InventoryImport management operations

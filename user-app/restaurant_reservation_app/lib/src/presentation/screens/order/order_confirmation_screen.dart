@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/app.dart';
+import 'dart:convert';
 import '../../../domain/models/booking.dart';
 import '../../../domain/models/order.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../data/datasources/api_config.dart';
+import '../../../application/socket_manager.dart';
 
 class OrderConfirmationScreen extends ConsumerStatefulWidget {
   final Booking booking;
@@ -18,6 +22,7 @@ class OrderConfirmationScreen extends ConsumerStatefulWidget {
 class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScreen> {
   final TextEditingController _specialInstructionsController = TextEditingController();
   bool _isConfirming = false;
+  // Use global socket manager via provider
 
   @override
   void dispose() {
@@ -59,7 +64,8 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     final payload = {
       'reservation_id': widget.booking.serverId ?? widget.booking.id,
       'table_id': widget.booking.tableId.toString(),
-      'user_id': null, // optional: fill if you have user info
+      // Ensure backend receives the authenticated user id when available
+      'user_id': ref.read(userProvider)?.id ?? ApiConfig.currentUserId,
       'total_amount': order.total,
       'notes': order.specialInstructions,
       'items': order.items.map((oi) => {
@@ -74,19 +80,61 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
   }
 
   Order _createOrderFromServerResponse(Map<String, dynamic> created, Order localOrder) {
-    final serverItems = (created['items'] as List<dynamic>?) ?? [];
+    List<dynamic> _parseDynamicList(dynamic v) {
+      if (v == null) return <dynamic>[];
+      if (v is List<dynamic>) return v;
+      if (v is String) {
+        // try to decode JSON string
+        try {
+          final decoded = json.decode(v);
+          if (decoded is List<dynamic>) return decoded;
+          if (decoded is Map && decoded['data'] is List<dynamic>) return (decoded['data'] as List<dynamic>);
+        } catch (_) {
+          // fallback: comma separated
+          return v.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+      }
+      if (v is Map<String, dynamic>) {
+        if (v['rows'] is List<dynamic>) return (v['rows'] as List<dynamic>);
+        if (v['data'] is List<dynamic>) return (v['data'] as List<dynamic>);
+      }
+      return <dynamic>[v];
+    }
+
+    final serverItems = _parseDynamicList(created['items']);
+
+    
+
+    List<String> _parseStringList(dynamic raw) {
+      if (raw == null) return <String>[];
+      if (raw is List<dynamic>) return raw.map((e) => e.toString()).toList();
+      if (raw is String) {
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is List<dynamic>) return decoded.map((e) => e.toString()).toList();
+          if (decoded is String) return decoded.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        } catch (_) {
+          return raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+      }
+      if (raw is Map && raw['data'] is List<dynamic>) return (raw['data'] as List<dynamic>).map((e) => e.toString()).toList();
+      return <String>[];
+    }
+
     final mappedItems = serverItems.map((si) {
       return OrderItem(
         id: si['dish_id']?.toString() ?? si['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
         name: si['name'] ?? '',
         price: (si['price'] is num) ? (si['price'] as num).toDouble() : double.tryParse((si['price'] ?? '0').toString()) ?? 0.0,
         quantity: (si['quantity'] as int?) ?? int.tryParse((si['quantity'] ?? '1').toString()) ?? 1,
-        customizations: (si['customizations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        customizations: _parseStringList(si['customizations']),
         specialNote: null,
         estimatedTime: 10, // Consider getting this from server or local logic
         image: '', // Consider getting this from server or local logic
       );
     }).toList();
+
+    
 
     return Order(
       id: created['id']?.toString() ?? localOrder.id,
@@ -122,11 +170,107 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     final localOrder = _buildLocalOrder(orderItems);
     final payload = _buildOrderPayload(localOrder);
 
+    // Check if there's an existing order created previously (e.g., via "Xác nhận đặt món")
+    final existingOrder = ref.read(currentOrderProvider);
+
     try {
-      final created = await OrderAppUserService.createOrder(payload);
-      final serverOrder = _createOrderFromServerResponse(created, localOrder);
-      ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
-      ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+      if (navigateTo == '/kitchen-status') {
+        // Prefer updating an existing pending order to 'waiting_kitchen_confirmation'
+        if (existingOrder != null && existingOrder.status == OrderStatus.pending) {
+          final existingOrderId = existingOrder.id;
+          try {
+            // Optimistically set local status
+            final optimistic = existingOrder.copyWith(status: OrderStatus.waitingKitchenConfirmation);
+            ref.read(currentOrderProvider.notifier).setOrder(optimistic);
+
+            // Call backend to update status
+            final updated = await OrderAppUserService.sendToKitchen(existingOrderId);
+            final updatedOrder = _createOrderFromServerResponse(updated, existingOrder);
+            ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+            ref.read(orderItemsProvider.notifier).setItems(updatedOrder.items);
+
+            // Sync into order history
+            try {
+              final list = ref.read(orderHistoryProvider);
+              final idx = list.indexWhere((o) => o.id == updatedOrder.id);
+              if (idx != -1) {
+                final copy = list.toList();
+                copy[idx] = updatedOrder;
+                ref.read(orderHistoryProvider.notifier).setOrders(copy);
+              } else {
+                ref.read(orderHistoryProvider.notifier).addOrder(updatedOrder);
+              }
+            } catch (_) {}
+
+            // Join socket room for realtime updates
+            try {
+              ref.read(orderSocketManagerProvider).joinOrder(existingOrderId);
+            } catch (_) {}
+          } catch (e) {
+            // If updating existing order fails, fall back to creating a new order and sending it
+            try {
+              payload['status'] = 'waiting_kitchen_confirmation';
+              final created = await OrderAppUserService.createOrder(payload);
+              final serverOrder = _createOrderFromServerResponse(created, localOrder);
+              ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+              ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+                // Sync into order history
+                try {
+                  final list = ref.read(orderHistoryProvider);
+                  final idx = list.indexWhere((o) => o.id == serverOrder.id);
+                  if (idx != -1) {
+                    final copy = list.toList();
+                    copy[idx] = serverOrder;
+                    ref.read(orderHistoryProvider.notifier).setOrders(copy);
+                  } else {
+                    ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+                  }
+                } catch (_) {}
+
+              final createdOrderId = created['id']?.toString() ?? serverOrder.id;
+              try {
+                ref.read(orderSocketManagerProvider).joinOrder(createdOrderId);
+              } catch (_) {}
+            } catch (e2) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Không thể gửi bếp ngay bây giờ: $e2')),
+              );
+            }
+          }
+        } else {
+          // No existing pending order: create one with waiting status and join room
+          payload['status'] = 'waiting_kitchen_confirmation';
+          final created = await OrderAppUserService.createOrder(payload);
+          final serverOrder = _createOrderFromServerResponse(created, localOrder);
+          ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+          ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+
+            // Sync into order history
+            try {
+              final list = ref.read(orderHistoryProvider);
+              final idx = list.indexWhere((o) => o.id == serverOrder.id);
+              if (idx != -1) {
+                final copy = list.toList();
+                copy[idx] = serverOrder;
+                ref.read(orderHistoryProvider.notifier).setOrders(copy);
+              } else {
+                ref.read(orderHistoryProvider.notifier).addOrder(serverOrder);
+              }
+            } catch (_) {}
+
+          final createdOrderId = created['id']?.toString() ?? serverOrder.id;
+          try {
+            ref.read(orderSocketManagerProvider).joinOrder(createdOrderId);
+          } catch (_) {}
+        }
+      } else {
+        // Non-kitchen flows (e.g., payment) — create order if not exists
+        final created = await OrderAppUserService.createOrder(payload);
+        final serverOrder = _createOrderFromServerResponse(created, localOrder);
+        ref.read(currentOrderProvider.notifier).setOrder(serverOrder);
+        ref.read(orderItemsProvider.notifier).setItems(serverOrder.items);
+      }
     } catch (e) {
       // Fallback to local behavior if API fails
       if (mounted) {
@@ -139,7 +283,15 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
     } finally {
       ref.read(cartItemsProvider.notifier).clearCart();
       setState(() => _isConfirming = false);
-      if (mounted) context.go(navigateTo);
+      if (mounted) {
+        // Use the app-level router to ensure the top-level path is resolved
+        try {
+          appRouter.go(navigateTo);
+        } catch (_) {
+          // fallback to local context navigation if something goes wrong
+          context.go(navigateTo);
+        }
+      }
     }
   }
 
@@ -166,15 +318,60 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
   @override
   Widget build(BuildContext context) {
     final cartItems = ref.watch(cartItemsProvider);
-    final cartTotal = ref.watch(cartTotalProvider);
-    final serviceCharge = cartTotal * 0.1;
-    final tax = (cartTotal + serviceCharge) * 0.1;
-    final total = cartTotal + serviceCharge + tax;
+    final orderItems = ref.watch(orderItemsProvider);
+    final currentOrder = ref.watch(currentOrderProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Xác nhận đơn hàng'),
-      ),
+    // Prepare display items: prefer cart items, otherwise use orderItems stored from server
+    final List<Map<String, dynamic>> displayItems = [];
+    if (cartItems.isNotEmpty) {
+      for (final ci in cartItems) {
+        displayItems.add({
+          'name': ci.name,
+          'image': ci.image,
+          'quantity': ci.quantity,
+          'totalPrice': ci.totalPrice,
+          'customizations': ci.customizations,
+          'specialNote': ci.specialNote,
+        });
+      }
+    } else if (orderItems.isNotEmpty) {
+      for (final oi in orderItems) {
+        displayItems.add({
+          'name': oi.name,
+          'image': oi.image,
+          'quantity': oi.quantity,
+          'totalPrice': oi.totalPrice,
+          'customizations': oi.customizations,
+          'specialNote': oi.specialNote,
+        });
+      }
+    }
+
+    // Compute totals: prefer cart total, then currentOrder total, then sum of displayItems
+    final cartTotal = (cartItems.isNotEmpty)
+        ? ref.watch(cartTotalProvider)
+        : (currentOrder != null ? currentOrder.total : displayItems.fold<double>(0.0, (s, e) => s + (e['totalPrice'] as double)));
+    final serviceCharge = (currentOrder != null) ? currentOrder.serviceCharge : cartTotal * 0.1;
+    final tax = (currentOrder != null) ? currentOrder.tax : (cartTotal + serviceCharge) * 0.1;
+    final total = (currentOrder != null) ? currentOrder.total : cartTotal + serviceCharge + tax;
+
+    return WillPopScope(
+      onWillPop: () async {
+        // Intercept system back and always navigate to bookings list
+        context.go('/my-bookings');
+        return false; // we've handled navigation
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              // Always navigate back to the reservations list (Của tôi)
+              context.go('/my-bookings');
+            },
+          ),
+          title: const Text('Xác nhận đơn hàng'),
+        ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -231,16 +428,20 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
               ),
             ),
             const SizedBox(height: 12),
-            ...cartItems.map((item) => Card(
+            ...displayItems.map((item) => Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(
-                    item.image,
+                    (item['image'] as String?) ?? '',
                     width: 50,
                     height: 50,
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(width:50,height:50, alignment: Alignment.center, child: SizedBox(width:16,height:16, child: CircularProgressIndicator(strokeWidth:2)));
+                    },
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         width: 50,
@@ -251,18 +452,18 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
                     },
                   ),
                 ),
-                title: Text(item.name),
+                title: Text(item['name'] as String? ?? ''),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (item.customizations.isNotEmpty)
+                    if ((item['customizations'] as List?)?.isNotEmpty ?? false)
                       Text(
-                        'Tùy chỉnh: ${item.customizations.join(', ')}',
+                        'Tùy chỉnh: ${(item['customizations'] as List).join(', ')}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    if (item.specialNote != null)
+                    if ((item['specialNote'] as String?) != null)
                       Text(
-                        'Ghi chú: ${item.specialNote}',
+                        'Ghi chú: ${item['specialNote']}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                   ],
@@ -272,11 +473,11 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'x${item.quantity}',
+                      'x${item['quantity']}',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     Text(
-                      _formatPrice(item.totalPrice),
+                      _formatPrice(item['totalPrice'] as double? ?? 0.0),
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -395,7 +596,8 @@ class _OrderConfirmationScreenState extends ConsumerState<OrderConfirmationScree
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

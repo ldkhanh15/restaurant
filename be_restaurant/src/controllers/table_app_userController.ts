@@ -6,7 +6,23 @@ import { AppError } from "../middlewares/errorHandler"
 export const getTables_app_user = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tables = await tableService.findAll({})
-    res.json(tables.rows)
+    // Map Sequelize instances to plain objects and ensure expected keys are present
+    const payload = tables.rows.map((t: any) => ({
+      id: t.id,
+      table_number: t.table_number,
+      capacity: t.capacity,
+      deposit: t.deposit,
+      cancel_minutes: t.cancel_minutes,
+      location: t.location,
+      status: t.status,
+      panorama_urls: t.panorama_urls,
+      amenities: t.amenities,
+      description: t.description,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+    }))
+
+    res.json(payload)
   } catch (error) {
     next(error)
   }
@@ -16,7 +32,21 @@ export const getTables_app_user = async (req: Request, res: Response, next: Next
 export const getAvailableTables_app_user = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tables = await tableService.findAvailableTables()
-    res.json(tables)
+    const payload = (tables || []).map((t: any) => ({
+      id: t.id,
+      table_number: t.table_number,
+      capacity: t.capacity,
+      deposit: t.deposit,
+      cancel_minutes: t.cancel_minutes,
+      location: t.location,
+      status: t.status,
+      panorama_urls: t.panorama_urls,
+      amenities: t.amenities,
+      description: t.description,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+    }))
+    res.json(payload)
   } catch (error) {
     next(error)
   }

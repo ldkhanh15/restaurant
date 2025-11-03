@@ -2,12 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../application/providers.dart';
+import '../../../domain/models/voucher.dart' as domain_voucher;
 import '../../../domain/models/payment.dart';
 import '../../../domain/models/order.dart';
+import '../../../domain/models/booking.dart';
 import '../../../data/services/order_app_user_service_app_user.dart';
+import '../../../domain/models/notification.dart';
+import '../../../data/services/payment_app_user_service_app_user.dart';
+import '../../widgets/leading_back_button.dart';
+import '../../../app/app.dart';
+import 'payment_success_screen.dart';
+import '../../../data/datasources/api_config.dart';
+import '../payment/vnpay_webview_screen.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
-  const PaymentScreen({super.key});
+  final String? initialOrderId;
+  final List<String>? initialVoucherIds;
+  final double? initialDiscount;
+  final double? initialFinalAmount;
+  final double? initialSubtotal;
+  const PaymentScreen({super.key, this.initialOrderId, this.initialVoucherIds, this.initialDiscount, this.initialFinalAmount, this.initialSubtotal});
 
   @override
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
@@ -17,12 +31,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethodType? selectedMethod;
   bool isProcessing = false;
   final TextEditingController _notesController = TextEditingController();
+  List<String>? _appliedVoucherIds;
 
 
   @override
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // If navigation supplied an initial voucher id, keep it locally.
+    _appliedVoucherIds = widget.initialVoucherIds;
+    // If an order id was supplied, we might want to fetch that order specifically.
+    // For now we rely on currentOrderProvider being set, but leave the id available.
+    // final initialOrderId = widget.initialOrderId;
+    if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+      // Ensure vouchers are loaded so we can calculate discount
+      Future.microtask(() async {
+        try {
+          await ref.read(vouchersProvider.notifier).fetchUserVouchers();
+        } catch (_) {}
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   String _formatPrice(double price) {
@@ -42,6 +76,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'MoMo';
       case PaymentMethodType.banking:
         return 'Chuyển khoản';
+      case PaymentMethodType.vnpay:
+        return 'VNPay';
     }
   }
 
@@ -55,6 +91,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return Icons.account_balance_wallet;
       case PaymentMethodType.banking:
         return Icons.account_balance;
+      case PaymentMethodType.vnpay:
+        return Icons.payment;
     }
   }
 
@@ -69,6 +107,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'other';
       case PaymentMethodType.banking:
         return 'other';
+      case PaymentMethodType.vnpay:
+        return 'vnpay';
     }
   }
 
@@ -82,6 +122,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return PaymentMethodType.momo;
       case 'banking':
         return PaymentMethodType.banking;
+      case 'vnpay':
+        return PaymentMethodType.vnpay;
       default:
         return PaymentMethodType.cash;
     }
@@ -114,88 +156,251 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       isProcessing = true;
     });
 
-    // Simulate payment processing
-    await Future.delayed(const Duration(seconds: 2));
-
     final currentOrder = ref.read(currentOrderProvider);
-    if (currentOrder != null) {
-      try {
-        // Gọi API mới để xử lý thanh toán
+    if (currentOrder == null) {
+      setState(() { isProcessing = false; });
+      return;
+    }
+
+    // Compute applied vouchers and final total here so we can pass amount to backend calls
+    final voucherState = ref.read(vouchersProvider);
+    List<domain_voucher.Voucher> appliedVouchers = [];
+    if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+      final all = [...voucherState.activeVouchers, ...voucherState.usedVouchers, ...voucherState.expiredVouchers];
+      final idSet = _appliedVoucherIds!.toSet();
+      appliedVouchers = all.where((v) => idSet.contains(v.id)).cast<domain_voucher.Voucher>().toList();
+    }
+
+    double _calculateDiscountForSubtotal(double subtotal) {
+      if (appliedVouchers.isEmpty) return 0.0;
+      double fixed = 0.0;
+      double percentSum = 0.0;
+      for (final v in appliedVouchers) {
+        if (v.discountAmount != null) fixed += v.discountAmount!;
+        if (v.discountPercentage != null) percentSum += v.discountPercentage!;
+      }
+      final percentDiscount = subtotal * (percentSum / 100.0);
+      final total = fixed + percentDiscount;
+      return total.clamp(0, subtotal);
+    }
+
+    final discount = _calculateDiscountForSubtotal(currentOrder.subtotal);
+    final finalTotal = (currentOrder.total - discount).clamp(0.0, double.infinity);
+
+    try {
+      // If user selected VNPay (or momo/banking mapped to vnpay on backend), call createVnpayPayment
+  // Only MoMo should use the VNPay redirect flow. Treat banking (transfer) as a simple method
+  // that uses the immediate processOrderPayment API to mark the order paid.
+  // VNPay redirect flow for VNPay and MoMo (backend maps MoMo -> vnpay redirect when appropriate)
+  if (selectedMethod == PaymentMethodType.momo || selectedMethod == PaymentMethodType.vnpay) {
+        // Use backend to generate VNPay redirect URL, then open inside an in-app WebView so
+        // the user can select bank -> fill bank form -> OTP, and we intercept the return URL.
+        final resp = await PaymentAppUserService.createVnpayPayment(
+          currentOrder.id.toString(),
+          voucherIds: _appliedVoucherIds,
+          amount: finalTotal,
+        );
+        final redirect = resp['redirect_url'] as String?;
+        if (redirect != null && redirect.isNotEmpty) {
+          // Build return URL prefix from backend config. The backend uses /api/payments/vnpay/return
+          final returnPrefix = ApiConfig.baseUrl.endsWith('/')
+              ? '${ApiConfig.baseUrl}api/payments/vnpay/return'
+              : '${ApiConfig.baseUrl}/api/payments/vnpay/return';
+
+          // Open WebView and await the final return URL (which VNPAY will redirect to after OTP)
+          final resultUrl = await Navigator.of(context).push<String?>(
+            MaterialPageRoute(builder: (_) => VnPayWebViewScreen(initialUrl: redirect, returnUrlPrefix: returnPrefix)),
+          );
+
+          // If we received a resultUrl, call backend verify endpoint to validate the VNPay return
+          if (resultUrl != null && resultUrl.isNotEmpty) {
+            try {
+              // Dev fallback: if VNPay returned a localhost URL (common in dev/backends),
+              // replace the host with ApiConfig.baseUrl so the app can reach the backend.
+              var normalizedResultUrl = resultUrl;
+              try {
+                final parsed = Uri.parse(resultUrl);
+                if ((parsed.host == 'localhost' || parsed.host == '127.0.0.1') && ApiConfig.baseUrl.isNotEmpty) {
+                  final base = Uri.parse(ApiConfig.baseUrl);
+                  final replaced = base.replace(path: parsed.path, queryParameters: parsed.queryParameters);
+                  normalizedResultUrl = replaced.toString();
+                }
+              } catch (_) {
+                // ignore parse errors and use original
+              }
+
+              final verifyResp = await PaymentAppUserService.verifyVnpayReturnFromUrl(normalizedResultUrl);
+              // Backend should return payment result including order id and payment_status
+              final paymentStatus = (verifyResp['payment_status'] ?? verifyResp['status'] ?? 'paid') as String;
+              final paymentMethod = (verifyResp['payment_method'] ?? 'vnpay') as String;
+              // Refresh order from backend to get canonical values
+              try {
+                final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
+                final updatedOrder = currentOrder.copyWith(
+                  status: fresh['status'] == 'paid' ? OrderStatus.paid : currentOrder.status,
+                  paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? paymentMethod),
+                  paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? paymentStatus),
+                );
+                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+              } catch (_) {
+                // Fallback: update local status based on verifyResp
+                final updatedOrder = currentOrder.copyWith(
+                  paymentMethod: _parsePaymentMethodType(paymentMethod),
+                  paymentStatus: _parsePaymentStatus(paymentStatus),
+                  status: paymentStatus.toLowerCase() == 'paid' ? OrderStatus.paid : currentOrder.status,
+                );
+                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+              }
+            } catch (e) {
+              // verification failed — keep polling or notify user
+              // For now, show a snackbar and allow polling fallback
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xác thực giao dịch: $e')));
+            }
+          }
+        }
+      } else {
+        // For cash or other simple methods, call processOrderPayment API to mark paid
         final updatedOrderData = await OrderAppUserService.processOrderPayment(currentOrder.id.toString(), {
           'payment_status': 'paid',
           'payment_method': _getPaymentMethodString(selectedMethod!),
+          if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) 'voucher_ids': _appliedVoucherIds,
+          'amount': finalTotal,
         });
 
-        // Cập nhật đối tượng Order hiện tại với dữ liệu mới từ server
         final updatedOrder = currentOrder.copyWith(
           status: OrderStatus.paid,
-          paymentMethod: _parsePaymentMethodType(updatedOrderData['payment_method']),
-          paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status']),
+          paymentMethod: _parsePaymentMethodType(updatedOrderData['payment_method'] ?? 'cash'),
+          paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status'] ?? 'paid'),
         );
         ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
-
-      } catch (e) {
-        // Nếu API lỗi, chỉ cập nhật trạng thái local để user tiếp tục
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi thanh toán: $e. Cập nhật tạm thời.')));
-        ref.read(currentOrderProvider.notifier).setOrder(
-          currentOrder.copyWith(status: OrderStatus.paid), // Cập nhật trạng thái là đã thanh toán
-        );
       }
+    } catch (e) {
+      // If API errors, fallback to local update and notify user
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi thanh toán: $e. Cập nhật tạm thời.')));
+      ref.read(currentOrderProvider.notifier).setOrder(currentOrder.copyWith(status: OrderStatus.paid));
+    }
 
-      setState(() {
-        isProcessing = false;
-      });
+    setState(() {
+      isProcessing = false;
+    });
 
-      // If MoMo selected, show QR code dialog
-      if (selectedMethod == PaymentMethodType.momo) {
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Quét QR MoMo'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Ideally we would fetch QR image from backend; placeholder for now
-                Container(
-                  width: 200,
-                  height: 200,
-                  color: Colors.grey[200],
-                  child: const Center(child: Text('QR CODE\n(placeholder)')),
-                ),
-                const SizedBox(height: 12),
-                const Text('Mở app MoMo và quét mã QR để thanh toán'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Đóng'),
-              ),
-            ],
-          ),
+    // After successful payment, create a local notification and navigate to payment success screen
+    try {
+      final updatedOrder = ref.read(currentOrderProvider);
+          if (updatedOrder != null) {
+  final user = ref.read(userProvider);
+  final userId = user != null ? user.id.toString() : null;
+        final notif = AppNotification(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          userId: userId,
+          type: NotificationType.other,
+          content: 'Đơn hàng #${updatedOrder.id} đã được thanh toán',
+          sentAt: DateTime.now(),
+          status: NotificationStatus.sent,
         );
-      }
+        try {
+          ref.read(notificationsProvider.notifier).addNotification(notif);
+        } catch (_) {}
 
-      if (mounted) {
-        context.go('/kitchen-status');
+        // Try to find the booking object to navigate to order-confirmation
+        final bookings = ref.read(bookingsProvider);
+        Booking? found;
+        try {
+          final matches = bookings.where((b) => b.id == updatedOrder.bookingId || b.serverId == updatedOrder.bookingId).toList();
+          if (matches.isNotEmpty) found = matches.first;
+        } catch (_) {}
+
+        if (!mounted) return;
+        if (found != null) {
+          final updatedOrder = ref.read(currentOrderProvider);
+          if (updatedOrder != null) {
+            // Show payment success screen
+            if (mounted) {
+              try {
+                appRouter.go('/payment-success', extra: updatedOrder);
+                return;
+              } catch (_) {
+                // Fallback: push the screen directly to avoid relying on router registration
+                try {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrder)));
+                  return;
+                } catch (__){
+                  context.go('/account?tab=orders');
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // If payment completed, show Payment Success screen. Otherwise fall back to orders list.
+    final updatedOrderFallback = ref.read(currentOrderProvider);
+    if (updatedOrderFallback != null) {
+      // If order is paid, show payment success
+      if (updatedOrderFallback.paymentStatus == PaymentStatus.completed || updatedOrderFallback.status == OrderStatus.paid) {
+        if (mounted) {
+          try {
+            appRouter.go('/payment-success', extra: updatedOrderFallback);
+            return;
+          } catch (_) {
+            try {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrderFallback)));
+              return;
+            } catch (__){ }
+          }
+        }
       }
     }
+
+    if (mounted) context.go('/account?tab=orders');
   }
 
   @override
   Widget build(BuildContext context) {
   final currentOrder = ref.watch(currentOrderProvider);
+  final voucherState = ref.watch(vouchersProvider);
+
+  // Resolve applied vouchers from ids (search across categories)
+  List<domain_voucher.Voucher> appliedVouchers = [];
+  if (_appliedVoucherIds != null && _appliedVoucherIds!.isNotEmpty) {
+    final all = [...voucherState.activeVouchers, ...voucherState.usedVouchers, ...voucherState.expiredVouchers];
+    final idSet = _appliedVoucherIds!.toSet();
+    appliedVouchers = all.where((v) => idSet.contains(v.id)).cast<domain_voucher.Voucher>().toList();
+  }
+
+  double _calculateDiscountLocal(double subtotal) {
+    if (appliedVouchers.isEmpty) return 0.0;
+    double fixed = 0.0;
+    double percentSum = 0.0;
+    for (final v in appliedVouchers) {
+      if (v.discountAmount != null) fixed += v.discountAmount!;
+      if (v.discountPercentage != null) percentSum += v.discountPercentage!;
+    }
+    final percentDiscount = subtotal * (percentSum / 100.0);
+    final total = fixed + percentDiscount;
+    return total.clamp(0, subtotal);
+  }
 
     if (currentOrder == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Thanh toán')),
+        appBar: AppBar(
+          leading: const LeadingBackButton(),
+          title: const Text('Thanh toán'),
+        ),
         body: const Center(
           child: Text('Không có đơn hàng để thanh toán'),
         ),
       );
     }
 
-    return Scaffold(
+  // Prefer initial values provided via navigation extras (from Confirm & Pay) to avoid mismatch
+  final subtotal = widget.initialSubtotal ?? currentOrder.subtotal;
+  final discount = widget.initialDiscount ?? _calculateDiscountLocal(subtotal);
+  final finalTotal = widget.initialFinalAmount ?? (currentOrder.total - discount).clamp(0.0, double.infinity);
+
+  return Scaffold(
       appBar: AppBar(
         title: const Text('Thanh toán'),
       ),
@@ -242,6 +447,29 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       ],
                     ),
                     const Divider(),
+                    if (appliedVouchers.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Voucher áp dụng:'),
+                          Text('${appliedVouchers.length}'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: appliedVouchers.map((v) => Chip(label: Text(v.code))).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Giảm:'),
+                          Text('-${_formatPrice(discount)}'),
+                        ],
+                      ),
+                      const Divider(),
+                    ],
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -252,7 +480,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           ),
                         ),
                         Text(
-                          _formatPrice(currentOrder.total),
+                          _formatPrice(finalTotal),
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
@@ -340,7 +568,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           Text('Đang xử lý...'),
                         ],
                       )
-                    : Text('Thanh toán ${_formatPrice(currentOrder.total)}'),
+                    : Text('Thanh toán ${_formatPrice(finalTotal)}'),
               ),
             ),
           ],
@@ -359,6 +587,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Ví điện tử MoMo';
       case PaymentMethodType.banking:
         return 'Internet Banking';
+      case PaymentMethodType.vnpay:
+        return 'Thanh toán qua VNPay (Internet Banking / QR / Ví)';
+      // All PaymentMethodType cases handled above.
     }
   }
 }

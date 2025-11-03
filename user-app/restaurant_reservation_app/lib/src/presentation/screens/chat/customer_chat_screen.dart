@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
+import '../../../data/services/chat_app_user_service.dart';
 
 class CustomerChatScreen extends ConsumerStatefulWidget {
   const CustomerChatScreen({super.key});
@@ -12,9 +13,14 @@ class CustomerChatScreen extends ConsumerStatefulWidget {
 class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  ChatAppUserService? _chatService;
+  String? _sessionId;
 
   @override
   void dispose() {
+    try {
+      _chatService?.disconnectSocket();
+    } catch (_) {}
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -24,51 +30,96 @@ class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
-    // Add user message
+    // Optimistically add user message locally (status: sending)
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     ref.read(chatMessagesProvider.notifier).addMessage({
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'id': tempId,
       'text': message,
       'isUser': true,
       'timestamp': DateTime.now(),
-      'status': 'sent',
+      'status': 'sending',
     });
 
     _messageController.clear();
 
-    // Simulate staff typing
-    ref.read(isTypingProvider.notifier).setTyping(true);
-
-    // Simulate staff response
-    Future.delayed(const Duration(seconds: 2), () {
-      ref.read(isTypingProvider.notifier).setTyping(false);
-      ref.read(chatMessagesProvider.notifier).addMessage({
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'text': _generateStaffResponse(message),
-        'isUser': false,
-        'timestamp': DateTime.now(),
-        'status': 'delivered',
-      });
-    });
+    // send to server
+    () async {
+      try {
+        final data = await (_chatService?.sendMessage(message, sessionId: _sessionId) ?? Future.error('no chat service'));
+        // Replace temp message with server message
+        ref.read(chatMessagesProvider.notifier).replaceMessage(tempId, {
+          'id': data['id']?.toString() ?? tempId,
+          'text': data['message_text'] ?? data['text'] ?? message,
+          'isUser': true,
+          'timestamp': DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now(),
+          'status': 'sent',
+        });
+        // update session id if set
+        _sessionId = (data['session_id'] as String?) ?? _sessionId;
+      } catch (e) {
+        // mark temp message as failed
+        ref.read(chatMessagesProvider.notifier).markMessageFailed(tempId);
+      }
+    }();
   }
 
-  String _generateStaffResponse(String userMessage) {
-    final message = userMessage.toLowerCase();
-    
-    if (message.contains('menu') || message.contains('thực đơn')) {
-      return 'Chào bạn! Chúng tôi có nhiều món ăn ngon. Bạn có thể xem thực đơn chi tiết trên ứng dụng. Có gì cần tư vấn thêm không ạ?';
-    } else if (message.contains('đặt bàn') || message.contains('reservation')) {
-      return 'Bạn muốn đặt bàn cho bao nhiêu người và thời gian nào ạ? Tôi sẽ kiểm tra bàn trống cho bạn.';
-    } else if (message.contains('giá') || message.contains('price')) {
-      return 'Giá cả của chúng tôi rất hợp lý! Phí đặt bàn từ 150,000đ - 600,000đ. Món ăn từ 20,000đ - 80,000đ. Bạn có muốn tôi gửi thực đơn chi tiết không?';
-    } else if (message.contains('thời gian') || message.contains('giờ')) {
-      return 'Nhà hàng mở cửa từ 11:00 - 22:00 hàng ngày. Bạn có thể đặt bàn trong khung giờ này. Có gì cần hỗ trợ thêm không ạ?';
-    } else if (message.contains('cảm ơn') || message.contains('thank')) {
-      return 'Không có gì ạ! Rất vui được phục vụ bạn. Nếu có gì cần hỗ trợ thêm, đừng ngại liên hệ nhé! 😊';
-    } else if (message.contains('hủy') || message.contains('cancel')) {
-      return 'Tôi hiểu bạn muốn hủy. Bạn có thể hủy đặt bàn trong mục "Đặt bàn của tôi" trên ứng dụng. Có cần hỗ trợ gì thêm không ạ?';
-    } else {
-      return 'Cảm ơn bạn đã liên hệ! Tôi đã nhận được tin nhắn và sẽ phản hồi sớm nhất có thể. Có gì cần hỗ trợ thêm không ạ?';
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'sent':
+        return Icons.check;
+      case 'delivered':
+        return Icons.done_all;
+      case 'read':
+        return Icons.done_all;
+      default:
+        return Icons.schedule;
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // initialize chat service and session
+      final client = ref.read(httpClientProvider);
+      _chatService ??= ChatAppUserService(client);
+        try {
+        final session = await _chatService!.createOrGetSession();
+        _sessionId = session['id'] as String?;
+        if (_sessionId != null && _sessionId!.isNotEmpty) {
+          // Clear current messages to avoid duplicates when re-entering
+          ref.read(chatMessagesProvider.notifier).clearMessages();
+          final msgs = await _chatService!.fetchMessages(_sessionId!);
+          // normalize and add to provider (deduplicated)
+          for (final m in msgs) {
+            try {
+              ref.read(chatMessagesProvider.notifier).addMessageDedup({
+                'id': m['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                'text': m['message_text'] ?? m['text'] ?? '',
+                'isUser': (m['sender_type'] ?? 'user') == 'user',
+                'timestamp': DateTime.tryParse(m['timestamp'] ?? m['createdAt'] ?? '') ?? DateTime.now(),
+                'status': 'delivered',
+              });
+            } catch (_) {}
+          }
+        }
+        if (_sessionId != null && _sessionId!.isNotEmpty) {
+          _chatService!.connectSocket(sessionId: _sessionId!, onMessage: (payload) {
+          try {
+            ref.read(chatMessagesProvider.notifier).addMessageDedup({
+              'id': payload['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+              'text': payload['message_text'] ?? payload['text'] ?? '',
+              'isUser': (payload['sender_type'] ?? 'bot') == 'user',
+              'timestamp': DateTime.tryParse(payload['timestamp'] ?? '') ?? DateTime.now(),
+              'status': 'delivered',
+            });
+          } catch (_) {}
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
   }
 
   void _handleQuickAction(String action) {
@@ -394,18 +445,5 @@ class _CustomerChatScreenState extends ConsumerState<CustomerChatScreen> {
         ],
       ),
     );
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'sent':
-        return Icons.check;
-      case 'delivered':
-        return Icons.done_all;
-      case 'read':
-        return Icons.done_all;
-      default:
-        return Icons.schedule;
-    }
   }
 }

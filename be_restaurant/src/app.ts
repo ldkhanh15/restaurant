@@ -44,10 +44,16 @@ import eventBookingAppUserRoutes from "./routes/eventBooking_app_userRoutes";
 import voucherAppUserRoutes from "./routes/voucher_app_userRoutes";
 import voucherUsageAppUserRoutes from "./routes/voucherUsage_app_userRoutes";
 import blogPostAppUserRoutes from "./routes/blogPost_app_userRoutes";
+import chatMessageAppUserRoutes from "./routes/chatMessage_app_userRoutes";
+import chatSessionAppUserRoutes from "./routes/chatSession_app_userRoutes";
+import loyaltyAppUserRoutes from "./routes/loyalty_app_userRoutes";
+import paymentAppUserRoutes from "./routes/payment_app_userRoutes";
+import * as paymentAppUserController from "./controllers/payment_app_userController";
 
 // Import models to initialize associations
 import "./models/index";
 import inventoryRoutes from "./routes/inventoryRoutes";
+import masterRoutes from "./routes/masterRoutes";
 
 dotenv.config();
 
@@ -55,6 +61,7 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+console.log("CORS_ORIGIN:", process.env.CORS_ORIGIN);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const swaggerDocument = YAML.load("./swagger.yaml");
@@ -71,6 +78,11 @@ app.use((req, res, next) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Dev-only top-level payment success page for local testing.
+// This mirrors the app user payment success endpoint and helps when the frontend
+// is not running. It is intentionally available only in non-production.
+app.get('/payment/success', paymentAppUserController.devSuccessPage);
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -96,6 +108,7 @@ app.use("/api/blog", blogPostRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/recommendations", userBehaviorRoutes);
+app.use("/api/master/restaurant", masterRoutes);
 
 
 // App user lightweight endpoints (mobile app)
@@ -109,7 +122,12 @@ app.use("/api/app_user/notifications", notificationAppUserRoutes)
 app.use("/api/app_user/user", userAppUserRoutes)
 app.use("/api/app_user/events", eventAppUserRoutes)
 app.use("/api/app_user/vouchers", voucherAppUserRoutes)
+app.use("/api/app_user/payment", paymentAppUserRoutes)
 app.use("/api/app_user/blog", blogPostAppUserRoutes)
+// Chat endpoints for mobile/web app users
+app.use("/api/app_user/chat-messages", chatMessageAppUserRoutes)
+app.use("/api/app_user/chat-sessions", chatSessionAppUserRoutes)
+app.use("/api/app_user/loyalty", loyaltyAppUserRoutes)
 
 // Event bookings and voucher usages (endpoints used by mobile app)
 app.use("/api/app_user/event-bookings", eventBookingAppUserRoutes)

@@ -12,7 +12,20 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST || "localhost",
     port: Number.parseInt(process.env.DB_PORT || "3306"),
     dialect: "mysql",
-    logging: (msg) => logger.debug(msg),
+    logging: (msg) => {
+      // Print raw SQL to console during development or when DEBUG_SQL is enabled
+      if (process.env.DEBUG_SQL === "true" || process.env.NODE_ENV !== "production") {
+        // Some messages may be objects; stringify safely
+        try {
+          if (typeof msg === "string") console.log('[SQL]', msg)
+          else console.log('[SQL]', JSON.stringify(msg))
+        } catch (e) {
+          console.log('[SQL]', msg)
+        }
+      } else {
+        logger.debug(msg)
+      }
+    },
     pool: {
       max: 5,
       min: 0,

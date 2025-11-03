@@ -56,6 +56,7 @@ CategoryDish.init(
     sequelize,
     tableName: "category_dishes",
     timestamps: true,
+    paranoid: false,
     createdAt: "created_at",
     updatedAt: "updated_at",
   },

@@ -1,306 +1,146 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../application/providers.dart';
 import '../../domain/models/table.dart';
 
+/// Clean, minimal table-map screen that positions tables by location and x/y.
 class TableMapScreen extends ConsumerWidget {
-  final Function(DiningTable) onTableSelect;
+  final void Function(DiningTable) onTableSelect;
 
   const TableMapScreen({super.key, required this.onTableSelect});
 
-  Color _getTableColor(TableStatus status, TableType type) {
-    if (status == TableStatus.available) {
-      switch (type) {
-        case TableType.vip:
-          return Colors.yellow[200]!;
-        case TableType.couple:
-          return Colors.pink[200]!;
-        case TableType.group:
-          return Colors.green[200]!;
-        default:
-          return Colors.blue[200]!;
-      }
-    } else if (status == TableStatus.reserved) {
-      return Colors.orange[200]!;
-    } else {
-      return Colors.grey[300]!;
-    }
-  }
+  static final ValueNotifier<String> _selectedLocation = ValueNotifier<String>('Tất cả');
 
-  Color _getTableBorderColor(TableStatus status, TableType type) {
-    if (status == TableStatus.available) {
-      switch (type) {
-        case TableType.vip:
-          return Colors.yellow[600]!;
-        case TableType.couple:
-          return Colors.pink[600]!;
-        case TableType.group:
-          return Colors.green[600]!;
-        default:
-          return Colors.blue[600]!;
-      }
-    } else if (status == TableStatus.reserved) {
-      return Colors.orange[600]!;
-    } else {
-      return Colors.grey[600]!;
-    }
-  }
-
-  IconData _getTableIcon(TableType type) {
-    switch (type) {
-      case TableType.vip:
-        return Icons.star;
-      case TableType.couple:
-        return Icons.favorite;
-      case TableType.group:
-        return Icons.group;
-      default:
-        return Icons.table_restaurant;
-    }
-  }
-
-  String _getStatusText(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return 'Trống';
-      case TableStatus.reserved:
-        return 'Đã đặt';
-      case TableStatus.occupied:
-        return 'Đang sử dụng';
-    }
-  }
+  Widget _tableTile(DiningTable t, double w, double h) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          border: Border.all(color: Colors.black26),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: Text(t.name, textAlign: TextAlign.center),
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tables = ref.watch(tablesProvider);
 
+    // Build location list
+    final locations = <String>{};
+    for (final t in tables) {
+      locations.add(t.location.isEmpty ? 'Chưa xác định' : t.location);
+    }
+    final locationList = ['Tất cả', ...locations];
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sơ đồ bàn'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.legend_toggle),
-            onPressed: () {
-              _showLegend(context);
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Legend
-            _buildLegend(context),
-            const SizedBox(height: 24),
-            // Table Map
-            Container(
-              height: 500,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Stack(
-                children: tables.map((table) {
-                  return Positioned(
-                    left: table.x ?? 0,
-                    top: table.y ?? 0,
-                    child: GestureDetector(
-                      onTap: () {
-                        if (table.status == TableStatus.available) {
-                          onTableSelect(table);
-                        }
-                      },
-                      child: Container(
-                        width: table.width ?? 60,
-                        height: table.height ?? 60,
-                        decoration: BoxDecoration(
-                          color: _getTableColor(table.status, table.type),
-                          border: Border.all(
-                            color: _getTableBorderColor(table.status, table.type),
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _getTableIcon(table.type),
-                              size: 16,
-                              color: _getTableBorderColor(table.status, table.type),
-                            ),
-                            const SizedBox(height: 2),
-                            Flexible(
-                              child: Text(
-                                table.name,
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                  color: _getTableBorderColor(table.status, table.type),
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                '${table.capacity} người',
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  color: _getTableBorderColor(table.status, table.type),
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                _getStatusText(table.status),
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  color: _getTableBorderColor(table.status, table.type),
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Table List
-            Text(
-              'Danh sách bàn',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            ...tables.map((table) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _getTableColor(table.status, table.type),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _getTableBorderColor(table.status, table.type),
-                    ),
-                  ),
-                  child: Icon(
-                    _getTableIcon(table.type),
-                    color: _getTableBorderColor(table.status, table.type),
-                  ),
-                ),
-                title: Text(table.name),
-                subtitle: Text('${table.capacity} người • ${table.location}'),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      _getStatusText(table.status),
-                      style: TextStyle(
-                        color: _getTableBorderColor(table.status, table.type),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '${table.price.toStringAsFixed(0)}đ',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                onTap: () {
-                  if (table.status == TableStatus.available) {
-                    onTableSelect(table);
-                  }
-                },
-              ),
-            )).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLegend(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
-          Text(
-            'Chú thích',
-            style: Theme.of(context).textTheme.titleMedium,
+          SizedBox(
+            height: 56,
+            child: ValueListenableBuilder<String>(
+              valueListenable: _selectedLocation,
+              builder: (context, selected, _) {
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: locationList.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (ctx, i) {
+                    final loc = locationList[i];
+                    return ChoiceChip(
+                      label: Text(loc, overflow: TextOverflow.ellipsis),
+                      selected: loc == selected,
+                      onSelected: (_) => _selectedLocation.value = loc,
+                    );
+                  },
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildLegendItem(context, 'Trống', Colors.blue.shade200, Colors.blue.shade600),
-              const SizedBox(width: 16),
-              _buildLegendItem(context, 'Đã đặt', Colors.orange.shade200, Colors.orange.shade600),
-              const SizedBox(width: 16),
-              _buildLegendItem(context, 'Đang sử dụng', Colors.grey.shade300, Colors.grey.shade600),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildLegendItem(context, 'VIP', Colors.yellow.shade200, Colors.yellow.shade600, Icons.star),
-              const SizedBox(width: 16),
-              _buildLegendItem(context, 'Đôi', Colors.pink.shade200, Colors.pink.shade600, Icons.favorite),
-              const SizedBox(width: 16),
-              _buildLegendItem(context, 'Nhóm', Colors.green.shade200, Colors.green.shade600, Icons.group),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+          Expanded(
+            child: InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  width: double.infinity,
+                  height: 800,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final floorW = constraints.maxWidth;
+                    final floorH = constraints.maxHeight;
+                    final selected = _selectedLocation.value;
 
-  Widget _buildLegendItem(BuildContext context, String label, Color color, Color borderColor, [IconData? icon]) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: color,
-            border: Border.all(color: borderColor),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: icon != null ? Icon(icon, size: 12, color: borderColor) : null,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
+                    List<DiningTable> visibleTables;
+                    if (selected == 'Tất cả') {
+                      visibleTables = tables;
+                    } else {
+                      visibleTables = tables.where((t) => (t.location.isEmpty ? 'Chưa xác định' : t.location) == selected).toList();
+                    }
 
-  void _showLegend(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Chú thích'),
-        content: _buildLegend(context),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Đóng'),
+                    // Compute bounds for normalization
+                    final coords = visibleTables.where((t) => t.x != null && t.y != null).toList();
+                    double minX = 0, maxX = 0, minY = 0, maxY = 0;
+                    if (coords.isNotEmpty) {
+                      final xs = coords.map((t) => t.x!.toDouble()).toList();
+                      final ys = coords.map((t) => t.y!.toDouble()).toList();
+                      minX = xs.reduce(math.min);
+                      maxX = xs.reduce(math.max);
+                      minY = ys.reduce(math.min);
+                      maxY = ys.reduce(math.max);
+                    }
+
+                    final spanX = (maxX - minX) == 0 ? 1.0 : (maxX - minX);
+                    final spanY = (maxY - minY) == 0 ? 1.0 : (maxY - minY);
+
+                    final padding = 16.0;
+                    final scaleX = (floorW - padding * 2) / spanX;
+                    final scaleY = (floorH - padding * 2) / spanY;
+
+                    final children = <Widget>[];
+                    for (var i = 0; i < visibleTables.length; i++) {
+                      final t = visibleTables[i];
+                      final w = t.width ?? 80.0;
+                      final h = t.height ?? 60.0;
+
+                      double left, top;
+                      if (t.x != null && t.y != null) {
+                        left = padding + (t.x!.toDouble() - minX) * scaleX - w / 2;
+                        top = padding + (t.y!.toDouble() - minY) * scaleY - h / 2;
+                      } else {
+                        left = padding + (i % 6) * (w + 12);
+                        top = padding + (i ~/ 6) * (h + 12);
+                      }
+
+                      left = left.clamp(0.0, floorW - w);
+                      top = top.clamp(0.0, floorH - h);
+
+                      children.add(Positioned(
+                        left: left,
+                        top: top,
+                        child: GestureDetector(
+                          onTap: () => onTableSelect(t),
+                          child: _tableTile(t, w, h),
+                        ),
+                      ));
+                    }
+
+                    return Stack(children: children);
+                  }),
+                ),
+              ),
+            ),
           ),
         ],
       ),

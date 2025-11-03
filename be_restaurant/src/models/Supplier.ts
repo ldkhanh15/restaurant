@@ -47,7 +47,7 @@ Supplier.init(
     sequelize,
     tableName: "suppliers",
     timestamps: true,
-    paranoid: true,
+    paranoid: false,
     createdAt: "created_at",
     updatedAt: false,
     deletedAt: "deleted_at",

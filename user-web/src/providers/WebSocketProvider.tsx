@@ -109,7 +109,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsConnected(true);
       console.log("✅ [user-web] WebSocket connected successfully");
       console.log(`📡 Socket ID: ${socket.id}`);
-      console.log(`📡 Namespace: ${socket.nsp}`);
+      console.log(`📡 Namespace: /customer`);
       if (socket.io.engine?.transport) {
         console.log(`📡 Transport: ${socket.io.engine.transport.name}`);
       }

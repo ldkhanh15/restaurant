@@ -17,8 +17,13 @@ import {
   Star,
   Ticket,
   BarChart3,
-  CreditCard,
+  CalendarCheck,
+  FileWarning,
+  CircleUserRound,
   Instagram as Restaurant,
+  UtensilsCrossed,
+  Table,
+  CreditCard,
 } from "lucide-react";
 
 const modules = [
@@ -29,12 +34,16 @@ const modules = [
   { id: "reservations", label: "Đặt bàn", icon: Calendar },
   { id: "payments", label: "Thanh toán", icon: CreditCard },
   { id: "inventory", label: "Kho hàng", icon: Package },
+  { id: "table", label: "Bàn/Sơ đồ bàn", icon: Table },
   { id: "employees", label: "Nhân viên", icon: UserCheck },
+  { id: "event", label: "Sự kiện", icon: CalendarCheck },
   { id: "blog", label: "Blog", icon: FileText },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "notifications", label: "Thông báo", icon: Bell },
   { id: "reviews", label: "Đánh giá", icon: Star },
+  { id: "complaints", label: "Khiếu nại", icon: FileWarning },
   { id: "vouchers", label: "Voucher", icon: Ticket },
+  { id: "supplier", label: "Nhà cung cấp", icon: CircleUserRound },
 ];
 
 export function Sidebar() {

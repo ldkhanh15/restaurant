@@ -5,7 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { IngredientManagement } from "./ingredient-management"
 import { ImportManagement } from "./inventoryimport"
 
-interface Ingredient {
+interface Employee {
+  id: string
+  user: {
+    full_name: string
+  }
+}
+
+interface IngredientAttributes {
   id: string
   name: string
   unit: string
@@ -18,31 +25,60 @@ interface Ingredient {
   deleted_at?: Date | null
 }
 
-interface InventoryImport {
-  id: number
-  reason: string
-  total_price: number
-  employee_id: number
-  employee_name: string
-  supplier_id?: number
-  supplier_name?: string
-  import_date: string
-  status: "pending" | "completed" | "cancelled"
-  items: ImportItem[]
-}
-
-interface ImportItem {
-  ingredient_id: number
-  ingredient_name: string
+interface ImportIngredient {
+  ingredient: {
+    id: string
+    name: string
+    unit: string
+  }
   quantity: number
-  unit_price: number
   total_price: number
 }
 
+interface InventoryImportAttributes {
+  id: string
+  reason?: string
+  total_price: number
+  employee_id?: string
+  employee?: Employee | null
+  supplier_id?: string
+  supplier?: Supplier
+  timestamp?: Date
+  ingredients?: ImportIngredient[]
+}
+
+interface InventoryImportIngredientAttributes {
+  id: string
+  ingredient_id?: string
+  quantity: number
+  total_price: number
+  inventory_imports_id?: string
+  ingredient?: {
+    id: string
+    name: string
+    unit: string
+  }
+}
+
+interface Supplier {
+  id: string
+  name: string
+  email?: string
+  contact?: string
+  address?: string
+}
+
+interface PaginationResult<T> {
+  items: T[]
+  total: number
+  page: number
+  totalPages: number
+  hasNext: boolean
+  hasPrevious: boolean
+}
 
 export function InventoryManagement() {
-  const [ingredients, setIngredients] = useState<Ingredient[]>([])
-  const [imports] = useState<InventoryImport[]>([])
+  const [ingredients, setIngredients] = useState<IngredientAttributes[]>([])
 
   return (
     <div className="space-y-6">
@@ -56,7 +92,7 @@ export function InventoryManagement() {
           <IngredientManagement ingredients={ingredients} setIngredients={setIngredients} />
         </TabsContent>
         <TabsContent value="imports">
-          <ImportManagement imports={imports} ingredients={ingredients} />
+          <ImportManagement />
         </TabsContent>
       </Tabs>
     </div>

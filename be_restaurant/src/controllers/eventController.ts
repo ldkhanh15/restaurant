@@ -5,6 +5,25 @@ import { AppConstants } from "../constants/AppConstants"
 
 export const getAllEvents = async (req: Request, res: Response, next: NextFunction) => {
   try {
+
+    if (req.query.all === 'true') {
+      const result = await eventService.findAll({ order: [['created_at', 'ASC']] });
+      const data =
+      result?.rows && Array.isArray(result.rows)
+        ? result.rows.map((event: any) => event.toJSON())
+        : Array.isArray(result)
+        ? result.map((event: any) => event.toJSON())
+        : []
+
+      const count = result?.count ?? data.length
+
+      return res.status(200).json({
+        status: "success",
+        count,
+        data,
+      })
+    }
+    
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
@@ -51,7 +70,7 @@ export const updateEvent = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteEvent = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await eventService.delete(req.params.id)
+    await eventService.softDelete(req.params.id)
     res.json({ status: "success", message: "Event deleted successfully" })
   } catch (error) {
     next(error)

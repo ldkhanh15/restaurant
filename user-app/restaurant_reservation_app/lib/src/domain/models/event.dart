@@ -32,17 +32,66 @@ class Event {
 
   factory Event.fromJson(Map<String, dynamic> json) => Event(
         id: json['id'].toString(),
-        title: json['title'] as String,
-        description: json['description'] as String,
-        date: DateTime.parse(json['date'] as String),
-        time: json['time'] as String,
-        location: json['location'] as String,
-        price: (json['price'] as num).toDouble(),
-        capacity: json['capacity'] as int,
-        registered: json['registered'] as int,
-        category: EventCategory.values.firstWhere((e) => e.name == json['category']),
-        status: AvailabilityStatus.values.firstWhere((e) => e.name == json['status']),
-        image: json['image'] as String,
+        title: (json['title'] ?? json['name'] ?? '').toString(),
+        description: (json['description'] ?? json['desc'] ?? '').toString(),
+        date: (() {
+          final v = json['date'] ?? json['event_date'] ?? json['start_date'] ?? json['created_at'] ?? DateTime.now().toIso8601String();
+          try {
+            return DateTime.parse(v.toString());
+          } catch (_) {
+            return DateTime.now();
+          }
+        })(),
+        time: (json['time'] ?? json['start_time'] ?? '').toString(),
+        location: (json['location'] ?? json['venue'] ?? '').toString(),
+        price: (() {
+          final p = json['price'] ?? json['ticket_price'] ?? 0;
+          if (p is num) return p.toDouble();
+          if (p is String) return double.tryParse(p) ?? 0.0;
+          return 0.0;
+        })(),
+        capacity: (() {
+          final c = json['capacity'] ?? json['max_capacity'] ?? 0;
+          if (c is int) return c;
+          if (c is num) return c.toInt();
+          return int.tryParse(c.toString()) ?? 0;
+        })(),
+        registered: (() {
+          final r = json['registered'] ?? json['attendees'] ?? 0;
+          if (r is int) return r;
+          if (r is num) return r.toInt();
+          return int.tryParse(r.toString()) ?? 0;
+        })(),
+        category: (() {
+          final c = (json['category'] ?? json['categoryName'] ?? 'music').toString();
+          return EventCategory.values.firstWhere(
+              (e) => e.name.toLowerCase() == c.toLowerCase(),
+              orElse: () => EventCategory.music);
+        })(),
+        status: (() {
+          final s = (json['status'] ?? '').toString();
+          return AvailabilityStatus.values.firstWhere(
+              (e) => e.name.toLowerCase() == s.toLowerCase(),
+              orElse: () {
+                // heuristic: if capacity > registered -> available
+                try {
+                  final cap = (() {
+                    final c = json['capacity'] ?? json['max_capacity'] ?? 0;
+                    if (c is num) return c.toInt();
+                    return int.tryParse(c.toString()) ?? 0;
+                  })();
+                  final reg = (() {
+                    final r = json['registered'] ?? json['attendees'] ?? 0;
+                    if (r is num) return r.toInt();
+                    return int.tryParse(r.toString()) ?? 0;
+                  })();
+                  return cap - reg > 0 ? AvailabilityStatus.available : AvailabilityStatus.full;
+                } catch (_) {
+                  return AvailabilityStatus.available;
+                }
+              });
+        })(),
+        image: (json['image'] ?? json['imageUrl'] ?? '').toString(),
       );
 
   Map<String, dynamic> toJson() => {

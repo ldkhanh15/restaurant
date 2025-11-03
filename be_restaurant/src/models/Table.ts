@@ -7,7 +7,7 @@ interface TableAttributes {
   capacity: number
   deposit: number
   cancel_minutes: number
-  location?: string
+  location?: any
   status: "available" | "occupied" | "cleaning" | "reserved"
   panorama_urls?: any
   amenities?: any
@@ -97,7 +97,7 @@ Table.init(
     sequelize,
     tableName: "tables",
     timestamps: true,
-    paranoid: true,
+    paranoid: false,
     createdAt: "created_at",
     updatedAt: "updated_at",
     deletedAt: "deleted_at",

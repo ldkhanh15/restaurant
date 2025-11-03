@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'menu_app_user_service_app_user.dart';
@@ -24,9 +26,15 @@ Future<void> initializeAppUserData_app_user(WidgetRef ref) async {
     }
 
     final categories = groups.entries.map((e) {
+      // Determine a friendly category name from the first item if available.
+      final firstItem = e.value.isNotEmpty ? (e.value.first as Map<String, dynamic>) : null;
+      final categoryName = firstItem != null
+          ? (firstItem['categoryName'] ?? firstItem['category'] ?? e.key).toString()
+          : e.key;
+
       return MenuCategory(
         id: e.key,
-        name: e.key,
+        name: categoryName,
         items: e.value.map((m) {
           final map = m as Map<String, dynamic>;
           return MenuItem(
@@ -44,8 +52,28 @@ Future<void> initializeAppUserData_app_user(WidgetRef ref) async {
     }).toList();
     ref.read(menuCategoriesProvider.notifier).setCategories(categories);
 
-    // Fetch tables
-    final tablesRaw = await TableAppUserServiceAppUser.fetchTables();
+  // Fetch tables
+  final tablesRaw = await TableAppUserServiceAppUser.fetchTables();
+  // Debug: log raw response shape so we can see why mapping may fail
+  // ignore: avoid_print
+  print("[initializeAppUserData_app_user] tablesRaw: length=${tablesRaw.length} first=${tablesRaw.isNotEmpty ? tablesRaw.first : 'empty'}");
+    List<String>? _parseStringList(dynamic v) {
+      if (v == null) return null;
+      if (v is List) return v.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+      if (v is String) {
+        // Try decode JSON list
+        try {
+          final decoded = json.decode(v);
+          if (decoded is List) return decoded.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+        } catch (_) {
+          // Fallback: comma separated
+          final parts = v.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+          return parts.isNotEmpty ? parts : null;
+        }
+      }
+      return null;
+    }
+
     final tables = tablesRaw.map((t) {
       final map = t as Map<String, dynamic>;
       final statusString = (map['status'] ?? 'available').toString();
@@ -53,14 +81,30 @@ Future<void> initializeAppUserData_app_user(WidgetRef ref) async {
 
       return DiningTable(
         id: map['id']?.toString() ?? '',
-        name: (map['name'] ?? 'Table') as String,
+        // prefer `table_number` from backend, fallback to `name` for compatibility
+        name: (map['table_number'] ?? map['name'] ?? 'Table').toString(),
         capacity: (map['capacity'] is int) ? map['capacity'] as int : int.tryParse((map['capacity'] ?? '0').toString()) ?? 0,
-        location: (map['location'] ?? '') as String,
+        // location may be string or object; convert to string for display
+        location: (map['location'] is String) ? map['location'] as String : (map['location'] != null ? map['location'].toString() : ''),
         price: (map['price'] is num) ? (map['price'] as num).toDouble() : double.tryParse((map['price'] ?? '0').toString()) ?? 0.0,
         status: status,
         type: TableType.values.firstWhere((e) => e.name == (map['type'] ?? 'regular'), orElse: () => TableType.regular),
+        // pass through optional fields so UI can show them
+        description: (map['description'] as String?) ?? null,
+        deposit: (map['deposit'] is num) ? (map['deposit'] as num).toDouble() : null,
+        cancel_minutes: (map['cancel_minutes'] is int) ? map['cancel_minutes'] as int : null,
+  panorama_urls: _parseStringList(map['panorama_urls']),
+  amenities: _parseStringList(map['amenities']),
+        image: (map['image'] ?? map['imageUrl'] ?? '') as String?,
+        x: (map['x'] is num) ? (map['x'] as num).toDouble() : null,
+        y: (map['y'] is num) ? (map['y'] as num).toDouble() : null,
+        width: (map['width'] is num) ? (map['width'] as num).toDouble() : null,
+        height: (map['height'] is num) ? (map['height'] as num).toDouble() : null,
       );
     }).toList();
+  // Debug: show how many tables we mapped
+  // ignore: avoid_print
+  print('[initializeAppUserData_app_user] mapped tables count=${tables.length}');
     ref.read(tablesProvider.notifier).setTables(tables);
   } catch (e, st) {
     // Log error so developer can see why initialization failed. App will continue using mock data.
@@ -107,6 +151,11 @@ Future<void> initializeUserDependentData_app_user(WidgetRef ref) async {
     // Fetch user profile
     final userProfile = await ref.read(userRepositoryProvider).getUserProfile();
     ref.read(userProvider.notifier).setUser(userProfile);
+    // Sync loyalty providers so UI shows actual points and tier
+    try {
+      ref.read(loyaltyPointsProvider.notifier).setPoints(userProfile.loyaltyPoints);
+  ref.read(membershipTierProvider.notifier).setTier(userProfile.membershipTier);
+    } catch (_) {}
 
     // Fetch user's notifications
     final notifications = await ref.read(notificationRepositoryProvider).getNotifications();

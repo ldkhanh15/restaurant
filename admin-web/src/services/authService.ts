@@ -2,8 +2,8 @@
 
 import apiClient from "./apiClient";
 
-type LoginPayload = { email: string; password: string };
-type SignupPayload = { email: string; password: string; username: string };
+type LoginPayload = { email: string; password: string }
+type SignupPayload = { email: string; password: string; username: string, role: string }
 
 interface CurrentUserResponse {
   id: string;

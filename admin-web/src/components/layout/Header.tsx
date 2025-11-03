@@ -26,7 +26,10 @@ const moduleNames: Record<string, string> = {
   complaints: "Khiếu nại",
   reviews: "Đánh giá",
   vouchers: "Quản lý voucher",
-};
+  table:"Quản lý bàn/sơ đồ bàn",
+  supplier:"Quản lý nhà cung cấp",
+  event:"Quản lý sự kiện"
+}
 
 export function Header() {
   const pathname = usePathname();

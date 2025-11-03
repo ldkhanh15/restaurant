@@ -17,6 +17,10 @@ class ReservationAppUserServiceAppUser {
     }
   }
 
+  static Future<List<dynamic>> fetchReservationsByTableAndDate(String tableId, DateTime date) async {
+    return DataSourceAdapter.getReservationsByTableAndDate(tableId, date);
+  }
+
   static Future<dynamic> createReservation(dynamic payload) async {
     return DataSourceAdapter.createReservation(payload);
   }

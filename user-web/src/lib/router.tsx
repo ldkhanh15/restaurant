@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-type Route =
+export type Route =
   | "home"
   | "login"
   | "register"

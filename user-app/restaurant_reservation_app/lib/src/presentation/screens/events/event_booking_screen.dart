@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/providers.dart';
 import '../../../domain/models/event.dart';
+import '../../../data/services/event_app_user_service.dart';
+import '../../widgets/leading_back_button.dart';
 
 class EventBookingScreen extends ConsumerStatefulWidget {
   const EventBookingScreen({super.key});
@@ -15,6 +17,60 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
   EventCategory? selectedCategory;
   Event? selectedEvent;
   bool isBookingDialogOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch events after first frame to avoid using BuildContext across sync gaps
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadEvents());
+  }
+
+  Future<void> _loadEvents() async {
+    try {
+      final List<dynamic> raw = await EventAppUserService.fetchEvents();
+      // debug: show how many items returned and a snippet of first item
+      // ignore: avoid_print
+      print('[EventBookingScreen] fetchEvents returned count=${raw.length}');
+      if (raw.isNotEmpty) {
+        // ignore: avoid_print
+        print('[EventBookingScreen] first event raw=${raw.first}');
+      }
+      final parsed = raw.map((e) {
+          final map = e as Map<String, dynamic>;
+          // normalize common server field names to what Event.fromJson expects
+          final normalized = <String, dynamic>{
+            'id': map['id'] ?? map['event_id'] ?? map['_id'],
+            'title': map['title'] ?? map['name'] ?? '',
+            'description': map['description'] ?? map['desc'] ?? '',
+      'date': map['date'] ?? map['event_date'] ?? map['start_date'] ?? map['created_at'] ?? DateTime.now().toIso8601String(),
+      'time': map['time'] ?? map['start_time'] ?? '',
+      'location': map['location'] ?? map['venue'] ?? '',
+      // price can be returned as string from backend, normalize to double
+      'price': (map['price'] is num)
+        ? (map['price'] as num).toDouble()
+        : double.tryParse((map['price'] ?? map['ticket_price'] ?? '0').toString()) ?? 0.0,
+      // capacity/registered may also be string or missing
+      'capacity': (map['capacity'] is int)
+        ? map['capacity'] as int
+        : int.tryParse((map['capacity'] ?? map['max_capacity'] ?? '0').toString()) ?? 0,
+      'registered': (map['registered'] is int)
+        ? map['registered'] as int
+        : int.tryParse((map['registered'] ?? map['attendees'] ?? '0').toString()) ?? 0,
+            'category': map['category'] ?? map['categoryName'] ?? 'music',
+            'status': map['status'] ?? ((map['capacity'] ?? 0) - (map['registered'] ?? 0) > 0 ? 'available' : 'full'),
+            'image': map['image'] ?? map['imageUrl'] ?? '',
+          };
+          return Event.fromJson(normalized);
+        }).toList();
+
+      ref.read(eventsProvider.notifier).setEvents(List<Event>.from(parsed));
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('Failed to load events: $e');
+      // ignore: avoid_print
+      print(st);
+    }
+  }
 
 
   String _formatPrice(double price) {
@@ -84,30 +140,79 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
   }
 
   void _handleConfirmBooking(int guests, String notes) {
-    if (selectedEvent != null) {
-      final booking = EventBooking(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        eventId: selectedEvent!.id,
-        eventTitle: selectedEvent!.title,
-        date: selectedEvent!.date,
-        time: selectedEvent!.time,
-        guests: guests,
-        status: 'pending',
-        bookingDate: DateTime.now(),
-        notes: notes.isEmpty ? null : notes,
-      );
+    if (selectedEvent == null) return;
 
-      ref.read(eventBookingsProvider.notifier).addBooking(booking);
-      
+    // Build payload expected by backend (nested event booking route will take eventId from params)
+    final payload = {
+      'numberOfTickets': guests,
+      if (notes.isNotEmpty) 'notes': notes,
+    };
+
+    // Async create booking on server
+    EventAppUserService.createEventBookingForEvent(selectedEvent!.id, payload).then((resp) {
+      try {
+        // resp may be Map<String, dynamic> or may be nested { status, data }
+        final Map<String, dynamic> data = resp is Map<String, dynamic>
+            ? (resp.containsKey('data') && resp['data'] is Map<String, dynamic> ? resp['data'] as Map<String, dynamic> : resp)
+            : {};
+
+        final bookingId = (data['id'] ?? data['booking_id'] ?? DateTime.now().millisecondsSinceEpoch).toString();
+        final eventId = (data['event_id'] ?? data['eventId'] ?? selectedEvent!.id).toString();
+        final eventTitle = data['event'] is Map<String, dynamic> ? (data['event']['title'] ?? selectedEvent!.title) : selectedEvent!.title;
+        final bookingDateStr = (data['created_at'] ?? data['bookingDate'] ?? DateTime.now().toIso8601String()).toString();
+        DateTime bookingDate;
+        try {
+          bookingDate = DateTime.parse(bookingDateStr);
+        } catch (_) {
+          bookingDate = DateTime.now();
+        }
+
+        final guestsReturned = (data['number_of_tickets'] ?? data['numberOfTickets'] ?? guests) as dynamic;
+        final guestsInt = guestsReturned is int ? guestsReturned : int.tryParse(guestsReturned?.toString() ?? '') ?? guests;
+
+        final status = (data['status'] ?? data['bookingStatus'] ?? 'confirmed').toString();
+
+        final booking = EventBooking(
+          id: bookingId,
+          eventId: eventId,
+          eventTitle: eventTitle,
+          date: selectedEvent!.date,
+          time: selectedEvent!.time,
+          guests: guestsInt,
+          status: status,
+          bookingDate: bookingDate,
+          notes: notes.isEmpty ? null : notes,
+        );
+
+        ref.read(eventBookingsProvider.notifier).addBooking(booking);
+
+        setState(() {
+          isBookingDialogOpen = false;
+          selectedEvent = null;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã đăng ký sự kiện thành công')),
+        );
+      } catch (e) {
+        // Parsing error fallback: still close dialog and show error
+        setState(() {
+          isBookingDialogOpen = false;
+          selectedEvent = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đăng ký thất bại: ${e.toString()}')),
+        );
+      }
+    }).catchError((err) {
       setState(() {
         isBookingDialogOpen = false;
         selectedEvent = null;
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã đăng ký sự kiện thành công')),
+        SnackBar(content: Text('Đăng ký thất bại: ${err.toString()}')),
       );
-    }
+    });
   }
 
   @override
@@ -117,6 +222,7 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const LeadingBackButton(),
         title: const Text('Sự kiện'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48.0),
@@ -267,6 +373,10 @@ class _EventBookingScreenState extends ConsumerState<EventBookingScreen> {
               child: Image.network(
                 event.image,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(alignment: Alignment.center, child: SizedBox(width:24,height:24, child: CircularProgressIndicator(strokeWidth:2)));
+                },
                 errorBuilder: (context, error, stackTrace) {
                   return Container(
                     color: Colors.grey[300],

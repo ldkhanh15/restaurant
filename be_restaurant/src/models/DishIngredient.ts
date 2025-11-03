@@ -44,6 +44,7 @@ DishIngredient.init(
     sequelize,
     tableName: "dish_ingredients",
     timestamps: false,
+    paranoid: false,
   },
 )
 
