@@ -1,20 +1,5 @@
 import apiClient from "./apiClient";
 
-// Định nghĩa interface cho response
-interface ApiResponse<T> {
-  status?: string;
-  success?: boolean;
-  data: T;
-  count?: number;
-  pagination?: {
-    page: number;
-    limit: number;
-    totalPages: number;
-    totalItems?: number;
-  };
-  message?: string;
-}
-
 const payrollApi = {
   // Payroll CRUD
   getAllPayrollRecords: async (
@@ -25,37 +10,29 @@ const payrollApi = {
     let url = `/payroll?page=${page}&limit=${limit}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    const response = await apiClient.get<ApiResponse<any>>(url);
+    const response = await apiClient.get(url);
 
     return response;
   },
 
   getPayrollRecord: async (id: string) => {
-    const response = await apiClient.get<ApiResponse<any>>(`/payroll/${id}`);
+    const response = await apiClient.get(`/payroll/${id}`);
     return response;
   },
 
   createPayrollRecord: async (payrollData: any) => {
-    const response = await apiClient.post<ApiResponse<any>>(
-      "/payroll",
-      payrollData
-    );
+    const response = await apiClient.post("/payroll", payrollData);
     return response;
   },
 
   updatePayrollRecord: async (id: string, payrollData: any) => {
-    const response = await apiClient.put<ApiResponse<any>>(
-      `/payroll/${id}`,
-      payrollData
-    );
+    const response = await apiClient.put(`/payroll/${id}`, payrollData);
     return response;
   },
 
   deletePayrollRecord: async (id: string) => {
-    const response = await apiClient.delete<ApiResponse<any>>(
-      `/payroll/${id}`
-    );
-    return response;  
+    const response = await apiClient.delete(`/payroll/${id}`);
+    return response;
   },
 };
 

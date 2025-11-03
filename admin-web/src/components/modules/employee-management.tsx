@@ -333,13 +333,13 @@ export function EmployeeManagement() {
       if (response && response.data) {
         if (Array.isArray(response.data)) {
           setShifts(response.data);
-          if (response.pagination) {
-            setTotalShiftPages(response.pagination.totalPages || 1);
-            setTotalShifts(response.pagination.totalItems || 0);
-          } else {
-            setTotalShiftPages(1);
-            setTotalShifts(response.data.length);
-          }
+          // if (response.pagination) {
+          //   setTotalShiftPages(response.pagination.totalPages || 1);
+          //   setTotalShifts(response.pagination.totalItems || 0);
+          // } else {
+          //   setTotalShiftPages(1);
+          //   setTotalShifts(response.data.length);
+          // }
         } else if (
           typeof response.data === "object" &&
           response.data !== null
@@ -461,10 +461,10 @@ export function EmployeeManagement() {
   const fetchAttendanceLogs = async () => {
     setIsLoading(true);
     try {
-      const { data: response } = await attendanceApi.getAllAttendanceLogs();
+      const response = await attendanceApi.getAllAttendanceLogs();
       if (response && response.data) {
         console.log("attendance call:", response.data);
-        setAttendance(response.data);
+        setAttendance(response.data as Attendance[]);
         setIsAttendanceEditDialogOpen(false);
         setIsAttendanceCreateDialogOpen(false);
       } else {
@@ -559,10 +559,10 @@ export function EmployeeManagement() {
   const fetchPayrollRecords = async () => {
     setIsLoading(true);
     try {
-      const { data: response } = await payrollApi.getAllPayrollRecords();
-      if (response && response.data) {
-        console.log("payroll call:", response.data);
-        setPayrolls(response.data);
+      const respo = await payrollApi.getAllPayrollRecords();
+      if (respo && respo.data) {
+        console.log("payroll call:", respo.data);
+        setPayrolls(respo.data);
       } else {
         setPayrolls([]);
       }
@@ -665,6 +665,7 @@ export function EmployeeManagement() {
 
   return (
     <div className="space-y-6">
+      <h1>Quản lý nhân viên 123</h1>
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
