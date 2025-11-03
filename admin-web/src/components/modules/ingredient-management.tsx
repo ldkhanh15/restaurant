@@ -67,6 +67,8 @@ export function IngredientManagement({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null)
   const [stockFilter, setStockFilter] = useState<"Tất cả" | "Đủ hàng" | "Sắp hết" | "Hết hàng">("Tất cả")
+
+  // Form states
   const [newIngredient, setNewIngredient] = useState<Omit<Ingredient, "id">>({
     name: "",
     unit: "",
@@ -78,6 +80,75 @@ export function IngredientManagement({
     updated_at: new Date(),
     deleted_at: null,
   })
+
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({})
+
+  const validateField = (
+    field: string,
+    value: any,
+    isEdit: boolean = false,
+    currentId?: string
+  ): string => {
+    let error = ""
+
+    switch (field) {
+      case "name":
+        if (!value?.trim()) error = "Tên nguyên liệu không được để trống"
+        else if (
+          ingredients.some(
+            (i) =>
+              i.name.trim().toLowerCase() === value.trim().toLowerCase() &&
+              (!isEdit || i.id !== currentId)
+          )
+        ) {
+          error = "Tên nguyên liệu đã tồn tại"
+        }
+        break
+      case "unit":
+        if (!value) error = "Vui lòng chọn đơn vị"
+        break
+      case "barcode":
+        if (!value?.trim()) error = "Mã barcode không được để trống"
+        break
+      case "rfid":
+        if (!value?.trim()) error = "Mã RFID không được để trống"
+        break
+      case "current_stock":
+        if (value < 0) error = "Tồn kho không được âm"
+        break
+      case "min_stock_level":
+        if (value < 0) error = "Tồn kho tối thiểu không được âm"
+        break
+    }
+
+    return error
+  }
+
+  const validateAll = (data: any, isEdit: boolean = false, currentId?: string): boolean => {
+    const fields = ["name", "unit", "barcode", "rfid", "current_stock", "min_stock_level"]
+    const errs: Record<string, string> = {}
+
+    fields.forEach((field) => {
+      const error = validateField(field, data[field], isEdit, currentId)
+      if (error) errs[field] = error
+    })
+
+    const errorSetter = isEdit ? setEditErrors : setErrors
+    errorSetter(errs)
+
+    if (Object.keys(errs).length > 0) {
+      const firstError = Object.values(errs)[0]
+      toast.error(firstError)
+      return false
+    }
+    return true
+  }
+
+  const resetErrors = (isEdit: boolean = false) => {
+    isEdit ? setEditErrors({}) : setErrors({})
+  }
 
   const getAllIngredients = async () => {
     try {
@@ -114,11 +185,8 @@ export function IngredientManagement({
     .filter((i) => i.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .filter((i) => {
       if (stockFilter === "Tất cả") return true
-      const status = getStockStatus(i)
-      if (stockFilter === "Đủ hàng" && status.props.children === "Đủ hàng") return true
-      if (stockFilter === "Sắp hết" && status.props.children === "Sắp hết") return true
-      if (stockFilter === "Hết hàng" && status.props.children === "Hết hàng") return true
-      return false
+      const statusText = getStockStatus(i).props.children
+      return statusText === stockFilter
     })
 
   const lowStockItems = ingredients.filter(
@@ -127,87 +195,119 @@ export function IngredientManagement({
   const outOfStockItems = ingredients.filter((i) => !i.deleted_at && Number(i.current_stock) === 0)
 
   const handleCreate = async () => {
-    const name = newIngredient.name.trim()
-    const unit = newIngredient.unit.trim()
-    const barcode = newIngredient.barcode?.trim() || ""
-    const rfid = newIngredient.rfid?.trim() || ""
-    const current_stock = Number(newIngredient.current_stock)
-    const min_stock_level = Number(newIngredient.min_stock_level)
+    if (!validateAll(newIngredient)) return
 
-    if (!name || !unit || current_stock < 0 || min_stock_level < 0 || !barcode || !rfid) {
-      toast.error("Vui lòng nhập đầy đủ và hợp lệ tất cả thông tin")
-      return
+    try {
+      const newItem: Ingredient = {
+        id: uuidv4(),
+        ...newIngredient,
+        name: newIngredient.name.trim(),
+        barcode: newIngredient.barcode?.trim(),
+        rfid: newIngredient.rfid?.trim(),
+        created_at: new Date(),
+        updated_at: new Date(),
+      }
+
+      const response = await ingredientService.create(newItem)
+      if (!response) {
+        toast.error("Tạo nguyên liệu thất bại")
+        return
+      }
+
+      toast.success("Tạo nguyên liệu thành công")
+      setIngredients([...ingredients, newItem])
+      setIsCreateDialogOpen(false)
+      setNewIngredient({
+        name: "",
+        unit: "",
+        barcode: "",
+        rfid: "",
+        min_stock_level: 0,
+        current_stock: 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+        deleted_at: null,
+      })
+      resetErrors()
+    } catch (error: any) {
+      toast.error(error?.message || "Tạo nguyên liệu thất bại")
     }
-    const newItem: Ingredient = {
-      id: uuidv4(),
-      ...newIngredient,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }
-    const response = await ingredientService.create(newItem)
-    if (!response) {
-      toast.error("Tạo nguyên liệu thất bại")
-      return
-    }
-    toast.success("Tạo nguyên liệu thành công")
-    setIngredients([...ingredients, newItem])
-    setIsCreateDialogOpen(false)
-    setNewIngredient({
-      name: "",
-      unit: "",
-      barcode: "",
-      rfid: "",
-      min_stock_level: 0,
-      current_stock: 0,
-      created_at: new Date(),
-      updated_at: new Date(),
-      deleted_at: null,
-    })
   }
 
   const handleEdit = async () => {
-    if (!selectedIngredient) return
-    const name = selectedIngredient.name.trim()
-    const unit = selectedIngredient.unit.trim()
-    const barcode = selectedIngredient.barcode?.trim() || ""
-    const rfid = selectedIngredient.rfid?.trim() || ""
-    const current_stock = Number(selectedIngredient.current_stock)
-    const min_stock_level = Number(selectedIngredient.min_stock_level)
+    if (!selectedIngredient || !validateAll(selectedIngredient, true, selectedIngredient.id)) return
 
-    if (!name || !unit || current_stock < 0 || min_stock_level < 0 || !barcode || !rfid) {
-      toast.error("Vui lòng nhập đầy đủ và hợp lệ tất cả thông tin")
-      return
+    try {
+      const updatedItem = {
+        ...selectedIngredient,
+        name: selectedIngredient.name.trim(),
+        barcode: selectedIngredient.barcode?.trim(),
+        rfid: selectedIngredient.rfid?.trim(),
+        updated_at: new Date(),
+      }
+
+      const response = await ingredientService.update(selectedIngredient.id, updatedItem)
+      if (!response) {
+        toast.error("Cập nhật nguyên liệu thất bại")
+        return
+      }
+
+      toast.success("Cập nhật nguyên liệu thành công")
+      setIngredients((prev) =>
+        prev.map((i) => (i.id === selectedIngredient.id ? updatedItem : i))
+      )
+      setIsEditDialogOpen(false)
+      setSelectedIngredient(null)
+      resetErrors(true)
+    } catch (error: any) {
+      toast.error(error?.message || "Cập nhật nguyên liệu thất bại")
     }
-    const response = await ingredientService.update(selectedIngredient.id, {
-      ...selectedIngredient,
-      updated_at: new Date(),
-    })
-    if (!response) {
-      toast.error("Cập nhật nguyên liệu thất bại")
-      return
-    }
-    toast.success("Cập nhật nguyên liệu thành công")
-    setIngredients((prev) =>
-      prev.map((i) => (i.id === selectedIngredient.id ? { ...selectedIngredient, updated_at: new Date() } : i))
-    )
-    setIsEditDialogOpen(false)
-    setSelectedIngredient(null)
   }
 
   const handleDelete = async () => {
     if (!selectedIngredient) return
-    const response = await ingredientService.remove(selectedIngredient.id)
-    if (!response) {
-      toast.error("Xóa nguyên liệu thất bại")
-      return
+
+    try {
+      const response = await ingredientService.remove(selectedIngredient.id)
+      if (!response) {
+        toast.error("Xóa nguyên liệu thất bại")
+        return
+      }
+
+      toast.success("Xóa nguyên liệu thành công")
+      setIngredients((prev) =>
+        prev.map((i) => (i.id === selectedIngredient.id ? { ...i, deleted_at: new Date() } : i))
+      )
+      setIsDeleteDialogOpen(false)
+      setSelectedIngredient(null)
+    } catch (error: any) {
+      toast.error(error?.message || "Xóa nguyên liệu thất bại")
     }
-    toast.success("Xóa nguyên liệu thành công")
-    setIngredients((prev) =>
-      prev.map((i) => (i.id === selectedIngredient.id ? { ...i, deleted_at: new Date() } : i))
-    )
-    setIsDeleteDialogOpen(false)
-    setSelectedIngredient(null)
   }
+
+  // Reset form khi mở dialog
+  useEffect(() => {
+    if (isCreateDialogOpen) {
+      setNewIngredient({
+        name: "",
+        unit: "",
+        barcode: "",
+        rfid: "",
+        min_stock_level: 0,
+        current_stock: 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+        deleted_at: null,
+      })
+      resetErrors()
+    }
+  }, [isCreateDialogOpen])
+
+  useEffect(() => {
+    if (isEditDialogOpen && selectedIngredient) {
+      resetErrors(true)
+    }
+  }, [isEditDialogOpen, selectedIngredient])
 
   return (
     <div className="space-y-6">
@@ -256,11 +356,11 @@ export function IngredientManagement({
             {showDeleted ? "Ẩn đã xóa" : "Hiện đã xóa"}
           </Button>
 
-          <Select value={stockFilter} onValueChange={(value) => setStockFilter(value as "Tất cả" | "Đủ hàng" | "Sắp hết" | "Hết hàng")}>
+          <Select value={stockFilter} onValueChange={(value) => setStockFilter(value as any)}>
             <SelectTrigger className="w-[150px]">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-muted-foreground" />
-                <SelectValue placeholder="Lọc trạng thái" />
+                <SelectValue />
               </div>
             </SelectTrigger>
             <SelectContent>
@@ -272,6 +372,7 @@ export function IngredientManagement({
           </Select>
         </div>
 
+        {/* CREATE DIALOG */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -285,88 +386,103 @@ export function IngredientManagement({
             </DialogHeader>
 
             <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Tên nguyên liệu</Label>
+              <div className="grid gap-1">
+                <Label>Tên nguyên liệu *</Label>
                 <Input
                   value={newIngredient.name}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })}
+                  onChange={(e) => {
+                    setNewIngredient({ ...newIngredient, name: e.target.value })
+                    validateField("name", e.target.value)
+                  }}
+                  onBlur={() => validateField("name", newIngredient.name)}
                   placeholder="Nhập tên nguyên liệu"
-                  required
                 />
+                {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
               </div>
 
-              <div className="grid gap-2">
-                <Label>Đơn vị</Label>
+              <div className="grid gap-1">
+                <Label>Đơn vị *</Label>
                 <Select
                   value={newIngredient.unit}
-                  onValueChange={(value) => setNewIngredient({ ...newIngredient, unit: value })}
-                  required
+                  onValueChange={(value) => {
+                    setNewIngredient({ ...newIngredient, unit: value })
+                    validateField("unit", value)
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn đơn vị" />
                   </SelectTrigger>
                   <SelectContent>
                     {UNITS.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
+                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.unit && <p className="text-sm text-red-500">{errors.unit}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Tồn kho hiện tại</Label>
+                <div className="grid gap-1">
+                  <Label>Tồn kho hiện tại *</Label>
                   <Input
                     type="number"
                     value={newIngredient.current_stock}
-                    onChange={(e) =>
-                      setNewIngredient({
-                        ...newIngredient,
-                        current_stock: Number(e.target.value),
-                      })
-                    }
-                    required
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setNewIngredient({ ...newIngredient, current_stock: val })
+                      validateField("current_stock", val)
+                    }}
+                    onBlur={() => validateField("current_stock", newIngredient.current_stock)}
+                    min={0}
                   />
+                  {errors.current_stock && <p className="text-sm text-red-500">{errors.current_stock}</p>}
                 </div>
-                <div className="grid gap-2">
-                  <Label>Tồn kho tối thiểu</Label>
+                <div className="grid gap-1">
+                  <Label>Tồn kho tối thiểu *</Label>
                   <Input
                     type="number"
                     value={newIngredient.min_stock_level}
-                    onChange={(e) =>
-                      setNewIngredient({
-                        ...newIngredient,
-                        min_stock_level: Number(e.target.value),
-                      })
-                    }
-                    required
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setNewIngredient({ ...newIngredient, min_stock_level: val })
+                      validateField("min_stock_level", val)
+                    }}
+                    onBlur={() => validateField("min_stock_level", newIngredient.min_stock_level)}
+                    min={0}
                   />
+                  {errors.min_stock_level && <p className="text-sm text-red-500">{errors.min_stock_level}</p>}
                 </div>
               </div>
 
-              <div className="grid gap-2">
-                <Label>Mã barcode</Label>
+              <div className="grid gap-1">
+                <Label>Mã barcode *</Label>
                 <Input
                   value={newIngredient.barcode || ""}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, barcode: e.target.value })}
-                  required
+                  onChange={(e) => {
+                    setNewIngredient({ ...newIngredient, barcode: e.target.value })
+                    validateField("barcode", e.target.value)
+                  }}
+                  onBlur={() => validateField("barcode", newIngredient.barcode)}
                 />
+                {errors.barcode && <p className="text-sm text-red-500">{errors.barcode}</p>}
               </div>
 
-              <div className="grid gap-2">
-                <Label>Mã RFID</Label>
+              <div className="grid gap-1">
+                <Label>Mã RFID *</Label>
                 <Input
                   value={newIngredient.rfid || ""}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, rfid: e.target.value })}
-                  required
+                  onChange={(e) => {
+                    setNewIngredient({ ...newIngredient, rfid: e.target.value })
+                    validateField("rfid", e.target.value)
+                  }}
+                  onBlur={() => validateField("rfid", newIngredient.rfid)}
                 />
+                {errors.rfid && <p className="text-sm text-red-500">{errors.rfid}</p>}
               </div>
             </div>
 
             <DialogFooter>
-              <Button onClick={handleCreate}>Thêm</Button>
+              <Button onClick={handleCreate}>Thêm nguyên liệu</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -394,9 +510,7 @@ export function IngredientManagement({
       <Card>
         <CardHeader>
           <CardTitle>Danh sách nguyên liệu</CardTitle>
-          <CardDescription>
-            Quản lý kho ({filteredIngredients.length} nguyên liệu)
-          </CardDescription>
+          <CardDescription>Quản lý kho ({filteredIngredients.length} nguyên liệu)</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -413,70 +527,79 @@ export function IngredientManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredIngredients.map((i) => (
-                <TableRow key={i.id} className={i.deleted_at ? "opacity-50" : ""}>
-                  <TableCell className="font-medium">{i.name}</TableCell>
-                  <TableCell>{i.unit}</TableCell>
-                  <TableCell>
-                    <span
-                      className={
-                        Number(i.current_stock) <= Number(i.min_stock_level) && !i.deleted_at ? "text-red-600 font-medium" : ""
-                      }
-                    >
-                      {i.current_stock}
-                    </span>
+              {filteredIngredients.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
+                    Chưa có dữ liệu nguyên liệu
                   </TableCell>
-                  <TableCell>{i.min_stock_level}</TableCell>
-                  <TableCell>{i.barcode || "-"}</TableCell>
-                  <TableCell>{i.rfid || "-"}</TableCell>
-                  <TableCell>{getStockStatus(i)}</TableCell>
-                  <TableCell className="flex gap-2">
-                    {/* View */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedIngredient(i)
-                        setIsViewDialogOpen(true)
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-
-                    {/* Edit */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedIngredient({ ...i })
-                        setIsEditDialogOpen(true)
-                      }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-
-                    {/* Delete */}
-                    {!i.deleted_at && (
+                </TableRow>
+              ) : (
+                filteredIngredients.map((i) => (
+                  <TableRow key={i.id} className={i.deleted_at ? "opacity-50" : ""}>
+                    <TableCell className="font-medium">{i.name}</TableCell>
+                    <TableCell>{i.unit}</TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          Number(i.current_stock) <= Number(i.min_stock_level) && !i.deleted_at
+                            ? "text-red-600 font-medium"
+                            : ""
+                        }
+                      >
+                        {i.current_stock}
+                      </span>
+                    </TableCell>
+                    <TableCell>{i.min_stock_level}</TableCell>
+                    <TableCell>{i.barcode || "-"}</TableCell>
+                    <TableCell>{i.rfid || "-"}</TableCell>
+                    <TableCell>{getStockStatus(i)}</TableCell>
+                    <TableCell className="flex gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           setSelectedIngredient(i)
-                          setIsDeleteDialogOpen(true)
+                          setIsViewDialogOpen(true)
                         }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Eye className="h-4 w-4" />
                       </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+
+                      {!i.deleted_at && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedIngredient({ ...i })
+                              setIsEditDialogOpen(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedIngredient(i)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* View Dialog */}
+      {/* VIEW DIALOG */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -496,7 +619,7 @@ export function IngredientManagement({
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog */}
+      {/* EDIT DIALOG */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -504,90 +627,97 @@ export function IngredientManagement({
           </DialogHeader>
           {selectedIngredient && (
             <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Tên nguyên liệu</Label>
+              <div className="grid gap-1">
+                <Label>Tên nguyên liệu *</Label>
                 <Input
                   value={selectedIngredient.name}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setSelectedIngredient({ ...selectedIngredient, name: e.target.value })
-                  }
-                  required
+                    validateField("name", e.target.value, true, selectedIngredient.id)
+                  }}
+                  onBlur={() => validateField("name", selectedIngredient.name, true, selectedIngredient.id)}
                 />
+                {editErrors.name && <p className="text-sm text-red-500">{editErrors.name}</p>}
               </div>
 
-              <div className="grid gap-2">
-                <Label>Đơn vị</Label>
+              <div className="grid gap-1">
+                <Label>Đơn vị *</Label>
                 <Select
                   value={selectedIngredient.unit}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
                     setSelectedIngredient({ ...selectedIngredient, unit: value })
-                  }
-                  required
+                    validateField("unit", value, true)
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn đơn vị" />
                   </SelectTrigger>
                   <SelectContent>
                     {UNITS.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
+                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {editErrors.unit && <p className="text-sm text-red-500">{editErrors.unit}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Tồn kho</Label>
+                <div className="grid gap-1">
+                  <Label>Tồn kho *</Label>
                   <Input
                     type="number"
                     value={selectedIngredient.current_stock}
-                    onChange={(e) =>
-                      setSelectedIngredient({
-                        ...selectedIngredient,
-                        current_stock: Number(e.target.value),
-                      })
-                    }
-                    required
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setSelectedIngredient({ ...selectedIngredient, current_stock: val })
+                      validateField("current_stock", val, true)
+                    }}
+                    onBlur={() => validateField("current_stock", selectedIngredient.current_stock, true)}
+                    min={0}
                   />
+                  {editErrors.current_stock && <p className="text-sm text-red-500">{editErrors.current_stock}</p>}
                 </div>
-                <div className="grid gap-2">
-                  <Label>Tồn kho tối thiểu</Label>
+                <div className="grid gap-1">
+                  <Label>Tồn kho tối thiểu *</Label>
                   <Input
                     type="number"
                     value={selectedIngredient.min_stock_level}
-                    onChange={(e) =>
-                      setSelectedIngredient({
-                        ...selectedIngredient,
-                        min_stock_level: Number(e.target.value),
-                      })
-                    }
-                    required
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setSelectedIngredient({ ...selectedIngredient, min_stock_level: val })
+                      validateField("min_stock_level", val, true)
+                    }}
+                    onBlur={() => validateField("min_stock_level", selectedIngredient.min_stock_level, true)}
+                    min={0}
                   />
+                  {editErrors.min_stock_level && <p className="text-sm text-red-500">{editErrors.min_stock_level}</p>}
                 </div>
               </div>
 
-              <div className="grid gap-2">
-                <Label>Barcode</Label>
+              <div className="grid gap-1">
+                <Label>Barcode *</Label>
                 <Input
                   value={selectedIngredient.barcode || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setSelectedIngredient({ ...selectedIngredient, barcode: e.target.value })
-                  }
-                  required
+                    validateField("barcode", e.target.value, true)
+                  }}
+                  onBlur={() => validateField("barcode", selectedIngredient.barcode, true)}
                 />
+                {editErrors.barcode && <p className="text-sm text-red-500">{editErrors.barcode}</p>}
               </div>
 
-              <div className="grid gap-2">
-                <Label>RFID</Label>
+              <div className="grid gap-1">
+                <Label>RFID *</Label>
                 <Input
                   value={selectedIngredient.rfid || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setSelectedIngredient({ ...selectedIngredient, rfid: e.target.value })
-                  }
-                  required
+                    validateField("rfid", e.target.value, true)
+                  }}
+                  onBlur={() => validateField("rfid", selectedIngredient.rfid, true)}
                 />
+                {editErrors.rfid && <p className="text-sm text-red-500">{editErrors.rfid}</p>}
               </div>
             </div>
           )}
@@ -598,12 +728,14 @@ export function IngredientManagement({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* DELETE DIALOG */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Xác nhận xóa</DialogTitle>
-            <DialogDescription>Bạn có chắc chắn muốn xóa nguyên liệu này không? Hành động này không thể hoàn tác.</DialogDescription>
+            <DialogDescription>
+              Bạn có chắc chắn muốn xóa nguyên liệu <strong>{selectedIngredient?.name}</strong>? Hành động này không thể hoàn tác.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Hủy</Button>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -54,6 +54,11 @@ interface TableManagementProps {
   setIsCreateTableDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
 }
 
+// Helper: Hiển thị lỗi
+const ErrorMessage = ({ message }: { message?: string }) => (
+  message ? <p className="text-sm text-red-600 mt-1">{message}</p> : null
+)
+
 export function TableManagement({
   tables,
   setTables,
@@ -72,6 +77,14 @@ export function TableManagement({
   const [panoramaPreviews, setPanoramaPreviews] = useState<string[]>([])
   const [currentUrls, setCurrentUrls] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Form refs
+  const createFormRef = useRef<HTMLFormElement>(null)
+  const editFormRef = useRef<HTMLFormElement>(null)
+
+  // Validation states
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({})
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     console.log("Tables:", tables)
@@ -176,22 +189,87 @@ export function TableManagement({
     if (area) loc.area = area
     if (floorRaw) {
       const f = Number(floorRaw)
-      if (!Number.isNaN(f)) loc.floor = f
+      if (!Number.isNaN(f) && f >= 0) loc.floor = f
     }
     const coords: any = {}
     if (xRaw) {
       const xv = Number(xRaw)
-      if (!Number.isNaN(xv)) coords.x = xv
+      if (!Number.isNaN(xv) && xv >= 0) coords.x = xv
     }
     if (yRaw) {
       const yv = Number(yRaw)
-      if (!Number.isNaN(yv)) coords.y = yv
+      if (!Number.isNaN(yv) && yv >= 0) coords.y = yv
     }
     if (Object.keys(coords).length) loc.coordinates = coords
     return loc
   }
 
+  // VALIDATE FORM
+  const validateForm = (form: HTMLFormElement, isEdit = false): Record<string, string> => {
+    const formData = new FormData(form)
+    const errors: Record<string, string> = {}
+
+    const table_number = formData.get("table_number")?.toString().trim()
+    const capacity = formData.get("capacity")?.toString()
+    const deposit = formData.get("deposit")?.toString()
+    const cancel_minutes = formData.get("cancel_minutes")?.toString()
+
+    if (!table_number) errors.table_number = "Số bàn không được để trống"
+    if (!capacity) errors.capacity = "Sức chứa không được để trống"
+    else if (Number(capacity) < 0) errors.capacity = "Sức chứa phải ≥ 0"
+
+    if (!deposit) errors.deposit = "Tiền cọc không được để trống"
+    else if (Number(deposit) < 0) errors.deposit = "Tiền cọc phải ≥ 0"
+
+    if (!cancel_minutes) errors.cancel_minutes = "Thời gian hủy không được để trống"
+    else if (Number(cancel_minutes) < 0) errors.cancel_minutes = "Thời gian hủy phải ≥ 0"
+
+    // Tọa độ và tầng (nếu có)
+    const floor = formData.get("location_floor")?.toString()
+    const x = formData.get("location_x")?.toString()
+    const y = formData.get("location_y")?.toString()
+
+    if (floor && (Number(floor) < 0)) errors.location_floor = "Tầng phải ≥ 0"
+    if (x && (Number(x) < 0)) errors.location_x = "Tọa độ X phải ≥ 0"
+    if (y && (Number(y) < 0)) errors.location_y = "Tọa độ Y phải ≥ 0"
+
+    return errors
+  }
+
+  // Realtime validation cho Create
+  useEffect(() => {
+    if (createFormRef.current) {
+      const handleInput = () => {
+        const errors = validateForm(createFormRef.current!)
+        setCreateErrors(errors)
+      }
+      const inputs = createFormRef.current.querySelectorAll("input, select")
+      inputs.forEach((input) => input.addEventListener("input", handleInput))
+      return () => inputs.forEach((input) => input.removeEventListener("input", handleInput))
+    }
+  }, [createFormRef.current, amenities, panoramaFiles])
+
+  // Realtime validation cho Edit
+  useEffect(() => {
+    if (editFormRef.current) {
+      const handleInput = () => {
+        const errors = validateForm(editFormRef.current!, true)
+        setEditErrors(errors)
+      }
+      const inputs = editFormRef.current.querySelectorAll("input, select")
+      inputs.forEach((input) => input.addEventListener("input", handleInput))
+      return () => inputs.forEach((input) => input.removeEventListener("input", handleInput))
+    }
+  }, [editFormRef.current, selectedTable, amenities, panoramaFiles])
+
   const handleCreateTable = async (form: HTMLFormElement) => {
+    const errors = validateForm(form)
+    setCreateErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      toast.error("Vui lòng kiểm tra lại các trường bắt buộc")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const formValues = new FormData(form)
@@ -217,9 +295,7 @@ export function TableManagement({
       if (createdTable && createdTable.id) {
         setTables((prev) => [...prev, createdTable])
         setIsCreateTableDialogOpen(false)
-        setAmenities([])
-        setPanoramaFiles([])
-        setPanoramaPreviews([])
+        resetForm()
         toast.success("Đã thêm bàn thành công")
       } else {
         toast.error("Thêm bàn thất bại")
@@ -232,6 +308,13 @@ export function TableManagement({
   }
 
   const handleUpdateTable = async (id: string, form: HTMLFormElement) => {
+    const errors = validateForm(form, true)
+    setEditErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      toast.error("Vui lòng kiểm tra lại các trường bắt buộc")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const formValues = new FormData(form)
@@ -257,10 +340,7 @@ export function TableManagement({
       if (updated && updated.id) {
         setTables((prev) => prev.map((t) => (t.id === id ? updated : t)))
         setIsEditTableDialogOpen(false)
-        setAmenities([])
-        setPanoramaFiles([])
-        setPanoramaPreviews([])
-        setCurrentUrls(updated.panorama_urls || [])
+        resetForm()
         toast.success("Đã cập nhật bàn thành công")
       } else {
         toast.error("Cập nhật bàn thất bại")
@@ -277,6 +357,8 @@ export function TableManagement({
     setPanoramaFiles([])
     setPanoramaPreviews([])
     setCurrentUrls([])
+    setCreateErrors({})
+    setEditErrors([] as any)
   }
 
   const handleDeleteTable = async (id: string) => {
@@ -322,6 +404,7 @@ export function TableManagement({
     setPanoramaFiles((prev) => prev.filter((_, i) => i !== index))
     setPanoramaPreviews((prev) => {
       const newPreviews = prev.filter((_, i) => i !== index)
+      if (prev[index].startsWith("blob:")) URL.revokeObjectURL(prev[index])
       return newPreviews
     })
   }
@@ -366,109 +449,115 @@ export function TableManagement({
       </div>
 
       {/* --- Table Cards --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-        {filteredTables.map((table) => (
-          <Card
-            key={table.id}
-            className={`border-l-4 ${table.deleted_at ? "opacity-50" : ""} ${
-              table.status === "available"
-                ? "border-l-green-500"
-                : table.status === "occupied"
-                  ? "border-l-red-500"
-                  : table.status === "reserved"
-                    ? "border-l-blue-500"
-                    : "border-l-gray-500"
-            }`}
-          >
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-lg">{table.table_number}</CardTitle>
-                  <CardDescription className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    {table.capacity} người
-                  </CardDescription>
-                </div>
-                <div className="flex gap-3 items-center">
-                  {getStatusBadge(table.status)}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTable(table)
-                        setIsViewTableDialogOpen(true)
-                      }}
-                      title="Xem chi tiết"
-                      className="border-blue-500 text-blue-500 hover:bg-blue-50"
-                    >
-                      <Eye className="h-5 w-5" />
-                    </Button>
-                    {!table.deleted_at && (
-                      <>
-                        {table.status === "available" && (
+      {filteredTables.length === 0 ? (
+        <div className="text-center">
+          HIỆN TẠI CHƯA CÓ DỮ LIỆU BÀN
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+          {filteredTables.map((table) => (
+            <Card
+              key={table.id}
+              className={`border-l-4 ${table.deleted_at ? "opacity-50" : ""} ${
+                table.status === "available"
+                  ? "border-l-green-500"
+                  : table.status === "occupied"
+                    ? "border-l-red-500"
+                    : table.status === "reserved"
+                      ? "border-l-blue-500"
+                      : "border-l-gray-500"
+              }`}
+            >
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{table.table_number}</CardTitle>
+                    <CardDescription className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {table.capacity} người
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    {getStatusBadge(table.status)}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedTable(table)
+                          setIsViewTableDialogOpen(true)
+                        }}
+                        title="Xem chi tiết"
+                        className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                      >
+                        <Eye className="h-5 w-5" />
+                      </Button>
+                      {!table.deleted_at && (
+                        <>
+                          {table.status === "available" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedTableForReservation(table)
+                                setIsCreateReservationOpen(true)
+                              }}
+                              title="Đặt bàn"
+                              className="border-green-500 text-black hover:bg-green-50"
+                            >
+                              <Plus className="h-5 w-5" />
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              setSelectedTableForReservation(table)
-                              setIsCreateReservationOpen(true)
+                              setSelectedTable(table)
+                              setAmenities(
+                                table.amenities
+                                  ? Object.entries(table.amenities).map(([label, value]) => ({
+                                      label,
+                                      value: String(value),
+                                    }))
+                                  : []
+                              )
+                              setPanoramaFiles([])
+                              setPanoramaPreviews(table.panorama_urls || [])
+                              setCurrentUrls(table.panorama_urls || [])
+                              setIsEditTableDialogOpen(true)
                             }}
-                            title="Đặt bàn"
-                            className="border-green-500 text-black hover:bg-green-50"
+                            title="Chỉnh sửa"
+                            className="border-yellow-500 text-yellow-500 hover:bg-yellow-50"
                           >
-                            <Plus className="h-5 w-5" />
+                            <Edit className="h-5 w-5" />
                           </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedTable(table)
-                            setAmenities(
-                              table.amenities
-                                ? Object.entries(table.amenities).map(([label, value]) => ({
-                                    label,
-                                    value: String(value),
-                                  }))
-                                : []
-                            )
-                            setPanoramaFiles([])
-                            setPanoramaPreviews(table.panorama_urls || [])
-                            setCurrentUrls(table.panorama_urls || [])
-                            setIsEditTableDialogOpen(true)
-                          }}
-                          title="Chỉnh sửa"
-                          className="border-yellow-500 text-yellow-500 hover:bg-yellow-50"
-                        >
-                          <Edit className="h-5 w-5" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            handleDeleteTable(table.id)
-                          }}
-                          title="Xóa"
-                          className="border-red-500 text-red-500 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </Button>
-                      </>
-                    )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              handleDeleteTable(table.id)
+                            }}
+                            title="Xóa"
+                            className="border-red-500 text-red-500 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm text-muted-foreground">Sức chứa: {table.capacity} người</p>
-              <p className="text-sm text-muted-foreground">
-                Vị trí: {formatLocation(table.location) ?? "Không có"}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm text-muted-foreground">Sức chứa: {table.capacity} người</p>
+                <p className="text-sm text-muted-foreground">
+                  Vị trí: {formatLocation(table.location) ?? "Không có"}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Create Table Dialog */}
       <Dialog open={isCreateTableDialogOpen} onOpenChange={(open) => {
@@ -481,6 +570,7 @@ export function TableManagement({
             <DialogDescription>Thêm thông tin bàn mới vào hệ thống</DialogDescription>
           </DialogHeader>
           <form
+            ref={createFormRef}
             onSubmit={(e) => {
               e.preventDefault();
               handleCreateTable(e.currentTarget);
@@ -489,20 +579,24 @@ export function TableManagement({
             <div className="grid grid-cols-2 gap-8 py-4">
               <div className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="table_number">Số bàn</Label>
+                  <Label htmlFor="table_number">Số bàn *</Label>
                   <Input id="table_number" name="table_number" required className="w-full" />
+                  <ErrorMessage message={createErrors.table_number} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="capacity">Sức chứa</Label>
-                  <Input id="capacity" name="capacity" type="number" required className="w-full" />
+                  <Label htmlFor="capacity">Sức chứa *</Label>
+                  <Input id="capacity" name="capacity" type="number" min="0" required className="w-full" />
+                  <ErrorMessage message={createErrors.capacity} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="deposit">Tiền cọc (VNĐ)</Label>
-                  <Input id="deposit" name="deposit" type="number" required className="w-full" />
+                  <Label htmlFor="deposit">Tiền cọc (VNĐ) *</Label>
+                  <Input id="deposit" name="deposit" type="number" min="0" required className="w-full" />
+                  <ErrorMessage message={createErrors.deposit} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="cancel_minutes">Thời gian hủy (phút)</Label>
-                  <Input id="cancel_minutes" name="cancel_minutes" type="number" required className="w-full" />
+                  <Label htmlFor="cancel_minutes">Thời gian hủy (phút) *</Label>
+                  <Input id="cancel_minutes" name="cancel_minutes" type="number" min="0" required className="w-full" />
+                  <ErrorMessage message={createErrors.cancel_minutes} />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="status">Trạng thái</Label>
@@ -531,15 +625,18 @@ export function TableManagement({
                     </div>
                     <div>
                       <Label htmlFor="location_floor">Tầng</Label>
-                      <Input id="location_floor" name="location_floor" type="number" placeholder="1" />
+                      <Input id="location_floor" name="location_floor" type="number" min="0" placeholder="1" />
+                      <ErrorMessage message={createErrors.location_floor} />
                     </div>
                     <div>
                       <Label htmlFor="location_x">Tọa độ X</Label>
-                      <Input id="location_x" name="location_x" type="number" placeholder="10" />
+                      <Input id="location_x" name="location_x" type="number" min="0" placeholder="10" />
+                      <ErrorMessage message={createErrors.location_x} />
                     </div>
                     <div>
                       <Label htmlFor="location_y">Tọa độ Y</Label>
-                      <Input id="location_y" name="location_y" type="number" placeholder="20" />
+                      <Input id="location_y" name="location_y" type="number" min="0" placeholder="20" />
+                      <ErrorMessage message={createErrors.location_y} />
                     </div>
                   </div>
                 </div>
@@ -644,7 +741,7 @@ export function TableManagement({
               >
                 Hủy
               </Button>
-              <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting}>
+              <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting || Object.keys(createErrors).length > 0}>
                 {isSubmitting ? "Đang thêm..." : "Thêm bàn"}
               </Button>
             </DialogFooter>
@@ -742,28 +839,34 @@ export function TableManagement({
             <DialogTitle>Chỉnh sửa bàn</DialogTitle>
           </DialogHeader>
           {selectedTable && (
-            <form onSubmit={(e) =>{
-              e.preventDefault()
-              handleUpdateTable(selectedTable.id, e.currentTarget)
-            }}
+            <form
+              ref={editFormRef}
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleUpdateTable(selectedTable.id, e.currentTarget)
+              }}
             >
               <div className="grid grid-cols-2 gap-8 py-4">
                 <div className="space-y-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-table_number">Số bàn</Label>
+                    <Label htmlFor="edit-table_number">Số bàn *</Label>
                     <Input id="edit-table_number" name="table_number" defaultValue={selectedTable.table_number} required className="w-full" />
+                    <ErrorMessage message={editErrors.table_number} />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-capacity">Sức chứa</Label>
-                    <Input id="edit-capacity" name="capacity" type="number" defaultValue={selectedTable.capacity} required className="w-full" />
+                    <Label htmlFor="edit-capacity">Sức chứa *</Label>
+                    <Input id="edit-capacity" name="capacity" type="number" min="0" defaultValue={selectedTable.capacity} required className="w-full" />
+                    <ErrorMessage message={editErrors.capacity} />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-deposit">Tiền cọc (VNĐ)</Label>
-                    <Input id="edit-deposit" name="deposit" type="number" defaultValue={selectedTable.deposit} required className="w-full" />
+                    <Label htmlFor="edit-deposit">Tiền cọc (VNĐ) *</Label>
+                    <Input id="edit-deposit" name="deposit" type="number" min="0" defaultValue={selectedTable.deposit} required className="w-full" />
+                    <ErrorMessage message={editErrors.deposit} />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-cancel_minutes">Thời gian hủy (phút)</Label>
-                    <Input id="edit-cancel_minutes" name="cancel_minutes" type="number" defaultValue={selectedTable.cancel_minutes} required className="w-full" />
+                    <Label htmlFor="edit-cancel_minutes">Thời gian hủy (phút) *</Label>
+                    <Input id="edit-cancel_minutes" name="cancel_minutes" type="number" min="0" defaultValue={selectedTable.cancel_minutes} required className="w-full" />
+                    <ErrorMessage message={editErrors.cancel_minutes} />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="edit-status">Trạng thái</Label>
@@ -792,15 +895,18 @@ export function TableManagement({
                       </div>
                       <div>
                         <Label htmlFor="edit-location_floor">Tầng</Label>
-                        <Input id="edit-location_floor" name="location_floor" type="number" defaultValue={selectedTable.location?.floor ?? ""} />
+                        <Input id="edit-location_floor" name="location_floor" type="number" min="0" defaultValue={selectedTable.location?.floor ?? ""} />
+                        <ErrorMessage message={editErrors.location_floor} />
                       </div>
                       <div>
                         <Label htmlFor="edit-location_x">Tọa độ X</Label>
-                        <Input id="edit-location_x" name="location_x" type="number" defaultValue={selectedTable.location?.coordinates?.x ?? ""} />
+                        <Input id="edit-location_x" name="location_x" type="number" min="0" defaultValue={selectedTable.location?.coordinates?.x ?? ""} />
+                        <ErrorMessage message={editErrors.location_x} />
                       </div>
                       <div>
                         <Label htmlFor="edit-location_y">Tọa độ Y</Label>
-                        <Input id="edit-location_y" name="location_y" type="number" defaultValue={selectedTable.location?.coordinates?.y ?? ""} />
+                        <Input id="edit-location_y" name="location_y" type="number" min="0" defaultValue={selectedTable.location?.coordinates?.y ?? ""} />
+                        <ErrorMessage message={editErrors.location_y} />
                       </div>
                     </div>
                   </div>
@@ -905,7 +1011,7 @@ export function TableManagement({
                 >
                   Hủy
                 </Button>
-                <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting}>
+                <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting || Object.keys(editErrors).length > 0}>
                   {isSubmitting ? "Đang lưu..." : "Lưu thay đổi"}
                 </Button>
               </DialogFooter>
