@@ -29,8 +29,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const { data: response } = await authService.login(formData);
-      // const response = await authService.login(formData);
+      const response = await authService.login(formData);
       console.log("Login response:", response);
       if (response.token) {
         localStorage.setItem("token", response.token);

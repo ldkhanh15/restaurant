@@ -14,7 +14,7 @@ class ComplaintService extends BaseService<Complaint> {
       include: [
         { model: User, as: "user" },
         { model: Order, as: "order" },
-        // { model: OrderItem, as: "orderitem" },
+        { model: OrderItem, as: "orderItem" },
       ],
     });
   }

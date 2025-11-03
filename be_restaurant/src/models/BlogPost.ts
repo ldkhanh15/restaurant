@@ -53,7 +53,7 @@ BlogPost.init(
       allowNull: false,
     },
     content: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: false,
     },
     images: {
@@ -63,7 +63,7 @@ BlogPost.init(
     slug: {
       type: DataTypes.STRING(220),
       allowNull: true,
-      unique: true,
+      unique: false,
     },
     thumbnail_url: {
       type: DataTypes.STRING(500),
