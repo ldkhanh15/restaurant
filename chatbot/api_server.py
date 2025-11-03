@@ -192,18 +192,18 @@ def api_update(payload: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/train-model")
-def api_train(req: TrainRequest):
-    """Huấn luyện mô hình gợi ý món ăn."""
-    try:
-        result = train_model(
-            data_path=req.data_path,
-            out_dir=req.out_dir,
-            epochs=req.epochs,
-        )
-        return {"status": "success", "result": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.post("/api/train-model")
+# def api_train(req: TrainRequest):
+#     """Huấn luyện mô hình gợi ý món ăn."""
+#     try:
+#         result = train_model(
+#             data_path=req.data_path,
+#             out_dir=req.out_dir,
+#             epochs=req.epochs,
+#         )
+#         return {"status": "success", "result": result}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/recommend")
 async def api_recommend(data: dict):

@@ -18,6 +18,13 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import DishSelectionDialog from "@/components/shared/DishSelectionDialog";
+import {
+  slideInRight,
+  containerVariants,
+  itemVariants,
+  cardVariants,
+  buttonVariants,
+} from "@/lib/motion-variants";
 
 export default function PreorderDishStep() {
   const { draft, updateDraft } = useReservationStore();
@@ -82,17 +89,28 @@ export default function PreorderDishStep() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
+      variants={slideInRight}
+      initial="hidden"
+      animate="visible"
       exit={{ opacity: 0, x: -50 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4 }}
     >
-      <Card className="border-2 border-accent/20 shadow-lg">
+      <Card className="border-2 border-accent/20 shadow-lg hover:shadow-xl transition-shadow duration-300">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="flex items-center justify-between"
+          >
             <div>
-              <CardTitle className="flex items-center gap-2 font-elegant text-xl">
-                <ShoppingCart className="h-6 w-6 text-accent" />
+              <CardTitle className="flex items-center gap-2 font-elegant text-2xl">
+                <motion.div
+                  whileHover={{ rotate: 360, scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <ShoppingCart className="h-6 w-6 text-accent" />
+                </motion.div>
                 Đặt Món Trước (Tùy chọn)
               </CardTitle>
               <CardDescription className="text-base mt-2">
@@ -110,95 +128,135 @@ export default function PreorderDishStep() {
                 title="Chọn Món Đặt Trước"
                 description="Chọn món bạn muốn đặt trước cho bữa ăn"
               />
-              <Button
-                className="bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-md"
-                size="sm"
-                onClick={() => setIsMenuOpen(true)}
+              <motion.div
+                variants={buttonVariants}
+                whileHover="hover"
+                whileTap="tap"
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Thêm Món
-              </Button>
+                <Button
+                  className="bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-md hover:shadow-lg transition-all duration-200"
+                  size="sm"
+                  onClick={() => setIsMenuOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Thêm Món
+                </Button>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
         </CardHeader>
         <CardContent className="space-y-4">
           {draft.pre_orders.length > 0 ? (
-            <div className="space-y-4">
-              <AnimatePresence>
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-4"
+            >
+              <AnimatePresence mode="popLayout">
                 {draft.pre_orders.map((item, index) => {
                   const dish = mockDishes.find((d) => d.id === item.dish_id);
                   return (
                     <motion.div
                       key={item.dish_id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      transition={{ delay: index * 0.05 }}
+                      variants={cardVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit={{ opacity: 0, x: 20, scale: 0.9 }}
                       layout
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      custom={index}
                     >
-                      <Card className="border-2 border-accent/10 hover:border-accent/30 transition-all">
+                      <Card className="border-2 border-accent/10 hover:border-accent/30 transition-all shadow-md hover:shadow-lg">
                         <CardContent className="p-4">
                           <div className="flex gap-4">
                             {/* Dish Image */}
                             {dish && (
-                              <div className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
+                              <motion.div
+                                className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0"
+                                whileHover={{ scale: 1.1 }}
+                                transition={{ duration: 0.2 }}
+                              >
                                 <Image
                                   src={dish.media_urls[0] || "/placeholder.svg"}
                                   alt={dish.name}
                                   fill
                                   className="object-cover"
                                 />
-                              </div>
+                              </motion.div>
                             )}
 
                             {/* Dish Info */}
                             <div className="flex-1">
                               <div className="flex items-start justify-between mb-3">
                                 <div>
-                                  <h4 className="font-bold text-lg text-primary mb-1">
+                                  <h4 className="font-bold text-lg text-primary mb-1 font-elegant">
                                     {item.dish_name}
                                   </h4>
                                   <p className="text-sm text-muted-foreground">
                                     {item.price.toLocaleString("vi-VN")}đ / món
                                   </p>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeDish(item.dish_id)}
-                                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                <motion.div
+                                  variants={buttonVariants}
+                                  whileHover="hover"
+                                  whileTap="tap"
                                 >
-                                  <X className="h-4 w-4" />
-                                </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeDish(item.dish_id)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </motion.div>
                               </div>
 
                               <div className="flex items-center justify-between">
                                 {/* Quantity Controls */}
                                 <div className="flex items-center gap-3">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      updateQuantity(item.dish_id, -1)
-                                    }
-                                    disabled={item.quantity <= 1}
-                                    className="border-accent/20"
+                                  <motion.div
+                                    variants={buttonVariants}
+                                    whileHover="hover"
+                                    whileTap="tap"
                                   >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                  <span className="font-bold text-lg w-8 text-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        updateQuantity(item.dish_id, -1)
+                                      }
+                                      disabled={item.quantity <= 1}
+                                      className="border-accent/20 hover:bg-accent/10 transition-all duration-200"
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                  </motion.div>
+                                  <motion.span
+                                    key={item.quantity}
+                                    initial={{ scale: 1.2 }}
+                                    animate={{ scale: 1 }}
+                                    className="font-bold text-lg w-8 text-center"
+                                  >
                                     {item.quantity}
-                                  </span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      updateQuantity(item.dish_id, 1)
-                                    }
-                                    className="border-accent/20"
+                                  </motion.span>
+                                  <motion.div
+                                    variants={buttonVariants}
+                                    whileHover="hover"
+                                    whileTap="tap"
                                   >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        updateQuantity(item.dish_id, 1)
+                                      }
+                                      className="border-accent/20 hover:bg-accent/10 transition-all duration-200"
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </motion.div>
                                 </div>
 
                                 {/* Price */}
@@ -206,12 +264,17 @@ export default function PreorderDishStep() {
                                   <p className="text-xs text-muted-foreground mb-1">
                                     Tổng:
                                   </p>
-                                  <p className="font-bold text-xl text-primary">
+                                  <motion.p
+                                    key={item.price * item.quantity}
+                                    initial={{ scale: 1.1 }}
+                                    animate={{ scale: 1 }}
+                                    className="font-bold text-xl text-primary"
+                                  >
                                     {(
                                       item.price * item.quantity
                                     ).toLocaleString("vi-VN")}
                                     đ
-                                  </p>
+                                  </motion.p>
                                 </div>
                               </div>
                             </div>
@@ -227,26 +290,47 @@ export default function PreorderDishStep() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
                 className="pt-4 border-t-2 border-accent/20"
               >
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-lg">Tổng cộng:</span>
-                  <span className="font-bold text-2xl text-accent">
+                  <motion.span
+                    key={totalPrice}
+                    initial={{ scale: 1.1 }}
+                    animate={{ scale: 1 }}
+                    className="font-bold text-2xl text-accent"
+                  >
                     {totalPrice.toLocaleString("vi-VN")}đ
-                  </span>
+                  </motion.span>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           ) : (
-            <div className="text-center py-12">
-              <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center py-12"
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.1, 1],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+              </motion.div>
               <p className="text-muted-foreground text-lg">
                 Chưa có món nào được chọn
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 Nhấn "Thêm Món" để đặt món trước
               </p>
-            </div>
+            </motion.div>
           )}
         </CardContent>
       </Card>

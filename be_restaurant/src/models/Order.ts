@@ -8,7 +8,7 @@ interface OrderAttributes {
   table_id?: string;
   table_group_id?: string;
   event_id?: string;
-  voucher_id?: string;
+  voucher_id?: string | null;
   status: "pending" | "paid" | "dining" | "waiting_payment" | "cancelled";
   total_amount: number;
   voucher_discount_amount?: number;
@@ -36,7 +36,7 @@ class Order
   public table_id?: string;
   public table_group_id?: string;
   public event_id?: string;
-  public voucher_id?: string;
+  public voucher_id?: string | null;
   public status!:
     | "pending"
     | "paid"

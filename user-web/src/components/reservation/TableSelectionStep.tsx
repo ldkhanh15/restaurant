@@ -26,6 +26,13 @@ import FloorMap from "@/components/FloorMap";
 import { cn } from "@/lib/utils";
 import { mockTables } from "@/mock/mockTables";
 import { getTablesByFloor } from "@/mock/mockTables";
+import {
+  slideInRight,
+  containerVariants,
+  itemVariants,
+  cardVariants,
+  viewportOptions,
+} from "@/lib/motion-variants";
 
 const floors = [
   { id: "floor-1", name: "Tầng 1", description: "Khu vực chính" },
@@ -100,125 +107,167 @@ export default function TableSelectionStep() {
     }
   };
 
-  const capacityOptions = [
-    { value: "all", label: "Tất cả" },
-    { value: "2", label: "2 người" },
-    { value: "4", label: "4 người" },
-    { value: "6", label: "6 người" },
-    { value: "8", label: "8+ người" },
-  ];
-
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
+      variants={slideInRight}
+      initial="hidden"
+      animate="visible"
       exit={{ opacity: 0, x: -50 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4 }}
     >
       <Card className="border-2 border-accent/20 shadow-lg">
         <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2 font-elegant text-2xl">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <CardTitle className="flex items-center gap-2 font-elegant text-2xl">
+              <motion.div
+                whileHover={{ rotate: 360, scale: 1.1 }}
+                transition={{ duration: 0.5 }}
+              >
                 <MapPin className="h-6 w-6 text-accent" />
-                Chọn Bàn
-              </CardTitle>
-              <CardDescription className="text-base mt-2">
-                Chọn bàn phù hợp với số lượng {draft.num_people} khách
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "map" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("map")}
-                className={cn(
-                  viewMode === "map" &&
-                    "bg-gradient-gold text-primary-foreground hover:opacity-90"
-                )}
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                Sơ Đồ
-              </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("list")}
-                className={cn(
-                  viewMode === "list" &&
-                    "bg-gradient-gold text-primary-foreground hover:opacity-90"
-                )}
-              >
-                <List className="h-4 w-4 mr-2" />
-                Danh Sách
-              </Button>
-            </div>
-          </div>
+              </motion.div>
+              Chọn Bàn
+            </CardTitle>
+            <CardDescription className="text-base mt-2">
+              Chọn bàn phù hợp với số lượng khách của bạn
+            </CardDescription>
+          </motion.div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Floor Selector */}
-          <Tabs
-            value={draft.selected_floor || "floor-1"}
-            onValueChange={(floor) =>
-              updateDraft({ selected_floor: floor, selected_table_id: null })
-            }
-            className="w-full"
+          {/* Floor Selection */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
           >
-            <TabsList className="grid w-full grid-cols-2 bg-muted/50">
-              {floors.map((floor) => (
-                <TabsTrigger
-                  key={floor.id}
-                  value={floor.id}
-                  className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary-foreground"
-                >
-                  {floor.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+            <Tabs
+              value={draft.selected_floor || "floor-1"}
+              onValueChange={(value) => updateDraft({ selected_floor: value })}
+              className="w-full"
+            >
+              <TabsList className="grid w-full grid-cols-2 bg-muted/50">
+                {floors.map((floor) => (
+                  <motion.div
+                    key={floor.id}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <TabsTrigger
+                      value={floor.id}
+                      className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary-foreground transition-all duration-200"
+                    >
+                      {floor.name}
+                    </TabsTrigger>
+                  </motion.div>
+                ))}
+              </TabsList>
+            </Tabs>
+          </motion.div>
 
-          {/* Filters - Only show in List View */}
+          {/* View Mode Toggle */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-center justify-between gap-4"
+          >
+            <div className="flex gap-2">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  variant={viewMode === "map" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("map")}
+                  className={cn(
+                    viewMode === "map" &&
+                      "bg-gradient-gold text-primary-foreground hover:opacity-90",
+                    "border-accent/20"
+                  )}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Sơ Đồ
+                </Button>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  variant={viewMode === "list" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    viewMode === "list" &&
+                      "bg-gradient-gold text-primary-foreground hover:opacity-90",
+                    "border-accent/20"
+                  )}
+                >
+                  <List className="h-4 w-4 mr-2" />
+                  Danh Sách
+                </Button>
+              </motion.div>
+            </div>
+
+            {/* Filters - Only show in List View */}
+            {viewMode === "list" && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="flex gap-2"
+              >
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40 border-accent/20 focus:border-accent">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Trạng thái" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={capacityFilter}
+                  onValueChange={setCapacityFilter}
+                >
+                  <SelectTrigger className="w-40 border-accent/20 focus:border-accent">
+                    <Users className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Sức chứa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả</SelectItem>
+                    <SelectItem value="2">2 người</SelectItem>
+                    <SelectItem value="4">4 người</SelectItem>
+                    <SelectItem value="6">6 người</SelectItem>
+                    <SelectItem value="8">8+ người</SelectItem>
+                  </SelectContent>
+                </Select>
+              </motion.div>
+            )}
+          </motion.div>
+
+          {/* Search - Only show in List View */}
           {viewMode === "list" && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="grid md:grid-cols-3 gap-4"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="relative"
             >
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Tìm kiếm bàn..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 border-accent/20 focus:border-accent"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="border-accent/20 focus:border-accent">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Trạng thái" />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={capacityFilter} onValueChange={setCapacityFilter}>
-                <SelectTrigger className="border-accent/20 focus:border-accent">
-                  <Users className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Sức chứa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {capacityOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm kiếm bàn..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 border-accent/20 focus:border-accent transition-all duration-200"
+              />
             </motion.div>
           )}
 
@@ -242,15 +291,16 @@ export default function TableSelectionStep() {
             ) : (
               <motion.div
                 key="list"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
                 exit={{ opacity: 0, y: 20 }}
                 transition={{ duration: 0.3 }}
               >
-                {availableTables.length > 0 ? (
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {availableTables.map((table, index) => {
-                      const isSelected = draft.selected_table_id === table.id;
+                {filteredTables.length > 0 ? (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {filteredTables.map((table, index) => {
+                      const isSelected = table.id === draft.selected_table_id;
                       const statusColors = {
                         available:
                           "bg-green-500/20 text-green-600 border-green-500/30",
@@ -263,42 +313,49 @@ export default function TableSelectionStep() {
                       return (
                         <motion.div
                           key={table.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          whileHover={{ scale: 1.02, y: -4 }}
-                          whileTap={{ scale: 0.98 }}
+                          variants={cardVariants}
+                          initial="hidden"
+                          animate="visible"
+                          whileHover="hover"
+                          whileTap="tap"
+                          custom={index}
+                          viewport={viewportOptions}
                         >
                           <Card
                             className={cn(
-                              "cursor-pointer transition-all border-2 h-full",
+                              "cursor-pointer border-2 h-full transition-all shadow-md",
                               isSelected
-                                ? "border-accent ring-4 ring-accent/20 shadow-xl bg-gradient-to-br from-card to-accent/5"
-                                : "border-border hover:border-accent/50 hover:shadow-lg"
+                                ? "border-accent ring-4 ring-accent/20 bg-gradient-to-br from-card to-accent/5 shadow-xl"
+                                : "border-border hover:border-accent/50 hover:shadow-xl"
                             )}
                             onClick={() => handleTableSelect(table.id)}
                           >
-                            <CardContent className="p-5">
-                              <div className="flex items-start justify-between mb-3">
+                            <CardContent className="p-6">
+                              <div className="flex items-start justify-between mb-4">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <h3 className="font-bold text-lg text-primary font-elegant">
+                                    <h3 className="font-bold text-xl text-primary font-elegant">
                                       {table.name}
                                     </h3>
                                     {table.isVIP && (
-                                      <Badge className="bg-gradient-gold text-primary-foreground border-0">
-                                        <Star className="h-3 w-3 mr-1 fill-current" />
-                                        VIP
-                                      </Badge>
+                                      <motion.div
+                                        whileHover={{ rotate: 360 }}
+                                        transition={{ duration: 0.5 }}
+                                      >
+                                        <Badge className="bg-gradient-gold text-primary-foreground border-0">
+                                          <Star className="h-3 w-3 mr-1 fill-current" />
+                                          VIP
+                                        </Badge>
+                                      </motion.div>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                                     <div className="flex items-center gap-1">
-                                      <Users className="h-3 w-3" />
+                                      <Users className="h-4 w-4" />
                                       <span>{table.capacity} người</span>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                      <MapPin className="h-3 w-3" />
+                                      <MapPin className="h-4 w-4" />
                                       <span>{table.floor_name}</span>
                                     </div>
                                   </div>
@@ -308,7 +365,7 @@ export default function TableSelectionStep() {
                               {/* Status Badge */}
                               <Badge
                                 className={cn(
-                                  "w-fit text-xs",
+                                  "w-fit text-xs mb-3",
                                   statusColors[table.status]
                                 )}
                               >
@@ -319,7 +376,7 @@ export default function TableSelectionStep() {
 
                               {/* Features */}
                               {table.features && table.features.length > 0 && (
-                                <div className="mt-3 pt-3 border-t border-border/50">
+                                <div className="mt-4 pt-4 border-t border-border/50">
                                   <div className="flex flex-wrap gap-1">
                                     {table.features.map((feature, idx) => (
                                       <Badge
@@ -336,16 +393,23 @@ export default function TableSelectionStep() {
 
                               {isSelected && (
                                 <motion.div
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  className="mt-4 pt-4 border-t border-accent/20"
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="mt-4 pt-4 border-t border-accent/30"
                                 >
-                                  <Button
-                                    className="w-full bg-gradient-gold text-primary-foreground hover:opacity-90"
-                                    size="sm"
-                                  >
-                                    Đã Chọn
-                                  </Button>
+                                  <div className="flex items-center gap-2 text-sm text-accent font-semibold">
+                                    <motion.div
+                                      animate={{ rotate: 360 }}
+                                      transition={{
+                                        duration: 2,
+                                        repeat: Infinity,
+                                        ease: "linear",
+                                      }}
+                                    >
+                                      ✓
+                                    </motion.div>
+                                    <span>Đã chọn</span>
+                                  </div>
                                 </motion.div>
                               )}
                             </CardContent>
@@ -355,40 +419,23 @@ export default function TableSelectionStep() {
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-center py-12"
+                  >
+                    <MapPin className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <p className="text-muted-foreground">
                       Không tìm thấy bàn phù hợp
                     </p>
                     <p className="text-sm text-muted-foreground mt-2">
                       Thử thay đổi bộ lọc hoặc chọn tầng khác
                     </p>
-                  </div>
+                  </motion.div>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Selected Table Summary */}
-          {draft.selected_table_id && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-4 bg-gradient-to-r from-accent/10 to-accent/5 rounded-lg border-2 border-accent/20"
-            >
-              <p className="text-sm font-medium text-accent mb-1">
-                ✓ Đã chọn bàn
-              </p>
-              <p className="font-bold text-lg text-primary">
-                {draft.selected_table_name}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {floors.find((f) => f.id === draft.selected_floor)?.name} •{" "}
-                {mockTables.find((t) => t.id === draft.selected_table_id)
-                  ?.capacity || 0}{" "}
-                người
-              </p>
-            </motion.div>
-          )}
         </CardContent>
       </Card>
     </motion.div>

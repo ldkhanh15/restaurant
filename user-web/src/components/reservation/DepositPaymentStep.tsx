@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
   CardContent,
@@ -15,8 +15,23 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CreditCard, Wallet, QrCode, Gift, CheckCircle } from "lucide-react";
+import {
+  CreditCard,
+  Wallet,
+  QrCode,
+  Gift,
+  CheckCircle,
+  Sparkles,
+} from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
+import {
+  slideInRight,
+  containerVariants,
+  itemVariants,
+  cardVariants,
+  buttonVariants,
+  scaleInVariants,
+} from "@/lib/motion-variants";
 
 const paymentMethods = [
   {
@@ -27,6 +42,13 @@ const paymentMethods = [
   },
   { id: "momo", name: "MoMo", icon: Wallet, description: "Ví điện tử" },
   { id: "qr", name: "QR Code", icon: QrCode, description: "Quét mã QR" },
+];
+
+// Event types for cost calculation
+const eventTypes = [
+  { id: "birthday", additionalCost: 200000 },
+  { id: "anniversary", additionalCost: 150000 },
+  { id: "celebration", additionalCost: 300000 },
 ];
 
 export default function DepositPaymentStep() {
@@ -52,7 +74,7 @@ export default function DepositPaymentStep() {
 
   const handleApplyVoucher = () => {
     // Mock voucher validation
-    if (voucherCode.toUpperCase() === "MAISON20") {
+    if (voucherCode.toUpperCase() === "HIWELL20") {
       updateDraft({
         voucher_code: voucherCode,
         voucher_discount: subtotal * 0.2,
@@ -91,63 +113,122 @@ export default function DepositPaymentStep() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
+      variants={slideInRight}
+      initial="hidden"
+      animate="visible"
       exit={{ opacity: 0, x: -50 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4 }}
     >
-      <Card className="border-2 border-accent/20">
+      <Card className="border-2 border-accent/20 shadow-lg hover:shadow-xl transition-shadow duration-300">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-accent" />
-            Thanh Toán Đặt Cọc
-          </CardTitle>
-          <CardDescription>
-            {isVIP
-              ? "Bạn là khách VIP, không cần đặt cọc"
-              : "Vui lòng đặt cọc để hoàn tất đặt bàn"}
-          </CardDescription>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <CardTitle className="flex items-center gap-2 font-elegant text-2xl">
+              <motion.div
+                whileHover={{ rotate: 360, scale: 1.1 }}
+                transition={{ duration: 0.5 }}
+              >
+                <CreditCard className="h-6 w-6 text-accent" />
+              </motion.div>
+              Thanh Toán Đặt Cọc
+            </CardTitle>
+            <CardDescription className="text-base mt-2">
+              {isVIP
+                ? "Bạn là khách VIP, không cần đặt cọc"
+                : "Vui lòng đặt cọc để hoàn tất đặt bàn"}
+            </CardDescription>
+          </motion.div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Cost Summary */}
-          <div className="space-y-3">
-            <h3 className="font-semibold">Tổng Kết Chi Phí</h3>
-            {eventCost > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Sự kiện:</span>
-                <span>{eventCost.toLocaleString("vi-VN")}đ</span>
-              </div>
-            )}
-            {preOrderCost > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Món đặt trước:</span>
-                <span>{preOrderCost.toLocaleString("vi-VN")}đ</span>
-              </div>
-            )}
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-3"
+          >
+            <motion.h3
+              variants={itemVariants}
+              className="font-semibold text-lg"
+            >
+              Tổng Kết Chi Phí
+            </motion.h3>
+            <AnimatePresence>
+              {eventCost > 0 && (
+                <motion.div
+                  variants={itemVariants}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex justify-between text-sm"
+                >
+                  <span className="text-muted-foreground">Sự kiện:</span>
+                  <span>{eventCost.toLocaleString("vi-VN")}đ</span>
+                </motion.div>
+              )}
+              {preOrderCost > 0 && (
+                <motion.div
+                  variants={itemVariants}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex justify-between text-sm"
+                >
+                  <span className="text-muted-foreground">Món đặt trước:</span>
+                  <span>{preOrderCost.toLocaleString("vi-VN")}đ</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <Separator />
-            <div className="flex justify-between font-semibold">
+            <motion.div
+              variants={itemVariants}
+              className="flex justify-between font-semibold"
+            >
               <span>Tạm tính:</span>
               <span>{subtotal.toLocaleString("vi-VN")}đ</span>
-            </div>
+            </motion.div>
             {discount > 0 && (
-              <div className="flex justify-between text-sm text-green-600">
-                <span>Giảm giá:</span>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex justify-between text-sm text-green-600"
+              >
+                <span className="flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  Giảm giá:
+                </span>
                 <span>-{discount.toLocaleString("vi-VN")}đ</span>
-              </div>
+              </motion.div>
             )}
             <Separator />
-            <div className="flex justify-between text-lg font-bold">
+            <motion.div
+              variants={itemVariants}
+              className="flex justify-between text-lg font-bold"
+            >
               <span>Tổng cộng:</span>
-              <span className="text-primary">
+              <motion.span
+                key={total}
+                initial={{ scale: 1.1 }}
+                animate={{ scale: 1 }}
+                className="text-primary"
+              >
                 {total.toLocaleString("vi-VN")}đ
-              </span>
-            </div>
-          </div>
+              </motion.span>
+            </motion.div>
+          </motion.div>
 
           {/* Voucher */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Gift className="h-4 w-4" />
+          <motion.div
+            variants={itemVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-2"
+          >
+            <Label className="flex items-center gap-2 font-medium">
+              <Gift className="h-4 w-4 text-accent" />
               Mã Voucher
             </Label>
             <div className="flex gap-2">
@@ -156,93 +237,153 @@ export default function DepositPaymentStep() {
                 onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
                 placeholder="Nhập mã voucher"
                 disabled={voucherApplied}
-                className="border-accent/20 focus:border-accent"
+                className="border-accent/20 focus:border-accent transition-all duration-200"
               />
-              <Button
-                onClick={handleApplyVoucher}
-                disabled={!voucherCode || voucherApplied}
-                variant="outline"
+              <motion.div
+                variants={buttonVariants}
+                whileHover="hover"
+                whileTap="tap"
               >
-                Áp dụng
-              </Button>
+                <Button
+                  onClick={handleApplyVoucher}
+                  disabled={!voucherCode || voucherApplied}
+                  variant="outline"
+                  className="border-accent/20 hover:bg-accent/10"
+                >
+                  Áp dụng
+                </Button>
+              </motion.div>
             </div>
-            {voucherApplied && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <CheckCircle className="h-4 w-4" />
-                <span>Đã áp dụng mã {draft.voucher_code}</span>
-              </div>
-            )}
-          </div>
+            <AnimatePresence>
+              {voucherApplied && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 text-sm text-green-600"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Đã áp dụng mã {draft.voucher_code}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
-          {!isVIP && (
-            <>
-              <Separator />
-              <div className="space-y-4">
-                <div>
-                  <p className="font-semibold mb-2">Số tiền đặt cọc:</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {depositAmount.toLocaleString("vi-VN")}đ
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    (20% tổng giá trị hoặc tối thiểu 200.000đ)
-                  </p>
-                </div>
+          <AnimatePresence>
+            {!isVIP && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Separator />
+                <motion.div
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  className="space-y-4"
+                >
+                  <motion.div variants={itemVariants}>
+                    <p className="font-semibold mb-2">Số tiền đặt cọc:</p>
+                    <motion.p
+                      key={depositAmount}
+                      initial={{ scale: 1.1 }}
+                      animate={{ scale: 1 }}
+                      className="text-2xl font-bold text-primary"
+                    >
+                      {depositAmount.toLocaleString("vi-VN")}đ
+                    </motion.p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      (20% tổng giá trị hoặc tối thiểu 200.000đ)
+                    </p>
+                  </motion.div>
 
-                {/* Payment Method */}
-                <div className="space-y-3">
-                  <Label>Phương Thức Thanh Toán</Label>
-                  <RadioGroup
-                    value={draft.payment_method || ""}
-                    onValueChange={(value) =>
-                      updateDraft({ payment_method: value })
-                    }
-                  >
-                    {paymentMethods.map((method) => {
-                      const IconComponent = method.icon;
-                      return (
-                        <div
-                          key={method.id}
-                          className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                        >
-                          <RadioGroupItem value={method.id} id={method.id} />
-                          <Label
-                            htmlFor={method.id}
-                            className="flex items-center gap-2 flex-1 cursor-pointer"
+                  {/* Payment Method */}
+                  <motion.div variants={itemVariants} className="space-y-3">
+                    <Label className="font-medium">
+                      Phương Thức Thanh Toán
+                    </Label>
+                    <RadioGroup
+                      value={draft.payment_method || ""}
+                      onValueChange={(value) =>
+                        updateDraft({ payment_method: value })
+                      }
+                    >
+                      {paymentMethods.map((method, index) => {
+                        const IconComponent = method.icon;
+                        return (
+                          <motion.div
+                            key={method.id}
+                            variants={cardVariants}
+                            initial="hidden"
+                            animate="visible"
+                            whileHover="hover"
+                            whileTap="tap"
+                            custom={index}
                           >
-                            <IconComponent className="h-4 w-4" />
-                            <div>
-                              <span className="font-medium">{method.name}</span>
-                              <p className="text-xs text-muted-foreground">
-                                {method.description}
-                              </p>
+                            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-all duration-200 hover:border-accent/50">
+                              <RadioGroupItem
+                                value={method.id}
+                                id={method.id}
+                              />
+                              <Label
+                                htmlFor={method.id}
+                                className="flex items-center gap-2 flex-1 cursor-pointer"
+                              >
+                                <motion.div
+                                  whileHover={{ rotate: 360 }}
+                                  transition={{ duration: 0.5 }}
+                                >
+                                  <IconComponent className="h-4 w-4 text-accent" />
+                                </motion.div>
+                                <div>
+                                  <span className="font-medium">
+                                    {method.name}
+                                  </span>
+                                  <p className="text-xs text-muted-foreground">
+                                    {method.description}
+                                  </p>
+                                </div>
+                              </Label>
                             </div>
-                          </Label>
-                        </div>
-                      );
-                    })}
-                  </RadioGroup>
-                </div>
-              </div>
-            </>
-          )}
+                          </motion.div>
+                        );
+                      })}
+                    </RadioGroup>
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {isVIP && (
-            <div className="p-4 bg-accent/10 rounded-lg border border-accent/20 text-center">
-              <CheckCircle className="h-8 w-8 mx-auto mb-2 text-accent" />
-              <p className="font-semibold text-accent">
+            <motion.div
+              variants={scaleInVariants}
+              initial="hidden"
+              animate="visible"
+              className="p-4 bg-gradient-to-r from-accent/10 to-accent/5 rounded-lg border-2 border-accent/20"
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.1, 1],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                className="text-center"
+              >
+                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-accent" />
+              </motion.div>
+              <p className="font-semibold text-accent text-center">
                 Bạn là khách VIP, không cần đặt cọc
               </p>
-            </div>
+            </motion.div>
           )}
         </CardContent>
       </Card>
     </motion.div>
   );
 }
-
-// Event types for cost calculation - should be imported from shared constants
-const eventTypes = [
-  { id: "birthday", additionalCost: 200000 },
-  { id: "anniversary", additionalCost: 150000 },
-  { id: "celebration", additionalCost: 300000 },
-];
