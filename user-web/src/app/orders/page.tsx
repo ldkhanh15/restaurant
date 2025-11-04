@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,10 +17,10 @@ import {
 import {
   Clock,
   ShoppingCart,
-  Filter,
   Search,
   Calendar,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -32,57 +32,208 @@ import {
   buttonVariants,
   viewportOptions,
 } from "@/lib/motion-variants";
+import { orderService, type Order } from "@/services/orderService";
+import { useOrderStore } from "@/store/orderStore";
+import { useAuth } from "@/lib/auth";
+import { useOrderSocket } from "@/hooks/useOrderSocket";
+import { toast } from "@/hooks/use-toast";
 
-// Mock orders - replace with API
-const mockOrders = [
-  {
-    id: "ORD-001",
-    date: "2024-02-15T19:00:00Z",
-    status: "preparing",
-    total: 1200000,
-    items_count: 4,
-    table: "Bàn 12",
+const statusConfig: Record<
+  string,
+  { label: string; color: string; bgColor?: string }
+> = {
+  pending: {
+    label: "Chờ xác nhận",
+    color: "text-yellow-700",
+    bgColor: "bg-yellow-500",
   },
-  {
-    id: "ORD-002",
-    date: "2024-02-10T18:30:00Z",
-    status: "completed",
-    total: 850000,
-    items_count: 3,
-    table: "Bàn 8",
+  dining: {
+    label: "Đang phục vụ",
+    color: "text-blue-700",
+    bgColor: "bg-blue-500",
   },
-  {
-    id: "ORD-003",
-    date: "2024-02-08T20:00:00Z",
-    status: "cancelled",
-    total: 500000,
-    items_count: 2,
-    table: "Bàn 5",
+  preparing: {
+    label: "Đang chuẩn bị",
+    color: "text-yellow-700",
+    bgColor: "bg-yellow-500",
   },
-];
-
-const statusConfig = {
-  preparing: { label: "Đang chuẩn bị", color: "bg-yellow-500" },
-  serving: { label: "Đang phục vụ", color: "bg-blue-500" },
-  completed: { label: "Hoàn thành", color: "bg-green-500" },
-  cancelled: { label: "Đã hủy", color: "bg-red-500" },
+  waiting_payment: {
+    label: "Chờ thanh toán",
+    color: "text-orange-700",
+    bgColor: "bg-orange-500",
+  },
+  paid: {
+    label: "Đã thanh toán",
+    color: "text-green-700",
+    bgColor: "bg-green-500",
+  },
+  cancelled: {
+    label: "Đã hủy",
+    color: "text-red-700",
+    bgColor: "bg-red-500",
+  },
+  completed: {
+    label: "Hoàn thành",
+    color: "text-green-700",
+    bgColor: "bg-green-500",
+  },
 };
 
 export default function OrdersPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const orderSocket = useOrderSocket();
+  const {
+    orders,
+    isLoading,
+    error,
+    setOrders,
+    setLoading,
+    setError,
+    updateOrderInList,
+  } = useOrderStore();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState<string>("all");
 
-  const filteredOrders = mockOrders.filter((order) => {
-    const matchesSearch = order.id
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+  // Load orders on mount
+  useEffect(() => {
+    if (!user?.id) {
+      router.push("/login");
+      return;
+    }
+
+    const loadOrders = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await orderService.getMyOrders({
+          page: 1,
+          limit: 50,
+        });
+
+        if (response.status === "success") {
+          // Handle paginated response
+          const ordersData = Array.isArray(response.data.data)
+            ? response.data.data
+            : Array.isArray(response.data)
+            ? response.data
+            : [];
+          setOrders(ordersData);
+        }
+      } catch (err: any) {
+        console.error("Failed to load orders:", err);
+        setError(err.message || "Không thể tải danh sách đơn hàng");
+        toast({
+          title: "Lỗi",
+          description: err.message || "Không thể tải danh sách đơn hàng",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrders();
+  }, [user?.id, router, setOrders, setLoading, setError]);
+
+  // Listen to real-time order updates
+  useEffect(() => {
+    if (!orderSocket.isConnected) return;
+
+    // Listen to order updates
+    orderSocket.onOrderUpdated((order) => {
+      console.log("[Orders] Order updated:", order);
+      updateOrderInList(order.id, {
+        status: order.status as any,
+        updated_at: order.updated_at,
+        total_amount: order.total || 0,
+        final_amount: order.total || 0,
+      });
+      toast({
+        title: "Cập nhật đơn hàng",
+        description: `Đơn hàng ${order.id} đã được cập nhật`,
+      });
+    });
+
+    // Listen to status changes
+    orderSocket.onOrderStatusChanged((order) => {
+      console.log("[Orders] Order status changed:", order);
+      updateOrderInList(order.id, {
+        status: order.status as any,
+        updated_at: order.updated_at,
+      });
+      toast({
+        title: "Trạng thái thay đổi",
+        description: `Đơn hàng ${order.id} đã chuyển sang "${
+          statusConfig[order.status]?.label || order.status
+        }"`,
+      });
+    });
+
+    // Listen to new orders
+    orderSocket.onOrderCreated((order) => {
+      console.log("[Orders] New order created:", order);
+      // Only add if it belongs to current user
+      if (order.user_id === user?.id || order.customer_id === user?.id) {
+        // Convert socket Order to service Order format
+        const newOrder: Order = {
+          id: order.id,
+          user_id: order.user_id,
+          customer_id: order.customer_id,
+          table_id: order.table_id,
+          status: order.status as any,
+          payment_status: "pending",
+          total_amount: order.total || 0,
+          final_amount: order.total || 0,
+          created_at: order.created_at,
+          updated_at: order.updated_at,
+        };
+        setOrders([newOrder, ...orders]);
+        toast({
+          title: "Đơn hàng mới",
+          description: `Đơn hàng ${order.id} đã được tạo`,
+        });
+      }
+    });
+
+    // Listen to payment completion
+    orderSocket.onPaymentCompleted((order) => {
+      console.log("[Orders] Payment completed:", order);
+      updateOrderInList(order.id, {
+        status: "paid" as any,
+        payment_status: "paid" as any,
+        updated_at: order.updated_at,
+      });
+      toast({
+        title: "Thanh toán thành công",
+        description: `Đơn hàng ${order.id} đã được thanh toán`,
+      });
+    });
+  }, [
+    orderSocket.isConnected,
+    orderSocket,
+    user?.id,
+    orders,
+    updateOrderInList,
+    setOrders,
+  ]);
+
+  const filteredOrders = orders.filter((order) => {
+    const matchesSearch =
+      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.table?.table_number &&
+        order.table.table_number
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()));
     const matchesStatus =
       statusFilter === "all" || order.status === statusFilter;
-    // Add date filter logic if needed
     return matchesSearch && matchesStatus;
   });
+
+  if (!user?.id) {
+    return null; // Will redirect
+  }
 
   return (
     <motion.div
@@ -168,147 +319,192 @@ export default function OrdersPage() {
           </Card>
         </motion.div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center justify-center py-12"
+          >
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2 text-muted-foreground">Đang tải...</span>
+          </motion.div>
+        )}
+
+        {/* Error State */}
+        {error && !isLoading && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <Card className="border-2 border-red-200 bg-red-50">
+              <CardContent className="p-6 text-center">
+                <p className="text-red-600">{error}</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => window.location.reload()}
+                >
+                  Thử lại
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Orders List */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="space-y-4"
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredOrders.length > 0 ? (
-              filteredOrders.map((order, index) => {
-                const status =
-                  statusConfig[order.status as keyof typeof statusConfig];
-                return (
-                  <motion.div
-                    key={order.id}
-                    variants={cardVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit={{ opacity: 0, x: -20, scale: 0.95 }}
-                    whileHover="hover"
-                    whileTap="tap"
-                    custom={index}
-                    viewport={viewportOptions}
-                  >
-                    <Card
-                      className="cursor-pointer hover:shadow-xl transition-all border-2 hover:border-accent/50 shadow-md bg-card"
-                      onClick={() => router.push(`/orders/${order.id}`)}
+        {!isLoading && !error && (
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-4"
+          >
+            <AnimatePresence mode="popLayout">
+              {filteredOrders.length > 0 ? (
+                filteredOrders.map((order, index) => {
+                  const status =
+                    statusConfig[order.status] || statusConfig["pending"];
+                  return (
+                    <motion.div
+                      key={order.id}
+                      variants={cardVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit={{ opacity: 0, x: -20, scale: 0.95 }}
+                      whileHover="hover"
+                      whileTap="tap"
+                      custom={index}
+                      viewport={viewportOptions}
+                      layout
                     >
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <motion.h3
-                                whileHover={{ scale: 1.05 }}
-                                className="font-semibold text-lg font-elegant"
-                              >
-                                {order.id}
-                              </motion.h3>
-                              <motion.div
-                                whileHover={{ scale: 1.1 }}
-                                transition={{ type: "spring", stiffness: 400 }}
-                              >
-                                <Badge
-                                  className={`${status.color} text-white shadow-md`}
+                      <Card
+                        className="cursor-pointer hover:shadow-xl transition-all border-2 hover:border-accent/50 shadow-md bg-card"
+                        onClick={() => router.push(`/orders/${order.id}`)}
+                      >
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <motion.h3
+                                  whileHover={{ scale: 1.05 }}
+                                  className="font-semibold text-lg font-elegant"
                                 >
-                                  {status.label}
-                                </Badge>
-                              </motion.div>
-                            </div>
-                            <motion.div
-                              variants={containerVariants}
-                              initial="hidden"
-                              animate="visible"
-                              className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground"
-                            >
+                                  {order.id}
+                                </motion.h3>
+                                <motion.div
+                                  whileHover={{ scale: 1.1 }}
+                                  transition={{
+                                    type: "spring",
+                                    stiffness: 400,
+                                  }}
+                                >
+                                  <Badge
+                                    className={`${
+                                      status.bgColor || "bg-gray-500"
+                                    } text-white shadow-md`}
+                                  >
+                                    {status.label}
+                                  </Badge>
+                                </motion.div>
+                              </div>
                               <motion.div
-                                variants={itemVariants}
-                                className="flex items-center gap-1"
+                                variants={containerVariants}
+                                initial="hidden"
+                                animate="visible"
+                                className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground"
                               >
-                                <Calendar className="h-4 w-4 text-accent" />
-                                {format(
-                                  new Date(order.date),
-                                  "dd/MM/yyyy HH:mm",
-                                  { locale: vi }
+                                <motion.div
+                                  variants={itemVariants}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Calendar className="h-4 w-4 text-accent" />
+                                  {format(
+                                    new Date(order.created_at),
+                                    "dd/MM/yyyy HH:mm",
+                                    { locale: vi }
+                                  )}
+                                </motion.div>
+                                <motion.div
+                                  variants={itemVariants}
+                                  className="flex items-center gap-1"
+                                >
+                                  <ShoppingCart className="h-4 w-4 text-accent" />
+                                  {order.items?.length || 0} món
+                                </motion.div>
+                                {order.table?.table_number && (
+                                  <motion.div variants={itemVariants}>
+                                    Bàn {order.table.table_number}
+                                  </motion.div>
                                 )}
                               </motion.div>
+                            </div>
+                            <div className="text-right">
+                              <motion.p
+                                key={order.final_amount}
+                                initial={{ scale: 1.1 }}
+                                animate={{ scale: 1 }}
+                                className="text-2xl font-bold text-primary mb-2"
+                              >
+                                {order.final_amount.toLocaleString("vi-VN")}đ
+                              </motion.p>
                               <motion.div
-                                variants={itemVariants}
-                                className="flex items-center gap-1"
+                                variants={buttonVariants}
+                                whileHover="hover"
+                                whileTap="tap"
                               >
-                                <ShoppingCart className="h-4 w-4 text-accent" />
-                                {order.items_count} món
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/orders/${order.id}`);
+                                  }}
+                                  className="mt-2 border-accent/20 hover:bg-accent/10"
+                                >
+                                  Chi tiết
+                                  <ArrowRight className="h-4 w-4 ml-2" />
+                                </Button>
                               </motion.div>
-                              <motion.div variants={itemVariants}>
-                                {order.table}
-                              </motion.div>
-                            </motion.div>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <motion.p
-                              key={order.total}
-                              initial={{ scale: 1.1 }}
-                              animate={{ scale: 1 }}
-                              className="text-2xl font-bold text-primary mb-2"
-                            >
-                              {order.total.toLocaleString("vi-VN")}đ
-                            </motion.p>
-                            <motion.div
-                              variants={buttonVariants}
-                              whileHover="hover"
-                              whileTap="tap"
-                            >
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/orders/${order.id}`);
-                                }}
-                                className="mt-2 border-accent/20 hover:bg-accent/10"
-                              >
-                                Chi tiết
-                                <ArrowRight className="h-4 w-4 ml-2" />
-                              </Button>
-                            </motion.div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                <Card className="border-2 border-accent/20">
-                  <CardContent className="p-12 text-center">
-                    <motion.div
-                      animate={{
-                        scale: [1, 1.1, 1],
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }}
-                    >
-                      <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                        </CardContent>
+                      </Card>
                     </motion.div>
-                    <p className="text-muted-foreground text-lg">
-                      Không tìm thấy đơn hàng nào
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+                  );
+                })
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <Card className="border-2 border-accent/20">
+                    <CardContent className="p-12 text-center">
+                      <motion.div
+                        animate={{
+                          scale: [1, 1.1, 1],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      >
+                        <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      </motion.div>
+                      <p className="text-muted-foreground text-lg">
+                        {searchQuery || statusFilter !== "all"
+                          ? "Không tìm thấy đơn hàng nào phù hợp"
+                          : "Bạn chưa có đơn hàng nào"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );

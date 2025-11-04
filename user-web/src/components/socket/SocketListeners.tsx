@@ -157,6 +157,14 @@ export default function SocketListeners() {
     notificationSocket.onNotificationBroadcast((notification) => {
       console.log("[Socket] Broadcast notification:", notification);
     });
+
+    notificationSocket.onNotificationUpdate((data) => {
+      console.log("[Socket] Notification update:", data);
+    });
+
+    notificationSocket.onNotificationError((error) => {
+      console.error("[Socket] Notification error:", error);
+    });
   }, [notificationSocket.isConnected, notificationSocket]);
 
   return null; // This component doesn't render anything

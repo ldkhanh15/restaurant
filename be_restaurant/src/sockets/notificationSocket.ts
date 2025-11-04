@@ -29,14 +29,117 @@ export default function registerNotificationSocket(io: Server) {
     const userId = socket.data?.user?.id;
     const userRole = socket.data?.user?.role;
 
-    if (!userId || userRole !== "customer") {
-      return; // Only authenticated customers
+    // Allow anonymous connections (for guests), but join room if authenticated
+    if (userId && userRole === "customer") {
+      // Join user-specific room for targeted notifications
+      socket.join(`customer:${userId}`);
+      console.log(
+        `[Notification] /customer: Connected user=${userId}, joined room customer:${userId}`
+      );
+    } else {
+      console.log(`[Notification] /customer: Anonymous connection socket=${socket.id}`);
     }
 
-    console.log(`[Notification] /customer: Connected user=${userId}`);
+    // Customer marks notification as read
+    socket.on(
+      "notification:mark_read",
+      async (data: { notificationIds: string[] }) => {
+        try {
+          if (!userId || userRole !== "customer") {
+            socket.emit("notification:error", {
+              message: "Unauthorized: Authentication required",
+            });
+            return;
+          }
 
-    // Customer automatically receives notifications in their room
-    // No specific handlers needed
+          if (!data.notificationIds || !Array.isArray(data.notificationIds)) {
+            socket.emit("notification:error", {
+              message: "Invalid notificationIds",
+            });
+            return;
+          }
+
+          const notificationService = (
+            await import("../services/notificationService")
+          ).default;
+
+          // Mark each notification as read (service will validate ownership)
+          const updatedNotifications = [];
+          for (const notifId of data.notificationIds) {
+            try {
+              const notification =
+                await notificationService.getNotificationById(notifId);
+              
+              // Verify ownership
+              if (notification.user_id !== userId) {
+                console.warn(
+                  `[Notification] User ${userId} attempted to mark notification ${notifId} as read (belongs to ${notification.user_id})`
+                );
+                continue;
+              }
+
+              const updated = await notificationService.markAsRead(notifId);
+              updatedNotifications.push(updated);
+            } catch (err) {
+              console.error(
+                `[Notification] Error marking notification ${notifId} as read:`,
+                err
+              );
+            }
+          }
+
+          // Emit update to the customer
+          socket.emit("notification:update", {
+            notifications: updatedNotifications.map((n) => ({
+              id: n.id,
+              is_read: n.is_read,
+            })),
+          });
+
+          console.log(
+            `[Notification] /customer: User ${userId} marked ${updatedNotifications.length} notifications as read`
+          );
+        } catch (err) {
+          console.error("[Notification] Error in mark_read handler:", err);
+          socket.emit("notification:error", {
+            message: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+    );
+
+    // Customer marks all notifications as read
+    socket.on("notification:mark_all_read", async () => {
+      try {
+        if (!userId || userRole !== "customer") {
+          socket.emit("notification:error", {
+            message: "Unauthorized: Authentication required",
+          });
+          return;
+        }
+
+        const notificationService = (
+          await import("../services/notificationService")
+        ).default;
+
+        const result = await notificationService.markAllAsRead(userId);
+
+        // Emit confirmation
+        socket.emit("notification:mark_all_read", {
+          userId,
+          affected_count: result.affected_count,
+        });
+
+        console.log(
+          `[Notification] /customer: User ${userId} marked all notifications as read (${result.affected_count} affected)`
+        );
+      } catch (err) {
+        console.error("[Notification] Error in mark_all_read handler:", err);
+        socket.emit("notification:error", {
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    });
   });
 }
 
@@ -68,13 +171,24 @@ export const notificationEvents = {
    * Notify specific customer
    */
   notifyCustomer: (io: Server, customerId: string, notification: any) => {
+    // Notify admin that a customer received a notification
     broadcastToAdmin(io, "admin:notification:new", {
       ...notification,
       customerId,
       type: "customer",
     });
 
-    forwardToCustomer(io, customerId, "notification:new", notification);
+    // Emit to specific customer in /customer namespace
+    io.of("/customer")
+      .to(`customer:${customerId}`)
+      .emit("notification:new", {
+        ...notification,
+        timestamp: new Date().toISOString(),
+      });
+
+    console.log(
+      `[Notification] Emitted notification ${notification.id} to customer:${customerId}`
+    );
   },
 
   /**
