@@ -310,7 +310,7 @@ class OrderRepository {
     if (!order) {
       throw new AppError("Order not found", 404);
     }
-
+    
     const finalAmount = Math.max(0, order.total_amount - discountAmount);
 
     await order.update({
@@ -329,7 +329,7 @@ class OrderRepository {
     }
 
     await order.update({
-      voucher_id: undefined,
+      voucher_id: null,
       voucher_discount_amount: 0,
       final_amount: order.total_amount,
     });

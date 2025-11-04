@@ -15,6 +15,11 @@ import {
 import { Users, Phone, Mail, MessageSquare } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
 import { useAuth } from "@/lib/auth";
+import {
+  slideInRight,
+  containerVariants,
+  itemVariants,
+} from "@/lib/motion-variants";
 
 export default function CustomerInfoStep() {
   const { draft, updateDraft } = useReservationStore();
@@ -33,111 +38,167 @@ export default function CustomerInfoStep() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
+      variants={slideInRight}
+      initial="hidden"
+      animate="visible"
       exit={{ opacity: 0, x: -50 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4 }}
     >
-      <Card className="border-2 border-accent/20">
+      <Card className="border-2 border-accent/20 shadow-lg hover:shadow-xl transition-shadow duration-300">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-accent" />
-            Thông Tin Khách Hàng
-          </CardTitle>
-          <CardDescription>
-            Vui lòng điền đầy đủ thông tin để chúng tôi phục vụ bạn tốt nhất
-          </CardDescription>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <CardTitle className="flex items-center gap-2 font-elegant text-2xl">
+              <motion.div
+                whileHover={{ rotate: 360, scale: 1.1 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Users className="h-6 w-6 text-accent" />
+              </motion.div>
+              Thông Tin Khách Hàng
+            </CardTitle>
+            <CardDescription className="text-base mt-2">
+              Vui lòng điền đầy đủ thông tin để chúng tôi phục vụ bạn tốt nhất
+            </CardDescription>
+          </motion.div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label
-                htmlFor="customer_name"
-                className="flex items-center gap-2"
-              >
-                <Users className="h-4 w-4" />
-                Họ và Tên *
-              </Label>
-              <Input
-                id="customer_name"
-                value={draft.customer_name}
-                onChange={(e) => updateDraft({ customer_name: e.target.value })}
-                placeholder="Nguyễn Văn An"
-                required
-                className="border-accent/20 focus:border-accent"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label
-                htmlFor="customer_phone"
-                className="flex items-center gap-2"
-              >
-                <Phone className="h-4 w-4" />
-                Số Điện Thoại *
-              </Label>
-              <Input
-                id="customer_phone"
-                type="tel"
-                value={draft.customer_phone}
-                onChange={(e) =>
-                  updateDraft({ customer_phone: e.target.value })
-                }
-                placeholder="0901234567"
-                required
-                className="border-accent/20 focus:border-accent"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="customer_email" className="flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              Email
-            </Label>
-            <Input
-              id="customer_email"
-              type="email"
-              value={draft.customer_email}
-              onChange={(e) => updateDraft({ customer_email: e.target.value })}
-              placeholder="an.nguyen@email.com"
-              className="border-accent/20 focus:border-accent"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="num_people">Số Lượng Khách *</Label>
-            <Input
-              id="num_people"
-              type="number"
-              min="1"
-              max="20"
-              value={draft.num_people}
-              onChange={(e) =>
-                updateDraft({ num_people: parseInt(e.target.value) || 1 })
-              }
-              className="border-accent/20 focus:border-accent"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label
-              htmlFor="special_requests"
-              className="flex items-center gap-2"
+        <CardContent>
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-6"
+          >
+            <motion.div
+              variants={itemVariants}
+              className="grid md:grid-cols-2 gap-4"
             >
-              <MessageSquare className="h-4 w-4" />
-              Yêu Cầu Đặc Biệt
-            </Label>
-            <Textarea
-              id="special_requests"
-              value={draft.special_requests}
-              onChange={(e) =>
-                updateDraft({ special_requests: e.target.value })
-              }
-              placeholder="Ví dụ: Gần cửa sổ, khu vực yên tĩnh, kỷ niệm sinh nhật..."
-              rows={4}
-              className="border-accent/20 focus:border-accent resize-none"
-            />
-          </div>
+              <motion.div
+                variants={itemVariants}
+                className="space-y-2"
+                whileHover={{ scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Label
+                  htmlFor="customer_name"
+                  className="flex items-center gap-2 font-medium"
+                >
+                  <Users className="h-4 w-4 text-accent" />
+                  Họ và Tên *
+                </Label>
+                <Input
+                  id="customer_name"
+                  value={draft.customer_name}
+                  onChange={(e) =>
+                    updateDraft({ customer_name: e.target.value })
+                  }
+                  placeholder="Nguyễn Văn An"
+                  required
+                  className="border-accent/20 focus:border-accent transition-all duration-200"
+                />
+              </motion.div>
+              <motion.div
+                variants={itemVariants}
+                className="space-y-2"
+                whileHover={{ scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Label
+                  htmlFor="customer_phone"
+                  className="flex items-center gap-2 font-medium"
+                >
+                  <Phone className="h-4 w-4 text-accent" />
+                  Số Điện Thoại *
+                </Label>
+                <Input
+                  id="customer_phone"
+                  type="tel"
+                  value={draft.customer_phone}
+                  onChange={(e) =>
+                    updateDraft({ customer_phone: e.target.value })
+                  }
+                  placeholder="0901234567"
+                  required
+                  className="border-accent/20 focus:border-accent transition-all duration-200"
+                />
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
+              className="space-y-2"
+              whileHover={{ scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Label
+                htmlFor="customer_email"
+                className="flex items-center gap-2 font-medium"
+              >
+                <Mail className="h-4 w-4 text-accent" />
+                Email
+              </Label>
+              <Input
+                id="customer_email"
+                type="email"
+                value={draft.customer_email}
+                onChange={(e) =>
+                  updateDraft({ customer_email: e.target.value })
+                }
+                placeholder="an.nguyen@email.com"
+                className="border-accent/20 focus:border-accent transition-all duration-200"
+              />
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
+              className="space-y-2"
+              whileHover={{ scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Label htmlFor="num_people" className="font-medium">
+                Số Lượng Khách *
+              </Label>
+              <Input
+                id="num_people"
+                type="number"
+                min="1"
+                max="20"
+                value={draft.num_people}
+                onChange={(e) =>
+                  updateDraft({ num_people: parseInt(e.target.value) || 1 })
+                }
+                className="border-accent/20 focus:border-accent transition-all duration-200"
+              />
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
+              className="space-y-2"
+              whileHover={{ scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Label
+                htmlFor="special_requests"
+                className="flex items-center gap-2 font-medium"
+              >
+                <MessageSquare className="h-4 w-4 text-accent" />
+                Yêu Cầu Đặc Biệt
+              </Label>
+              <Textarea
+                id="special_requests"
+                value={draft.special_requests}
+                onChange={(e) =>
+                  updateDraft({ special_requests: e.target.value })
+                }
+                placeholder="Ví dụ: Gần cửa sổ, khu vực yên tĩnh, kỷ niệm sinh nhật..."
+                rows={4}
+                className="border-accent/20 focus:border-accent resize-none transition-all duration-200"
+              />
+            </motion.div>
+          </motion.div>
         </CardContent>
       </Card>
     </motion.div>

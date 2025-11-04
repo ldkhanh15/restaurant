@@ -184,7 +184,7 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
   const handleUpdateTable = async (id: string, data: Partial<TableAttributes>) => {
     try {
       const response = await tableService.update(id, data)
-      if (response && response.status === 200) {
+      if (response) {
         setTables((prev:any) =>
           prev.map((table:any) =>
             table.id === id ? { ...table, ...data, updated_at: new Date() } : table

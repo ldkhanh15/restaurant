@@ -191,6 +191,11 @@ def api_update(payload: dict):
         return {"status": "success", **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+        
+class TrainRequest(BaseModel):
+    data_path: str = "../model_recommend/data/data_train.csv"
+    out_dir: str = "../model_recommend/result"
+    epochs: int = 100
 
 @app.post("/api/train-model")
 def api_train(req: TrainRequest):
@@ -199,7 +204,7 @@ def api_train(req: TrainRequest):
         result = train_model(
             data_path=req.data_path,
             out_dir=req.out_dir,
-            epochs=req.epochs,
+            epochs=req.epochs
         )
         return {"status": "success", "result": result}
     except Exception as e:

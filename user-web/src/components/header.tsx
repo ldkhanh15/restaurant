@@ -8,6 +8,7 @@ import { User, Clock, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import NotificationBell from "@/components/notification/NotificationBell";
 
 export default function Header() {
   const { user } = useAuth();
@@ -90,6 +91,7 @@ export default function Header() {
           <div className="flex items-center space-x-3">
             {user ? (
               <>
+                <NotificationBell />
                 <motion.div
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}

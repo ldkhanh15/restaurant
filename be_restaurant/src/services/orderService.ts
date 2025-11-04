@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import orderRepository from "../repositories/orderRepository";
 import Order from "../models/Order";
 import OrderItem from "../models/OrderItem";
@@ -366,7 +366,9 @@ class OrderService {
     if (!item) {
       throw new AppError("Order item not found", 404);
     }
-
+    if (item.status !== "pending") {
+      throw new AppError("Item is not pending", 400);
+    }
     await orderRepository.deleteItem(itemId);
 
     // Recalculate order totals
@@ -417,18 +419,23 @@ class OrderService {
     ) {
       throw new AppError("Order does not meet voucher minimum value", 400);
     }
-
+    console.log('voucher', voucher);
     // Calculate discount
     let discountAmount = 0;
     if (voucher.discount_type === "percentage") {
+      console.log("voucher.value", voucher.value);
+      console.log("order.total_amount", order.total_amount);
+      console.log('type',voucher.discount_type)
       discountAmount = Math.min(
-        (order.total_amount * voucher.value) / 100,
-        order.total_amount
+        (Number(order.total_amount) * Number(voucher.value)) / 100,
+        Number(order.total_amount)
       );
     } else {
-      discountAmount = Math.min(voucher.value, order.total_amount);
+      console.log("voucher.value", voucher.value);
+      console.log("order.total_amount", order.total_amount);
+      discountAmount = Math.min(Number(voucher.value), Number(order.total_amount));
     }
-
+    console.log("discountAmount", discountAmount);
     const updatedOrder = await orderRepository.applyVoucher(
       orderId,
       voucher.id,
@@ -576,7 +583,10 @@ class OrderService {
         { where: { id: order.table_id } }
       );
     }
-
+    await User.update(
+      { points: Sequelize.literal(`points + ${order.total_amount / 1000}`) },
+      { where: { id: order.user_id } }
+    );
     // Send notification and WebSocket event
     await notificationService.notifyPaymentCompleted(updatedOrder);
     try {
@@ -667,18 +677,18 @@ class OrderService {
     const items = await OrderItem.findAll({
       where: { order_id: orderId, status: "completed" },
     });
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
+    const subtotal = Number(
+      items.reduce(
+        (sum, item) => sum + Number(item.price) * Number(item.quantity),
+        0
+      )
     );
-
-    const eventFee = order.event_fee || 0;
-    const deposit = order.deposit_amount || 0;
-    const discount = order.voucher_discount_amount || 0;
+    const eventFee = Number(order.event_fee) || 0;
+    const deposit = Number(order.deposit_amount) || 0;
+    const discount = Number(order.voucher_discount_amount) || 0;
 
     const totalAmount = subtotal;
     const finalAmount = Math.max(0, subtotal + eventFee - deposit - discount);
-
     await order.update({
       total_amount: totalAmount,
       final_amount: finalAmount,
