@@ -48,10 +48,10 @@ import {
   MessageCircle,
   Settings,
 } from "lucide-react";
-import { useNotificationWebSocket } from "@/hooks/useWebSocket";
-import { api, Notification } from "@/lib/api";
+import { api, Notification, NotificationFilters } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { useWebSocketContext } from "@/providers/WebSocketProvider";
 
 const NOTIFICATION_TYPES = [
   {
@@ -100,29 +100,52 @@ export default function NotificationsPage() {
     useState<Notification | null>(null);
   const [showNotificationDialog, setShowNotificationDialog] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   // WebSocket integration
+  const { notificationSocket } = useWebSocketContext();
   const {
     isConnected: isWebSocketConnected,
-    joinStaffRoom,
     onNewNotification,
-    onNotificationRead,
-  } = useNotificationWebSocket();
+    onNotificationsMarkedRead,
+  } = notificationSocket;
 
-  // Load notifications on component mount
+  // Load notifications on component mount and when filters change
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [currentPage, typeFilter, statusFilter]);
 
   // WebSocket event listeners
   useEffect(() => {
-    if (isWebSocketConnected) {
-      joinStaffRoom();
-    }
-  }, [isWebSocketConnected, joinStaffRoom]);
+    onNewNotification((wsNotification) => {
+      // Map WebSocket notification type to API Notification type
+      const mapNotificationType = (wsType: string): Notification["type"] => {
+        const typeMap: Record<string, Notification["type"]> = {
+          order: "order_created",
+          reservation: "reservation_created",
+          chat: "chat_message",
+          payment: "payment_completed",
+          system: "other",
+        };
+        return typeMap[wsType] || "other";
+      };
 
-  useEffect(() => {
-    onNewNotification((notification) => {
+      // Map WebSocket notification format to API Notification format
+      const notification: Notification = {
+        id: wsNotification.id || crypto.randomUUID(),
+        user_id: wsNotification.createdBy || null,
+        type: mapNotificationType(wsNotification.type || "system"),
+        title: wsNotification.title,
+        content: wsNotification.message || wsNotification.title,
+        data: wsNotification.metadata,
+        is_read: false,
+        sent_at: wsNotification.createdAt
+          ? new Date(wsNotification.createdAt).toISOString()
+          : new Date().toISOString(),
+        status: "sent",
+      };
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
       toast({
@@ -133,18 +156,23 @@ export default function NotificationsPage() {
   }, [onNewNotification, toast]);
 
   useEffect(() => {
-    onNotificationRead((notificationId) => {
+    onNotificationsMarkedRead((status) => {
+      // Update notifications that were marked as read
       setNotifications((prev) =>
         prev.map((notification) =>
-          notification.id === notificationId
+          status.notificationIds.includes(notification.id)
             ? { ...notification, is_read: true }
             : notification
         )
       );
+      // Update unread count
+      setUnreadCount((prev) =>
+        Math.max(0, prev - status.notificationIds.length)
+      );
     });
-  }, [onNotificationRead]);
+  }, [onNotificationsMarkedRead]);
 
-  // Filter notifications when search term or filters change
+  // Filter notifications locally (for search only, other filters are handled by API)
   useEffect(() => {
     let filtered = notifications;
 
@@ -156,22 +184,8 @@ export default function NotificationsPage() {
       );
     }
 
-    if (typeFilter !== "all") {
-      filtered = filtered.filter(
-        (notification) => notification.type === typeFilter
-      );
-    }
-
-    if (statusFilter !== "all") {
-      if (statusFilter === "unread") {
-        filtered = filtered.filter((notification) => !notification.is_read);
-      } else if (statusFilter === "read") {
-        filtered = filtered.filter((notification) => notification.is_read);
-      }
-    }
-
     setFilteredNotifications(filtered);
-  }, [notifications, searchTerm, typeFilter, statusFilter]);
+  }, [notifications, searchTerm]);
 
   // Update unread count when notifications change
   useEffect(() => {
@@ -184,11 +198,26 @@ export default function NotificationsPage() {
   const loadNotifications = async () => {
     setIsLoading(true);
     try {
-      const response = await api.notifications.getAll({
-        page: 1,
-        limit: 100,
-      });
-      setNotifications(response.data);
+      const filters: NotificationFilters = {
+        page: currentPage,
+        limit: pageSize,
+      };
+
+      if (typeFilter !== "all") {
+        filters.type = typeFilter;
+      }
+
+      if (statusFilter !== "all") {
+        filters.is_read = statusFilter === "read";
+      }
+
+      const response = await api.notifications.getAll(filters);
+      setNotifications(Array.isArray(response.data) ? response.data : []);
+
+      if (response.pagination) {
+        setTotalPages(response.pagination.totalPages || 1);
+        setTotalItems(response.pagination.total || 0);
+      }
     } catch (error) {
       console.error("Failed to load notifications:", error);
       toast({
@@ -231,6 +260,7 @@ export default function NotificationsPage() {
       setNotifications((prev) =>
         prev.map((notification) => ({ ...notification, is_read: true }))
       );
+      setUnreadCount(0);
       toast({
         title: "Thành công",
         description: "Đã đánh dấu tất cả thông báo là đã đọc",
@@ -468,7 +498,8 @@ export default function NotificationsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
-            Danh sách thông báo ({filteredNotifications.length})
+            Danh sách thông báo (
+            {totalItems > 0 ? totalItems : filteredNotifications.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -698,6 +729,43 @@ export default function NotificationsPage() {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground">
+                Hiển thị {(currentPage - 1) * pageSize + 1} -{" "}
+                {Math.min(currentPage * pageSize, totalItems)} trên tổng số{" "}
+                {totalItems} thông báo
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
+                  disabled={currentPage === 1 || isLoading}
+                >
+                  Trang trước
+                </Button>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-medium">Trang</span>
+                  <span className="text-sm font-medium">{currentPage}</span>
+                  <span className="text-sm font-medium">trên</span>
+                  <span className="text-sm font-medium">{totalPages}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  disabled={currentPage === totalPages || isLoading}
+                >
+                  Trang sau
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

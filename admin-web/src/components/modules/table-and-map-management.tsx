@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { TableMapManagement } from "./table-map-management"
 import { TableManagement } from "./table-management"
-import { TableGroupManagement } from "./table-group-management"
+import { RestaurantAreaManagement } from "./restaurant-area-management"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -43,9 +43,20 @@ interface TableGroupAttributes {
   deleted_at?: Date | null
 }
 
+interface RestaurantAreaAttributes {
+  id: string
+  name: string
+  area_size: number
+  shape_type: "square" | "rectangle" | "circle" | "polygon"
+  status: "active" | "maintenance" | "clean"
+  created_at?: Date
+  updated_at?: Date
+  deleted_at?: Date | null
+}
+
 export function TableAndMapManagement() {
   const [tables, setTables] = useState<TableAttributes[]>([])
-  const [tableGroups, setTableGroups] = useState<TableGroupAttributes[]>([])
+  const [restaurantArea, setRestaurantArea] = useState<any>(null)
   const [isCreateTableDialogOpen, setIsCreateTableDialogOpen] = useState(false)
 
   const stats = {
@@ -106,8 +117,8 @@ export function TableAndMapManagement() {
       <Tabs defaultValue="tables" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="tables">Danh sách bàn</TabsTrigger>
-          <TabsTrigger value="management">Quản lý bàn & nhóm</TabsTrigger>
-          <TabsTrigger value="layout">Sơ đồ bàn</TabsTrigger>
+          <TabsTrigger value="maps">Sơ đồ bàn</TabsTrigger>
+          <TabsTrigger value="layout">Tổng quát nhà hàng</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tables" className="space-y-6">
@@ -133,34 +144,15 @@ export function TableAndMapManagement() {
           />
         </TabsContent>
 
-        <TabsContent value="management">
-          <Tabs defaultValue="table-groups" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="table-groups">Nhóm bàn</TabsTrigger>
-              <TabsTrigger value="tables">Bàn</TabsTrigger>
-            </TabsList>
-            <TabsContent value="table-groups">
-              <TableGroupManagement
-                tableGroups={tableGroups}
-                setTableGroups={setTableGroups}
-              />
-            </TabsContent>
-            <TabsContent value="tables">
-              <TableManagement
-                tables={tables}
-                setTables={setTables}
-                isCreateTableDialogOpen={isCreateTableDialogOpen}
-                setIsCreateTableDialogOpen={setIsCreateTableDialogOpen}
-              />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
-
-        <TabsContent value="layout">
+        <TabsContent value="maps">
           <TableMapManagement
             tables={tables as any}
             setTables={setTables}
+            area = {restaurantArea as any}
           />
+        </TabsContent>
+        <TabsContent value="layout">
+          <RestaurantAreaManagement/>
         </TabsContent>
       </Tabs>
     </div>

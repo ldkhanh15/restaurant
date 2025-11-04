@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../domain/models/blog.dart';
+import '../../widgets/leading_back_button.dart';
 
 class BlogDetailScreen extends StatelessWidget {
   final Blog? blog;
@@ -11,7 +12,10 @@ class BlogDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = blog;
     return Scaffold(
-      appBar: AppBar(title: Text(b?.title ?? 'Bài viết')),
+      appBar: AppBar(
+        leading: const LeadingBackButton(),
+        title: Text(b?.title ?? 'Bài viết'),
+      ),
       body: b == null
           ? const Center(child: Text('Không tìm thấy bài viết'))
           : SingleChildScrollView(
@@ -26,6 +30,10 @@ class BlogDetailScreen extends StatelessWidget {
                         width: double.infinity,
                         height: 220,
                         fit: BoxFit.cover,
+                        loadingBuilder: (_, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(height:220, alignment: Alignment.center, child: SizedBox(width:24,height:24, child: CircularProgressIndicator(strokeWidth:2)));
+                        },
                         errorBuilder: (_, __, ___) => Container(height: 220, color: Colors.grey.shade200, child: const Icon(Icons.photo, size: 56)),
                       ),
                     ),

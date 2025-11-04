@@ -17,6 +17,8 @@ const employeeApi = {
     return response;
   },
 
+  getAllNoPaging: () => apiClient.get("/employees?all=true"),
+
   getEmployeeById: async (id: string) => {
     const response = await apiClient.get(`/employees/${id}`);
     return response;

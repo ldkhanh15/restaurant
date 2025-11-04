@@ -23,12 +23,12 @@ export interface InventoryImport {
 export const inventoryImportService = {
     getAll: (params?: any) => apiClient.get("/inventories",{ params }),
     getById: (id: string) => apiClient.get(`/inventories/${id}`),
-    create: (data: Omit<InventoryImport, 'id'>) => apiClient.post("/inventories", data),
-    update: (id: string, data: Partial<InventoryImport>) => apiClient.put(`/inventories/${id}`, data),
+    create: (data:any) => apiClient.post("/inventories", data),
+    update: (id: string, data: any) => apiClient.put(`/inventories/${id}`, data),
     remove: (id: string) => apiClient.delete(`/inventories/${id}`),
     addIngredients: (data: { 
       inventory_imports_id: string, 
-      ingredients: Omit<InventoryIngredient, 'id' | 'inventory_imports_id'>[] 
+      ingredients: any
     }) => apiClient.post(`/inventories/ingredient`, data),
     updateInventoryIngredients: (
       id: string, 

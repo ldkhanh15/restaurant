@@ -5,6 +5,7 @@ import Order from "../models/Order"
 import sequelize from "../config/database"
 import tableGroupService from "../services/tableGroupService"
 import { check } from "express-validator"
+import { uploadMultipleImagesToCloudinary } from "../services/cloudService"
 
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -50,6 +51,27 @@ export const getTableById = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
+export const searchTables = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { count, rows, page, limit } = await tableService.search(req.query)
+
+    const totalPages = Math.ceil(count / limit)
+
+    res.json({
+      status: "success",
+      data: {
+        totalItems: count,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        items: rows,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getTablesByStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
@@ -69,7 +91,18 @@ export const getTablesByStatus = async (req: Request, res: Response, next: NextF
 
 export const createTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const table = await tableService.create(req.body)
+    const files = (req.files as Express.Multer.File[]) || []
+    const body: any = { ...req.body }
+    // Parse potential JSON strings from multipart
+    if (typeof body.location === "string") { try { body.location = JSON.parse(body.location) } catch {} }
+    if (typeof body.amenities === "string") { try { body.amenities = JSON.parse(body.amenities) } catch {} }
+
+    if (files.length > 0) {
+      const uploaded = await uploadMultipleImagesToCloudinary(files.map(f => f.path), "table")
+      body.panorama_urls = uploaded.map(u => u.secure_url)
+    }
+
+    const table = await tableService.create(body)
     res.status(201).json({ status: "success", data: table })
   } catch (error) {
     next(error)
@@ -78,7 +111,18 @@ export const createTable = async (req: Request, res: Response, next: NextFunctio
 
 export const updateTable = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const table = await tableService.update(req.params.id, req.body)
+    const files = (req.files as Express.Multer.File[]) || []
+    const body: any = { ...req.body }
+    if (typeof body.location === "string") { try { body.location = JSON.parse(body.location) } catch {} }
+    if (typeof body.amenities === "string") { try { body.amenities = JSON.parse(body.amenities) } catch {} }
+    if (typeof body.panorama_urls === "string") { try { body.panorama_urls = JSON.parse(body.panorama_urls) } catch {} }
+
+    if (files.length > 0) {
+      const uploaded = await uploadMultipleImagesToCloudinary(files.map(f => f.path), "table")
+      body.panorama_urls = uploaded.map(u => u.secure_url)
+    }
+
+    const table = await tableService.update(req.params.id, body)
     res.json({ status: "success", data: table })
   } catch (error) {
     next(error)

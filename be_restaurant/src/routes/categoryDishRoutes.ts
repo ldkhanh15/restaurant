@@ -6,6 +6,7 @@ const router = Router()
 
 router.get("/", categoryDishController.getAllCategories)
 router.get("/:id", categoryDishController.getCategoryById)
+
 router.post("/", categoryDishController.createCategory)
 router.put("/:id", categoryDishController.updateCategory)
 router.delete("/:id", categoryDishController.deleteCategory)

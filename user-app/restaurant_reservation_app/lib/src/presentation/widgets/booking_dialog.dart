@@ -55,6 +55,27 @@ class _BookingDialogState extends State<BookingDialog> {
         _fetchBookedTimes(_selectedDate!);
       }
     }
+    // If creating a new booking, prefill date as today and pick first available time
+    else {
+      _selectedDate = DateTime.now();
+      // fetch booked times for today and pick first free slot asynchronously
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchBookedTimes(_selectedDate!).then((_) {
+          // choose first free time not in _bookedTimes
+          final free = _availableTimes.firstWhere(
+            (t) => !_bookedTimes.contains(t),
+            orElse: () => _availableTimes.first,
+          );
+          setState(() {
+            _selectedTime = free;
+          });
+        }).catchError((e) {
+          // ignore errors but keep defaults
+          // ignore: avoid_print
+          print('[BookingDialog] error while prefetching times: $e');
+        });
+      });
+    }
   }
 
   Future<void> _fetchBookedTimes(DateTime date) async {

@@ -26,7 +26,6 @@ import { v4 as uuidv4 } from "uuid"
 import { toast } from "react-toastify"
 import { tableService } from "@/services/tableService"
 import { CreateReservationDialog } from "./modalCreateReservation"
-import { uploadMultipleImagesToCloudinary } from "@/services/cloudinaryService"
 
 interface TableAttributes {
   id: string
@@ -71,8 +70,8 @@ export function TableManagement({
   const [amenities, setAmenities] = useState<{ label: string; value: string }[]>([])
   const [panoramaFiles, setPanoramaFiles] = useState<File[]>([])
   const [panoramaPreviews, setPanoramaPreviews] = useState<string[]>([])
-  const [currentUrls, setCurrentUrls] = useState<string[]>([]) // Thêm state để theo dõi URL hiện tại
-  const [isUploading, setIsUploading] = useState(false)
+  const [currentUrls, setCurrentUrls] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     console.log("Tables:", tables)
@@ -128,9 +127,8 @@ export function TableManagement({
   const getTables = async () => {
     try {
       const response = await tableService.getAllNoPaging()
-      console.log("API response:", response)
-      if (response && response.status === 200) {
-        const data = response.data.data?.rows || response.data.data
+      if (response) {
+        const data = response as any
         const normalized = (Array.isArray(data) ? data : []).map((t: any) => ({
           ...t,
           created_at: t.created_at ? new Date(t.created_at) : undefined,
@@ -193,74 +191,98 @@ export function TableManagement({
     return loc
   }
 
-  const handleCreateTable = async (
-    data: Omit<TableAttributes, "id" | "created_at" | "updated_at" | "deleted_at">
-  ) => {
-    setIsUploading(true)
+  const handleCreateTable = async (form: HTMLFormElement) => {
+    setIsSubmitting(true)
     try {
-      const uploadedUrls = await uploadMultipleImagesToCloudinary(panoramaFiles, "table")
-      const newTable: TableAttributes = {
-        id: uuidv4(),
-        ...data,
-        panorama_urls: uploadedUrls,
-        created_at: new Date(),
-        updated_at: new Date(),
-        deleted_at: null,
-      }
+      const formValues = new FormData(form)
+      const id = uuidv4()
+      const location = buildLocationFromForm(formValues)
+      const amenitiesObj = parseAmenitiesToObject(amenities)
 
-      const response = await tableService.create(newTable)
-      if (response && response.status === 201) {
-        setTables((prev) => [...prev, newTable])
+      const payload = new FormData()
+      payload.append("id", id)
+      payload.append("table_number", String(formValues.get("table_number") || ""))
+      payload.append("capacity", String(formValues.get("capacity") || "0"))
+      payload.append("deposit", String(formValues.get("deposit") || "0"))
+      payload.append("cancel_minutes", String(formValues.get("cancel_minutes") || "0"))
+      payload.append("status", String(formValues.get("status") || "available"))
+      payload.append("description", String(formValues.get("description") || ""))
+      if (location) payload.append("location", JSON.stringify(location))
+      payload.append("amenities", JSON.stringify(amenitiesObj))
+      // files
+      panoramaFiles.forEach((file) => payload.append("panorama_files", file))
+
+      const createdTable = await tableService.create(payload) as unknown as TableAttributes
+
+      if (createdTable && createdTable.id) {
+        setTables((prev) => [...prev, createdTable])
         setIsCreateTableDialogOpen(false)
         setAmenities([])
         setPanoramaFiles([])
         setPanoramaPreviews([])
-        setCurrentUrls([])
         toast.success("Đã thêm bàn thành công")
       } else {
         toast.error("Thêm bàn thất bại")
       }
-    } catch (err) {
-      toast.error("Lỗi khi thêm bàn")
+    } catch (err: any) {
+      toast.error(err?.message || "Lỗi khi thêm bàn")
     } finally {
-      setIsUploading(false)
+      setIsSubmitting(false)
     }
   }
 
-  const handleUpdateTable = async (id: string, data: Partial<TableAttributes>) => {
-    setIsUploading(true)
+  const handleUpdateTable = async (id: string, form: HTMLFormElement) => {
+    setIsSubmitting(true)
     try {
-      const newUrls = await uploadMultipleImagesToCloudinary(panoramaFiles, "table")
-      const updatedData = { 
-        ...data, 
-        panorama_urls: [...currentUrls, ...newUrls] // Sử dụng currentUrls thay vì selectedTable.panorama_urls
-      }
+      const formValues = new FormData(form)
+      const location = buildLocationFromForm(formValues)
+      const amenitiesObj = parseAmenitiesToObject(amenities)
 
-      const response = await tableService.update(id, updatedData)
-      if (response && response.status === 200) {
-        setTables((prev) =>
-          prev.map((table) => (table.id === id ? { ...table, ...updatedData, updated_at: new Date() } : table))
-        )
+      const payload = new FormData()
+      payload.append("table_number", String(formValues.get("table_number") || ""))
+      payload.append("capacity", String(formValues.get("capacity") || "0"))
+      payload.append("deposit", String(formValues.get("deposit") || "0"))
+      payload.append("cancel_minutes", String(formValues.get("cancel_minutes") || "0"))
+      payload.append("status", String(formValues.get("status") || "available"))
+      payload.append("description", String(formValues.get("description") || ""))
+      if (location) payload.append("location", JSON.stringify(location))
+      payload.append("amenities", JSON.stringify(amenitiesObj))
+      if (currentUrls && currentUrls.length > 0) {
+        payload.append("panorama_urls", JSON.stringify(currentUrls))
+      }
+      panoramaFiles.forEach((file) => payload.append("panorama_files", file))
+
+      const updated = await tableService.update(id, payload) as unknown as TableAttributes
+
+      if (updated && updated.id) {
+        setTables((prev) => prev.map((t) => (t.id === id ? updated : t)))
         setIsEditTableDialogOpen(false)
         setAmenities([])
         setPanoramaFiles([])
         setPanoramaPreviews([])
-        setCurrentUrls([])
+        setCurrentUrls(updated.panorama_urls || [])
         toast.success("Đã cập nhật bàn thành công")
       } else {
         toast.error("Cập nhật bàn thất bại")
       }
-    } catch (err) {
-      toast.error("Lỗi khi cập nhật bàn")
+    } catch (err: any) {
+      toast.error(err?.message || "Lỗi khi cập nhật bàn")
     } finally {
-      setIsUploading(false)
+      setIsSubmitting(false)
     }
+  }
+
+  const resetForm = () => {
+    setAmenities([])
+    setPanoramaFiles([])
+    setPanoramaPreviews([])
+    setCurrentUrls([])
   }
 
   const handleDeleteTable = async (id: string) => {
     try {
       const response = await tableService.remove(id)
-      if (response && response.status === 200) {
+      if (response) {
         setTables((prev) =>
           prev.map((table) => (table.id === id ? { ...table, deleted_at: new Date() } : table))
         )
@@ -293,7 +315,6 @@ export function TableManagement({
       const previews = files.map((file) => URL.createObjectURL(file))
       setPanoramaFiles((prev) => [...prev, ...files])
       setPanoramaPreviews((prev) => [...prev, ...previews])
-      setCurrentUrls((prev) => [...prev, ...previews]) // Thêm URL mới vào currentUrls
     }
   }
 
@@ -301,23 +322,25 @@ export function TableManagement({
     setPanoramaFiles((prev) => prev.filter((_, i) => i !== index))
     setPanoramaPreviews((prev) => {
       const newPreviews = prev.filter((_, i) => i !== index)
-      setCurrentUrls(newPreviews) // Cập nhật currentUrls khi xóa ảnh
       return newPreviews
     })
   }
 
   useEffect(() => {
     if (selectedTable?.panorama_urls) {
-      setCurrentUrls(selectedTable.panorama_urls) // Khởi tạo currentUrls khi mở modal chỉnh sửa
+      setCurrentUrls(selectedTable.panorama_urls)
+      setPanoramaPreviews(selectedTable.panorama_urls)
     }
     return () => {
-      panoramaPreviews.forEach((url) => URL.revokeObjectURL(url))
+      panoramaPreviews.forEach((url) => {
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url)
+      })
     }
-  }, [panoramaPreviews, selectedTable])
+  }, [selectedTable])
 
   return (
     <div className="space-y-6">
-      {/* --- Search + Filter + Add --- */}
+      {/* --- Search + Filter --- */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex flex-col sm:flex-row gap-4 flex-1">
           <div className="relative flex-1 max-w-sm">
@@ -343,7 +366,7 @@ export function TableManagement({
       </div>
 
       {/* --- Table Cards --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {filteredTables.map((table) => (
           <Card
             key={table.id}
@@ -412,7 +435,7 @@ export function TableManagement({
                             )
                             setPanoramaFiles([])
                             setPanoramaPreviews(table.panorama_urls || [])
-                            setCurrentUrls(table.panorama_urls || []) // Khởi tạo currentUrls
+                            setCurrentUrls(table.panorama_urls || [])
                             setIsEditTableDialogOpen(true)
                           }}
                           title="Chỉnh sửa"
@@ -450,12 +473,7 @@ export function TableManagement({
       {/* Create Table Dialog */}
       <Dialog open={isCreateTableDialogOpen} onOpenChange={(open) => {
         setIsCreateTableDialogOpen(open)
-        if (!open) {
-          setAmenities([])
-          setPanoramaFiles([])
-          setPanoramaPreviews([])
-          setCurrentUrls([])
-        }
+        if (!open) resetForm()
       }}>
         <DialogContent className="min-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -464,19 +482,8 @@ export function TableManagement({
           </DialogHeader>
           <form
             onSubmit={(e) => {
-              e.preventDefault()
-              const formData = new FormData(e.currentTarget)
-              const loc = buildLocationFromForm(formData)
-              handleCreateTable({
-                table_number: formData.get("table_number") as string,
-                capacity: Number(formData.get("capacity")),
-                deposit: Number(formData.get("deposit")),
-                cancel_minutes: Number(formData.get("cancel_minutes")),
-                location: loc,
-                status: formData.get("status") as "available" | "occupied" | "cleaning" | "reserved",
-                description: (formData.get("description") as string) || undefined,
-                amenities: parseAmenitiesToObject(amenities),
-              })
+              e.preventDefault();
+              handleCreateTable(e.currentTarget);
             }}
           >
             <div className="grid grid-cols-2 gap-8 py-4">
@@ -527,11 +534,11 @@ export function TableManagement({
                       <Input id="location_floor" name="location_floor" type="number" placeholder="1" />
                     </div>
                     <div>
-                      <Label htmlFor="location_x">Tọa độ X (trong sơ đồ)</Label>
+                      <Label htmlFor="location_x">Tọa độ X</Label>
                       <Input id="location_x" name="location_x" type="number" placeholder="10" />
                     </div>
                     <div>
-                      <Label htmlFor="location_y">Tọa độ Y (trong sơ đồ)</Label>
+                      <Label htmlFor="location_y">Tọa độ Y</Label>
                       <Input id="location_y" name="location_y" type="number" placeholder="20" />
                     </div>
                   </div>
@@ -545,11 +552,11 @@ export function TableManagement({
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={isUploading}
+                      disabled={isSubmitting}
                       onClick={() => document.getElementById("panorama_upload")?.click()}
                       className="bg-black text-white hover:bg-gray-800"
                     >
-                      <Plus className="h-4 w-4 mr-2" /> {isUploading ? "Đang tải..." : "Chọn ảnh"}
+                      <Plus className="h-4 w-4 mr-2" /> {isSubmitting ? "Đang xử lý..." : "Chọn ảnh"}
                     </Button>
                     <Input
                       id="panorama_upload"
@@ -602,20 +609,19 @@ export function TableManagement({
                         <Input
                           value={amenity.label}
                           onChange={(e) => handleAmenityChange(index, "label", e.target.value)}
-                          placeholder="Tên tiện nghi (VD: Máy lạnh, Wi-Fi)"
+                          placeholder="Tên tiện nghi"
                           className="w-2/3"
                         />
                         <Input
                           value={amenity.value}
                           onChange={(e) => handleAmenityChange(index, "value", e.target.value)}
-                          placeholder="Giá trị (VD: true, false, số)"
+                          placeholder="Giá trị"
                           className="w-1/3"
                         />
                         <Button
                           type="button"
                           variant="destructive"
                           size="sm"
-                          className="bg-red-600 text-white hover:bg-red-700"
                           onClick={() => handleRemoveAmenity(index)}
                         >
                           <X className="h-4 w-4" />
@@ -638,8 +644,8 @@ export function TableManagement({
               >
                 Hủy
               </Button>
-              <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isUploading}>
-                Thêm bàn
+              <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting}>
+                {isSubmitting ? "Đang thêm..." : "Thêm bàn"}
               </Button>
             </DialogFooter>
           </form>
@@ -729,34 +735,17 @@ export function TableManagement({
       {/* Edit Table Dialog */}
       <Dialog open={isEditTableDialogOpen} onOpenChange={(open) => {
         setIsEditTableDialogOpen(open)
-        if (!open) {
-          setAmenities([])
-          setPanoramaFiles([])
-          setPanoramaPreviews([])
-          setCurrentUrls([])
-        }
+        if (!open) resetForm()
       }}>
         <DialogContent className="min-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bàn</DialogTitle>
           </DialogHeader>
           {selectedTable && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                const formData = new FormData(e.currentTarget)
-                const loc = buildLocationFromForm(formData)
-                handleUpdateTable(selectedTable.id, {
-                  table_number: formData.get("table_number") as string,
-                  capacity: Number(formData.get("capacity")),
-                  deposit: Number(formData.get("deposit")),
-                  cancel_minutes: Number(formData.get("cancel_minutes")),
-                  location: loc,
-                  status: formData.get("status") as "available" | "occupied" | "cleaning" | "reserved",
-                  description: (formData.get("description") as string) || undefined,
-                  amenities: parseAmenitiesToObject(amenities),
-                })
-              }}
+            <form onSubmit={(e) =>{
+              e.preventDefault()
+              handleUpdateTable(selectedTable.id, e.currentTarget)
+            }}
             >
               <div className="grid grid-cols-2 gap-8 py-4">
                 <div className="space-y-4">
@@ -806,11 +795,11 @@ export function TableManagement({
                         <Input id="edit-location_floor" name="location_floor" type="number" defaultValue={selectedTable.location?.floor ?? ""} />
                       </div>
                       <div>
-                        <Label htmlFor="edit-location_x">Tọa độ X (trong sơ đồ)</Label>
+                        <Label htmlFor="edit-location_x">Tọa độ X</Label>
                         <Input id="edit-location_x" name="location_x" type="number" defaultValue={selectedTable.location?.coordinates?.x ?? ""} />
                       </div>
                       <div>
-                        <Label htmlFor="edit-location_y">Tọa độ Y (trong sơ đồ)</Label>
+                        <Label htmlFor="edit-location_y">Tọa độ Y</Label>
                         <Input id="edit-location_y" name="location_y" type="number" defaultValue={selectedTable.location?.coordinates?.y ?? ""} />
                       </div>
                     </div>
@@ -819,16 +808,16 @@ export function TableManagement({
                 <div className="space-y-4">
                   <div className="grid gap-2">
                     <div className="flex justify-between items-center">
-                      <Label>Ảnh Panorama</Label>
+                      <Label>Ảnh Panorama (hiện tại)</Label>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={isUploading}
+                        disabled={isSubmitting}
                         onClick={() => document.getElementById("edit_panorama_upload")?.click()}
                         className="bg-black text-white hover:bg-gray-800"
                       >
-                        <Plus className="h-4 w-4 mr-2" /> {isUploading ? "Đang tải..." : "Chọn ảnh"}
+                        <Plus className="h-4 w-4 mr-2" /> {isSubmitting ? "Đang xử lý..." : "Thêm ảnh mới"}
                       </Button>
                       <Input
                         id="edit_panorama_upload"
@@ -881,20 +870,19 @@ export function TableManagement({
                           <Input
                             value={amenity.label}
                             onChange={(e) => handleAmenityChange(index, "label", e.target.value)}
-                            placeholder="Tên tiện nghi (VD: Máy lạnh, Wi-Fi)"
+                            placeholder="Tên tiện nghi"
                             className="w-2/3"
                           />
                           <Input
                             value={amenity.value}
                             onChange={(e) => handleAmenityChange(index, "value", e.target.value)}
-                            placeholder="Giá trị (VD: true, false, số)"
+                            placeholder="Giá trị"
                             className="w-1/3"
                           />
                           <Button
                             type="button"
                             variant="destructive"
                             size="sm"
-                            className="bg-red-600 text-white hover:bg-red-700"
                             onClick={() => handleRemoveAmenity(index)}
                           >
                             <X className="h-4 w-4" />
@@ -917,8 +905,8 @@ export function TableManagement({
                 >
                   Hủy
                 </Button>
-                <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isUploading}>
-                  Lưu thay đổi
+                <Button type="submit" className="bg-black text-white hover:bg-gray-800" disabled={isSubmitting}>
+                  {isSubmitting ? "Đang lưu..." : "Lưu thay đổi"}
                 </Button>
               </DialogFooter>
             </form>
@@ -929,10 +917,7 @@ export function TableManagement({
       {/* Create Reservation Dialog */}
       <CreateReservationDialog
         isOpen={isCreateReservationOpen}
-        onOpenChange={(open) => {
-          console.log("Create reservation dialog open state:", open)
-          setIsCreateReservationOpen(open)
-        }}
+        onOpenChange={setIsCreateReservationOpen}
         onCreateReservation={(data: any) => {
           console.log("Tạo đặt chỗ mới:", data)
           setIsCreateReservationOpen(false)

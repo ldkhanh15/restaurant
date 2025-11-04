@@ -2,6 +2,7 @@ import { BaseService } from "./baseService"
 import OrderItem from "../models/OrderItem"
 import Order from "../models/Order"
 import Dish from "../models/Dish"
+import loyaltyService from "./loyalty_app_userService";
 
 class OrderItemService extends BaseService<OrderItem> {
   constructor() {

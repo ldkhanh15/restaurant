@@ -25,7 +25,6 @@ import { dishService } from "@/services/dishService"
 import { categoryService } from "@/services/categoryService"
 import { ingredientService } from "@/services/ingredientService"
 import { toast } from "react-toastify"
-import { uploadImageToCloudinary } from "@/services/cloudinaryService"
 import { v4 as uuidv4 } from "uuid"
 
 interface Ingredient {
@@ -84,7 +83,7 @@ interface DishManagementProps {
 interface PaginationData {
   currentPage: number
   totalPages: number
-  totalItems: number
+  total: number
   itemsPerPage: number
 }
 
@@ -110,7 +109,17 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
   const [isLoading, setIsLoading] = useState(true)
   const limit = 10
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string
+    description: string
+    price: number
+    category_id: string
+    is_best_seller: boolean
+    seasonal: boolean
+    active: boolean
+    media_urls: (File | string)[]  // File mới hoặc URL cũ
+    ingredients: { ingredient_id: string; quantity: number }[]
+  }>({
     name: "",
     description: "",
     price: 0,
@@ -118,41 +127,36 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
     is_best_seller: false,
     seasonal: false,
     active: true,
-    media_urls: [] as (string | File)[],
-    ingredients: [] as { ingredient_id: string; quantity: number }[],
+    media_urls: [],
+    ingredients: [],
   })
+
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [newIngredient, setNewIngredient] = useState({ ingredient_id: "", quantity: 0 })
 
   const getData = async () => {
     setIsLoading(true)
     try {
-      const [resDish, resCat, resIng] = await Promise.all([
-        dishService.getAll({
-          page: currentPage,
-          limit,
-          sortBy: 'created_at',
-          sortOrder: 'ASC'
-        }),
+      const resDish = await dishService.getAll({
+        page: currentPage,
+        limit,
+        sortBy: 'created_at',
+        sortOrder: 'ASC'
+      })
+      const [resCat, resIng] = await Promise.all([
         categoryService.getAll(),
         ingredientService.getAllNoPaging()
       ])
 
-      if (!resDish?.data?.data || !resCat?.data?.data) {
+      if (!resDish || !resCat) {
         toast.error("Lấy dữ liệu thất bại")
         return
       }
-
-      // dishes
-      setDishes(resDish.data.data.data)
-      setTotalPages(resDish.data.data.pagination.totalPages)
-      setTotalDishes(resDish.data.data.pagination.totalItems)
-      // categories
-      setCategories(resCat.data.data.data)
-
-      setIngredients(resIng.data.data)
-
-
+      setDishes(resDish.data)
+      setTotalPages(resDish.pagination.totalPages)
+      setTotalDishes(resDish.pagination.total)
+      setCategories(resCat.data)
+      setIngredients(resIng as any)
     } catch (error) {
       console.error("Error fetching data:", error)
       toast.error("Lỗi khi lấy dữ liệu")
@@ -180,7 +184,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       if (!dish) return
 
       await dishService.update(dishId, { active: !dish.active })
-      setDishes(dishes.map((d) => 
+      setDishes(dishes.map((d) =>
         d.id === dishId ? { ...d, active: !d.active } : d
       ))
       toast.success("Cập nhật trạng thái món ăn thành công")
@@ -195,7 +199,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       if (!dish) return
 
       await dishService.update(dishId, { is_best_seller: !dish.is_best_seller })
-      setDishes(dishes.map((d) => 
+      setDishes(dishes.map((d) =>
         d.id === dishId ? { ...d, is_best_seller: !d.is_best_seller } : d
       ))
       toast.success("Cập nhật trạng thái bán chạy thành công")
@@ -208,10 +212,10 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
     try {
       await dishService.remove(dishId)
       setDishes(dishes.map((dish) =>
-        dish.id === dishId ? { 
-          ...dish, 
-          deleted_at: new Date().toISOString().split("T")[0], 
-          active: false 
+        dish.id === dishId ? {
+          ...dish,
+          deleted_at: new Date().toISOString().split("T")[0],
+          active: false
         } : dish
       ))
       toast.success("Xóa món ăn thành công")
@@ -229,7 +233,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       is_best_seller: !!dish.is_best_seller,
       seasonal: !!dish.seasonal,
       active: !!dish.active,
-      media_urls: dish.media_urls ?? [],
+      media_urls: dish.media_urls ?? [], // giữ URL cũ
       ingredients: dish.ingredients.map(ing => ({
         ingredient_id: ing.id,
         quantity: ing.DishIngredient?.quantity || 0
@@ -238,6 +242,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
 
     setPreviewImage(dish.media_urls?.[0] || null)
   }
+
   const addIngredient = () => {
     if (newIngredient.ingredient_id && newIngredient.quantity > 0) {
       setFormData({
@@ -252,24 +257,21 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
     const updatedIngredients = formData.ingredients.filter((_, i) => i !== index)
     setFormData({ ...formData, ingredients: updatedIngredients })
   }
-  
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       const url = URL.createObjectURL(file)
       setPreviewImage(url)
-      setFormData({ ...formData, media_urls: [file as any] }) // lưu tạm file, sẽ upload trước khi gửi
+      setFormData({ ...formData, media_urls: [file] }) // lưu file
     }
   }
 
+  // =================== CREATE: Gửi file về BE ===================
   const handleCreateDish = async () => {
     try {
       const id = uuidv4(); 
       const file = formData.media_urls?.[0] as File | undefined;
-
-      const uploadPromise = file
-        ? uploadImageToCloudinary(file, "dish")
-        : Promise.resolve(""); 
 
       const dishData = {
         id,
@@ -277,12 +279,11 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
         description: formData.description,
         price: formData.price,
         category_id: formData.category_id,
-        media_urls: [] as string[], 
+        media_file: file, // gửi file trực tiếp
         is_best_seller: formData.is_best_seller,
         seasonal: formData.seasonal,
         active: formData.active,
       };
-
       const ingredientData = {
         dish_id: id, 
         ingredients: formData.ingredients.map(ing => ({
@@ -290,21 +291,21 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
           quantity: ing.quantity,
         })),
       };
-      const [uploadedUrl] = await Promise.all([uploadPromise]);
-      dishData.media_urls = uploadedUrl ? [uploadedUrl] : [];
-      const responseDish = await dishService.create({
-        dishData,
-        ingredients: ingredientData
-      });
+
+      const formDataToSend = new FormData();
+      formDataToSend.append("dishData", JSON.stringify(dishData));
+      formDataToSend.append("ingredients", JSON.stringify(ingredientData));
+      formDataToSend.append("media_file", file as Blob);
+
+      const responseDish = await dishService.create(formDataToSend);
    
       if (!responseDish) {
         toast.error("Lỗi khi thêm món ăn");
         return;
       }
-      console.log(responseDish)
-      if(responseDish.data.status === 'existed')
+      if(responseDish.status as any === 'existed')
       {
-        toast.error(responseDish.data.message);
+        toast.error(responseDish.message || 'Đã bị trùng tên món ăn');
         return;
       }
       getData();
@@ -316,20 +317,18 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
     }
   };
 
-
-
+  // =================== UPDATE: Gửi file nếu có thay đổi ===================
   const handleUpdateDish = async () => {
     if (selectedDish) {
       try {
         const firstMedia = formData.media_urls?.[0]
-        let uploadedUrl: string | null = null
+        let media_file: File | undefined = undefined
+        let media_urls: string[] = []
 
-        if (firstMedia && (firstMedia as File) instanceof File) {
-          try {
-            uploadedUrl = await uploadImageToCloudinary(firstMedia as File, "dish")
-          } catch (err) {
-            toast.error("Tải ảnh thất bại")
-          }
+        if (firstMedia instanceof File) {
+          media_file = firstMedia
+        } else if (typeof firstMedia === "string") {
+          media_urls = [firstMedia]
         }
 
         const updatePayload: any = {
@@ -342,17 +341,14 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
           active: formData.active,
         }
 
-        if (uploadedUrl) {
-          updatePayload.media_urls = [uploadedUrl]
-        } else if (typeof firstMedia === "string") {
-          updatePayload.media_urls = [firstMedia]
-        } else {
-          updatePayload.media_urls = formData.media_urls && formData.media_urls.length > 0 ? formData.media_urls as string[] : []
+        if (media_file) {
+          updatePayload.media_file = media_file
+        } else if (media_urls.length > 0) {
+          updatePayload.media_urls = media_urls
         }
+
         await dishService.update(selectedDish.id, updatePayload)
-
         await dishService.importIngredients({ dishId: selectedDish.id, ingredients: formData.ingredients })
-
 
         getData()
         setIsEditDialogOpen(false)
@@ -647,7 +643,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                              setSelectedDish(dish)
+                          setSelectedDish(dish)
                           setIsViewDialogOpen(true)
                         }}
                       >

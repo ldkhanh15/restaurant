@@ -4,7 +4,7 @@ import { authenticate, authorize } from "../middlewares/auth";
 
 const router = Router();
 
-router.use(authenticate);
+// router.use(authenticate);
 
 router.get("/", employeeController.getAllEmployees);
 router.get("/:id", employeeController.getEmployeeById);

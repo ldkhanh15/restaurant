@@ -63,7 +63,7 @@ BlogPost.init(
     slug: {
       type: DataTypes.STRING(220),
       allowNull: true,
-      unique: true,
+      unique: 'slug_key_unique',
     },
     thumbnail_url: {
       type: DataTypes.STRING(500),

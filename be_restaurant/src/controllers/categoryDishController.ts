@@ -6,6 +6,24 @@ import logger from "../config/logger"
 
 export const getAllCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (req.query.all === 'true') {
+      const result = await categoryDishService.findAll({ order: [['created_at', 'ASC']] });
+      const data =
+      result?.rows && Array.isArray(result.rows)
+        ? result.rows.map((category: any) => category.toJSON())
+        : Array.isArray(result)
+        ? result.map((category: any) => category.toJSON())
+        : []
+
+      const count = result?.count ?? data.length
+
+      return res.status(200).json({
+        status: "success",
+        count,
+        data,
+      })
+    }
+
     const { page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'ASC' } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 

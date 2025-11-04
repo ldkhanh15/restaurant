@@ -50,8 +50,8 @@ export function SupplierManagement() {
   const getSuppliers = async () => {
     try {
       const response = await supplierService.getAll()
-      if (response && response.status === 200) {
-        const data = response.data.data?.data || response.data.data
+      if (response && response.data) {
+        const data = response.data || response.data.data
         setSuppliers(Array.isArray(data) ? data : [])
       } else {
         toast.error("Lấy danh sách nhà cung cấp thất bại")
@@ -87,7 +87,7 @@ export function SupplierManagement() {
     setIsCreateDialogOpen(false)
 
     const response = await supplierService.create(newSupplier)
-    if (response && response.status === 201) {
+    if (response) {
       toast.success("Đã thêm nhà cung cấp thành công")
     } else {
       toast.error("Thêm nhà cung cấp thất bại")
@@ -97,8 +97,8 @@ export function SupplierManagement() {
   // Cập nhật
   const handleUpdateSupplier = async (id: string, data: Partial<Supplier>) => {
     const response = await supplierService.update(id, data);
-    if (response && response.status === 200) {
-      toast.error("Cập nhật nhà cung cấp thành công")
+    if (response) {
+      toast.success("Cập nhật nhà cung cấp thành công")
         setSuppliers((prev) =>
         prev.map((supplier) =>
           supplier.id === id ? { ...supplier, ...data } : supplier
@@ -107,14 +107,14 @@ export function SupplierManagement() {
       setIsEditDialogOpen(false)
     }
     else {
-      toast.success("Đã cập nhật nhà cung cấp thất bại")
+      toast.error("Đã cập nhật nhà cung cấp thất bại")
     } 
   }
 
   // Xóa
   const handleDeleteSupplier = async (id: string) => {
     const response = await supplierService.remove(id)
-    if (response && response.status === 200) {
+    if (response) {
       toast.success("Đã xóa nhà cung cấp thành công")
       setSuppliers((prev) =>
         prev.map((supplier) =>

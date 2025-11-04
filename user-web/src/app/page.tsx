@@ -1,0 +1,855 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Calendar,
+  ShoppingCart,
+  ArrowRight,
+  Star,
+  Phone,
+  MapPin,
+  Mail,
+  ChefHat,
+  PartyPopper,
+  Award,
+  Heart,
+  CheckCircle,
+  Clock,
+  Sparkles,
+  Gift,
+  BookOpen,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import Link from "next/link";
+
+const featuredDishes = [
+  {
+    id: "dish-1",
+    name: "Cá Hồi Nướng",
+    description: "Cá hồi tươi nướng với gia vị đặc biệt, kèm rau củ",
+    price: 350000,
+    media_urls: ["/grilled-salmon-dish.jpg"],
+    is_best_seller: true,
+    seasonal: false,
+    rating: 4.8,
+    reviews_count: 124,
+  },
+  {
+    id: "dish-2",
+    name: "Bánh Chocolate",
+    description: "Bánh chocolate đậm đà với kem tươi và dâu tây",
+    price: 120000,
+    media_urls: ["/chocolate-cake-dessert.jpg"],
+    is_best_seller: false,
+    seasonal: true,
+    rating: 4.9,
+    reviews_count: 89,
+  },
+  {
+    id: "dish-3",
+    name: "Bò Beefsteak",
+    description: "Thịt bò Úc cao cấp nướng tại bàn, kèm khoai tây",
+    price: 450000,
+    media_urls: ["/premium-beef-steak.jpg"],
+    is_best_seller: true,
+    seasonal: false,
+    rating: 4.7,
+    reviews_count: 156,
+  },
+];
+
+const featuredEvents = [
+  {
+    id: "event-1",
+    name: "Đêm Nhạc Jazz Thứ 7",
+    description: "Thưởng thức âm nhạc jazz sống động cùng menu đặc biệt",
+    image: "/jazz-night-event.jpg",
+    date: "2024-02-10",
+    time: "19:00",
+  },
+  {
+    id: "event-2",
+    name: "Valentine Special",
+    description: "Menu đặc biệt cho cặp đôi với không gian lãng mạn",
+    image: "/valentine-event.jpg",
+    date: "2024-02-14",
+    time: "18:00",
+  },
+];
+
+const featuredVouchers = [
+  {
+    id: "voucher-1",
+    title: "Giảm 20% Cho Đơn Trên 500K",
+    discount: 20,
+    minOrder: 500000,
+  },
+  {
+    id: "voucher-2",
+    title: "Tặng Món Tráng Miệng",
+    description: "Mỗi đơn trên 300K",
+    minOrder: 300000,
+  },
+];
+
+const latestBlogPosts = [
+  {
+    id: "blog-1",
+    title: "Bí Quyết Chế Biến Cá Hồi Hoàn Hảo",
+    excerpt: "Khám phá những kỹ thuật đặc biệt...",
+    image: "/grilled-salmon-dish.jpg",
+    date: "2024-01-15",
+  },
+  {
+    id: "blog-2",
+    title: "Lịch Sử Nghệ Thuật Phục Vụ",
+    excerpt: "Từ truyền thống đến hiện đại...",
+    image: "/service-art.jpg",
+    date: "2024-01-10",
+  },
+  {
+    id: "blog-3",
+    title: "Nguyên Liệu Địa Phương & Bền Vững",
+    excerpt: "Cam kết sử dụng nguyên liệu tươi ngon...",
+    image: "/local-ingredients.jpg",
+    date: "2024-01-05",
+  },
+];
+
+const services = [
+  {
+    id: "fine-dining",
+    title: "Fine Dining Experience",
+    description:
+      "Trải nghiệm ẩm thực cao cấp với không gian sang trọng và dịch vụ chuyên nghiệp",
+    icon: ChefHat,
+    features: [
+      "Menu đa dạng",
+      "Đầu bếp chuyên nghiệp",
+      "Không gian sang trọng",
+      "Dịch vụ tận tâm",
+    ],
+    action: "/menu",
+  },
+  {
+    id: "table-reservations",
+    title: "Table Reservations",
+    description:
+      "Đặt bàn trước để đảm bảo có chỗ ngồi tốt nhất cho bữa ăn của bạn",
+    icon: Calendar,
+    features: [
+      "Đặt bàn online",
+      "Chọn vị trí",
+      "Đặt món trước",
+      "Xác nhận tức thì",
+    ],
+    action: "/reservations",
+  },
+  {
+    id: "private-events",
+    title: "Private Events",
+    description:
+      "Tổ chức sự kiện riêng tư với menu và không gian được thiết kế riêng",
+    icon: PartyPopper,
+    features: [
+      "Không gian riêng",
+      "Menu tùy chỉnh",
+      "Trang trí theo chủ đề",
+      "Dịch vụ chuyên nghiệp",
+    ],
+    action: "/events",
+  },
+];
+
+const stats = [
+  { label: "Năm Kinh Nghiệm", value: "15+", icon: Award },
+  { label: "Khách Hàng Hài Lòng", value: "10K+", icon: Heart },
+  { label: "Món Ăn Đặc Biệt", value: "200+", icon: ChefHat },
+  { label: "Đánh Giá 5 Sao", value: "98%", icon: Star },
+];
+
+const testimonials = [
+  {
+    id: 1,
+    name: "Nguyễn Văn An",
+    role: "Khách hàng VIP",
+    content:
+      "Dịch vụ tuyệt vời, món ăn ngon và không gian sang trọng. Tôi sẽ quay lại nhiều lần nữa!",
+    rating: 5,
+    avatar: "/professional-asian-man.png",
+  },
+  {
+    id: 2,
+    name: "Trần Thị Bình",
+    role: "Khách hàng thường xuyên",
+    content:
+      "Nhà hàng có menu đa dạng và chất lượng phục vụ rất chuyên nghiệp. Rất đáng để thử!",
+    rating: 5,
+    avatar: "/professional-asian-woman.png",
+  },
+  {
+    id: 3,
+    name: "Lê Minh Cường",
+    role: "Doanh nhân",
+    content:
+      "Không gian lý tưởng cho các buổi gặp gỡ kinh doanh. Món ăn ngon và dịch vụ chu đáo.",
+    rating: 5,
+    avatar: "/business-asian-man.jpg",
+  },
+];
+
+export default function HomePage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const [reservationForm, setReservationForm] = useState({
+    date: "",
+    time: "",
+    guests: "",
+    name: "",
+    phone: "",
+  });
+
+  const handleQuickReservation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user) {
+      router.push("/reservations");
+    } else {
+      router.push("/login");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Hero Section */}
+      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/60 to-background/90 z-10" />
+        <img
+          src="/elegant-restaurant-interior.png"
+          alt="Restaurant Interior"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="relative z-20 text-center max-w-5xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="mb-8"
+          >
+            <div className="inline-flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-4 py-2 text-sm text-muted-foreground border border-border/50">
+              <Star className="w-4 h-4 text-accent" />
+              Michelin Recommended Restaurant
+            </div>
+          </motion.div>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="font-bold text-5xl md:text-7xl lg:text-8xl mb-8 text-balance leading-[0.9] tracking-tight text-primary"
+          >
+            Trải nghiệm ẩm thực
+            <span className="block font-light italic text-accent">
+              đẳng cấp thế giới
+            </span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            className="text-lg md:text-xl text-muted-foreground mb-12 text-pretty max-w-3xl mx-auto font-light leading-relaxed"
+          >
+            Khám phá hương vị tinh tế từ những món ăn được chế biến bởi đầu bếp
+            hàng đầu, trong không gian sang trọng và dịch vụ chuyên nghiệp.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+          >
+            <Button
+              size="lg"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 h-auto text-base font-medium"
+              onClick={() =>
+                user ? router.push("/reservations") : router.push("/login")
+              }
+            >
+              <Calendar className="mr-2 h-5 w-5" />
+              Đặt Bàn Ngay
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="px-8 py-6 h-auto text-base font-medium border-primary/20 hover:bg-primary/5 bg-transparent"
+              onClick={() => router.push("/menu")}
+            >
+              <ChefHat className="mr-2 h-5 w-5" />
+              Xem Thực Đơn
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Featured Menu Preview */}
+      <section className="py-24 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-block text-sm font-medium text-accent mb-4 tracking-wider uppercase">
+              Món Ăn Đặc Biệt
+            </div>
+            <h2 className="font-bold text-4xl md:text-5xl mb-6 text-balance text-primary">
+              Hương vị tinh tế
+              <span className="block italic text-accent">
+                từ đầu bếp hàng đầu
+              </span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {featuredDishes.map((dish, index) => (
+              <motion.div
+                key={dish.id}
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+              >
+                <Card
+                  className="group hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
+                  onClick={() => router.push(`/dishes/${dish.id}`)}
+                >
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src={dish.media_urls[0] || "/placeholder.svg"}
+                      alt={dish.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <CardHeader>
+                    <div className="flex items-center justify-between mb-2">
+                      <CardTitle className="text-lg text-primary">
+                        {dish.name}
+                      </CardTitle>
+                      {dish.is_best_seller && (
+                        <Badge className="bg-accent text-accent-foreground">
+                          Best Seller
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="leading-relaxed">
+                      {dish.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-2xl font-bold text-primary">
+                        {dish.price.toLocaleString("vi-VN")}đ
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Star className="h-4 w-4 text-yellow-500 fill-current" />
+                        <span className="text-sm font-medium">
+                          {dish.rating}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          ({dish.reviews_count})
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push("/menu");
+                      }}
+                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+                    >
+                      Đặt Món Ngay
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Why Us Section */}
+      <section className="py-24 px-6 bg-card/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-20">
+            <div className="inline-block text-sm font-medium text-accent mb-4 tracking-wider uppercase">
+              Dịch Vụ Của Chúng Tôi
+            </div>
+            <h2 className="font-bold text-4xl md:text-5xl mb-6 text-balance text-primary">
+              Trải nghiệm ẩm thực
+              <span className="block italic text-accent">
+                hoàn hảo và đa dạng
+              </span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Từ bữa ăn lãng mạn đến tiệc tùng hoành tráng, chúng tôi mang đến
+              những trải nghiệm ẩm thực không thể quên với dịch vụ chuyên nghiệp
+              và chất lượng hàng đầu.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-8">
+            {services.map((service, index) => {
+              const IconComponent = service.icon;
+              return (
+                <motion.div
+                  key={service.id}
+                  initial={{ opacity: 0, y: 50 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <Card className="group hover:shadow-xl transition-all duration-300 border-2 hover:border-accent/50">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center space-x-4 mb-4">
+                        <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
+                          <IconComponent className="h-6 w-6 text-accent" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl text-primary">
+                            {service.title}
+                          </CardTitle>
+                        </div>
+                      </div>
+                      <CardDescription className="text-base leading-relaxed">
+                        {service.description}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3 mb-6">
+                        {service.features.map((feature, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center space-x-3"
+                          >
+                            <CheckCircle className="h-4 w-4 text-accent flex-shrink-0" />
+                            <span className="text-sm text-muted-foreground">
+                              {feature}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        onClick={() => router.push(service.action)}
+                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        Tìm Hiểu Thêm
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-24 px-6 bg-primary text-primary-foreground">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="font-bold text-4xl md:text-5xl mb-6 text-balance">
+              Con số ấn tượng
+            </h2>
+            <p className="text-lg opacity-90 max-w-2xl mx-auto leading-relaxed">
+              Những thành tựu đáng tự hào trong hành trình phục vụ khách hàng
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-8">
+            {stats.map((stat, index) => {
+              const IconComponent = stat.icon;
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="text-center"
+                >
+                  <div className="w-16 h-16 bg-primary-foreground/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <IconComponent className="h-8 w-8" />
+                  </div>
+                  <div className="text-4xl font-bold mb-2">{stat.value}</div>
+                  <div className="text-lg opacity-90">{stat.label}</div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="py-24 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-block text-sm font-medium text-accent mb-4 tracking-wider uppercase">
+              Khách Hàng Nói Gì
+            </div>
+            <h2 className="font-bold text-4xl md:text-5xl mb-6 text-balance text-primary">
+              Trải nghiệm tuyệt vời
+              <span className="block italic text-accent">
+                từ khách hàng thân thiết
+              </span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {testimonials.map((testimonial, index) => (
+              <motion.div
+                key={testimonial.id}
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+              >
+                <Card className="border-2 hover:border-accent/50 transition-colors">
+                  <CardHeader>
+                    <div className="flex items-center space-x-4 mb-4">
+                      <img
+                        src={testimonial.avatar || "/placeholder.svg"}
+                        alt={testimonial.name}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="font-semibold text-primary">
+                          {testimonial.name}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {testimonial.role}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex space-x-1 mb-4">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className="h-4 w-4 text-yellow-500 fill-current"
+                        />
+                      ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground leading-relaxed italic">
+                      "{testimonial.content}"
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Events & Vouchers */}
+      <section className="py-24 px-6 bg-card/50">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 mb-12">
+            {/* Featured Events */}
+            <div>
+              <div className="flex items-center gap-2 mb-6">
+                <Sparkles className="h-6 w-6 text-accent" />
+                <h2 className="text-3xl font-bold text-primary">
+                  Sự Kiện Nổi Bật
+                </h2>
+              </div>
+              <div className="space-y-4">
+                {featuredEvents.map((event) => (
+                  <Card
+                    key={event.id}
+                    className="cursor-pointer hover:shadow-lg transition-all"
+                    onClick={() => router.push(`/events/${event.id}`)}
+                  >
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <img
+                        src={event.image || "/placeholder.svg"}
+                        alt={event.name}
+                        className="w-24 h-24 rounded-lg object-cover"
+                      />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-primary mb-1">
+                          {event.name}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {event.description}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          <span>{event.date}</span>
+                          <Clock className="h-3 w-3 ml-2" />
+                          <span>{event.time}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => router.push("/events")}
+              >
+                Xem Tất Cả Sự Kiện
+              </Button>
+            </div>
+
+            {/* Featured Vouchers */}
+            <div>
+              <div className="flex items-center gap-2 mb-6">
+                <Gift className="h-6 w-6 text-accent" />
+                <h2 className="text-3xl font-bold text-primary">
+                  Voucher Ưu Đãi
+                </h2>
+              </div>
+              <div className="space-y-4">
+                {featuredVouchers.map((voucher) => (
+                  <Card
+                    key={voucher.id}
+                    className="border-2 border-accent/20 hover:border-accent/50 transition-all cursor-pointer"
+                    onClick={() => router.push("/vouchers")}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-primary">
+                          {voucher.title}
+                        </h3>
+                        {voucher.discount && (
+                          <Badge className="bg-yellow-500/90 text-yellow-900">
+                            {voucher.discount}%
+                          </Badge>
+                        )}
+                      </div>
+                      {voucher.description && (
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {voucher.description}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Đơn tối thiểu:{" "}
+                        {voucher.minOrder.toLocaleString("vi-VN")}đ
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => router.push("/vouchers")}
+              >
+                Xem Tất Cả Voucher
+              </Button>
+            </div>
+          </div>
+
+          {/* Latest Blog Posts */}
+          <div className="mt-12">
+            <div className="flex items-center gap-2 mb-6">
+              <BookOpen className="h-6 w-6 text-accent" />
+              <h2 className="text-3xl font-bold text-primary">
+                Bài Viết Mới Nhất
+              </h2>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {latestBlogPosts.map((post, index) => (
+                <motion.div
+                  key={post.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <Card
+                    className="overflow-hidden cursor-pointer hover:shadow-lg transition-all"
+                    onClick={() => router.push(`/blog/${post.id}`)}
+                  >
+                    <div className="aspect-[16/9] overflow-hidden">
+                      <img
+                        src={post.image || "/placeholder.svg"}
+                        alt={post.title}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                    <CardHeader>
+                      <CardTitle className="text-lg line-clamp-2">
+                        {post.title}
+                      </CardTitle>
+                      <CardDescription className="line-clamp-2">
+                        {post.excerpt}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          <span>{post.date}</span>
+                        </div>
+                        <Button variant="ghost" size="sm">
+                          Đọc thêm →
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              className="w-full mt-6"
+              onClick={() => router.push("/blog")}
+            >
+              Xem Tất Cả Bài Viết
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Quick Reservation Form */}
+      <section className="py-24 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="font-bold text-4xl md:text-5xl mb-6 text-balance text-primary">
+              Đặt bàn nhanh chóng
+              <span className="block italic text-accent">
+                chỉ trong vài bước
+              </span>
+            </h2>
+            <p className="text-lg text-muted-foreground leading-relaxed">
+              Đặt bàn ngay hôm nay để trải nghiệm những món ăn tuyệt vời và dịch
+              vụ chuyên nghiệp
+            </p>
+          </div>
+
+          <Card className="border-2 border-accent/20">
+            <CardHeader>
+              <CardTitle className="text-center text-2xl text-primary">
+                Đặt Bàn Nhanh
+              </CardTitle>
+              <CardDescription className="text-center">
+                Điền thông tin để chúng tôi sắp xếp bàn tốt nhất cho bạn
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleQuickReservation} className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="date">Ngày</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={reservationForm.date}
+                      onChange={(e) =>
+                        setReservationForm((prev) => ({
+                          ...prev,
+                          date: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="time">Giờ</Label>
+                    <Input
+                      id="time"
+                      type="time"
+                      value={reservationForm.time}
+                      onChange={(e) =>
+                        setReservationForm((prev) => ({
+                          ...prev,
+                          time: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="guests">Số khách</Label>
+                    <Input
+                      id="guests"
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={reservationForm.guests}
+                      onChange={(e) =>
+                        setReservationForm((prev) => ({
+                          ...prev,
+                          guests: e.target.value,
+                        }))
+                      }
+                      placeholder="2"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="name">Tên khách hàng</Label>
+                    <Input
+                      id="name"
+                      value={reservationForm.name}
+                      onChange={(e) =>
+                        setReservationForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      placeholder="Nguyễn Văn A"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">Số điện thoại</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={reservationForm.phone}
+                      onChange={(e) =>
+                        setReservationForm((prev) => ({
+                          ...prev,
+                          phone: e.target.value,
+                        }))
+                      }
+                      placeholder="0901234567"
+                      required
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full bg-accent text-accent-foreground hover:bg-accent/90 py-6 text-lg"
+                >
+                  <Calendar className="mr-2 h-5 w-5" />
+                  {user ? "Đặt Bàn Ngay" : "Đăng Nhập Để Đặt Bàn"}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    </div>
+  );
+}

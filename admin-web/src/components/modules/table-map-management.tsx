@@ -1,10 +1,14 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Move, RotateCcw } from "lucide-react"
+import { Move, RotateCcw, Save } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "react-toastify"
+import { tableService } from "@/services/tableService"
+import { CreateReservationDialog } from "./modalCreateReservation"
+import cloneDeep from "lodash/cloneDeep";
 
 interface TableAttributes {
   id: string
@@ -26,9 +30,21 @@ interface TableAttributes {
   deleted_at?: Date | null
 }
 
+interface RestaurantAreaAttributes {
+  id: string
+  name: string
+  area_size: number
+  shape_type: "square" | "rectangle" | "circle" | "polygon"
+  status: "active" | "maintenance" | "clean"
+  created_at?: Date
+  updated_at?: Date
+  deleted_at?: Date | null
+}
+
 interface TableMapManagementProps {
   tables: TableAttributes[]
   setTables: React.Dispatch<React.SetStateAction<any>>
+  area: RestaurantAreaAttributes | null
 }
 
 export function TableMapManagement({ tables, setTables }: TableMapManagementProps) {
@@ -38,22 +54,66 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
     [key: string]: { shape: "rectangle" | "circle" | "square"; rotation: number }
   }>({})
   const [selectedFloor, setSelectedFloor] = useState<string>("unassigned")
+  const [cachedCoordinates, setCachedCoordinates] = useState<{
+    [key: string]: { x: number; y: number }
+  }>({})
+  const [initialCoordinates, setInitialCoordinates] = useState<{
+    [key: string]: { x: number; y: number }
+  }>({})
+  const [oldDataTable, setOldDataTable] = useState<TableAttributes[]>([])
+  const [isCreateReservationOpen, setIsCreateReservationOpen] = useState(false)
+  const [selectedTableForReservation, setSelectedTableForReservation] = useState<TableAttributes | null>(null)
   const floorPlanRef = useRef<HTMLDivElement>(null)
+  const [hasInitOldData, setHasInitOldData] = useState(false)
 
-  // Lấy danh sách tầng có trong dữ liệu (loại bỏ undefined, null)
+  // Lấy danh sách tầng có trong dữ liệu
   const floors = Array.from(
     new Set(
       tables
+        .filter((table) => !table.deleted_at)
         .map((table) => table.location?.floor)
         .filter((floor): floor is number => floor != null)
     )
   ).sort((a, b) => a - b)
 
-  // Lọc bàn theo tầng đã chọn
+  // Lọc bàn theo tầng đã chọn và loại bỏ bàn đã xóa
   const filteredTables = tables.filter((table) => {
+    if (table.deleted_at) return false
     if (selectedFloor === "unassigned") return table.location?.floor == null
     return table.location?.floor === Number(selectedFloor)
   })
+
+
+  useEffect(() => {
+    if (!hasInitOldData && tables.length > 0) {
+      const initialCoords: { [key: string]: { x: number; y: number } } = {}
+      const oldTablesCopy = cloneDeep(tables)
+
+      tables.forEach((table) => {
+        if (!table.deleted_at) {
+          initialCoords[table.id] = {
+            x: table.location?.coordinates?.x ?? 0,
+            y: table.location?.coordinates?.y ?? 0,
+          }
+        }
+      })
+
+      setInitialCoordinates(initialCoords)
+      setOldDataTable(oldTablesCopy)
+      setHasInitOldData(true)
+    }
+  }, [tables, hasInitOldData])
+
+
+  // Kiểm tra xem tọa độ có bị trùng không
+  const isOverlapping = (tableId: string, newX: number, newY: number) => {
+    return filteredTables.some((table) => {
+      if (table.id === tableId) return false
+      const tableX = table.location?.coordinates?.x ?? 0
+      const tableY = table.location?.coordinates?.y ?? 0
+      return Math.abs(tableX - newX) < 80 && Math.abs(tableY - newY) < 80
+    })
+  }
 
   const handleTableLayoutDragStart = (e: React.DragEvent, table: TableAttributes) => {
     if (!isLayoutMode) return
@@ -69,17 +129,34 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
     e.preventDefault()
     if (draggedTable && floorPlanRef.current) {
       const rect = floorPlanRef.current.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const y = e.clientY - rect.top
+      let x = e.clientX - rect.left - 40
+      let y = e.clientY - rect.top - 40
 
-      setTables(
-        tables.map((t) =>
+      // Đảm bảo tọa độ không âm
+      x = Math.max(0, x)
+      y = Math.max(0, y)
+
+      // Kiểm tra trùng lặp tọa độ
+      if (isOverlapping(draggedTable.id, x, y)) {
+        toast.error("Vị trí này đã có bàn khác, vui lòng chọn vị trí khác")
+        return
+      }
+
+      // Cập nhật cache tọa độ
+      setCachedCoordinates((prev) => ({
+        ...prev,
+        [draggedTable.id]: { x, y },
+      }))
+
+      // Cập nhật tọa độ tạm thời
+      setTables((prevTables:any) =>
+        prevTables.map((t:any) =>
           t.id === draggedTable.id
             ? {
                 ...t,
                 location: {
                   ...t.location,
-                  coordinates: { x: Math.max(0, x - 40), y: Math.max(0, y - 40) },
+                  coordinates: { x: x === 0 || y === 0 ? 0 : x, y: x === 0 || y === 0 ? 0 : y },
                 },
               }
             : t
@@ -104,6 +181,51 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
     }))
   }
 
+  const handleUpdateTable = async (id: string, data: Partial<TableAttributes>) => {
+    try {
+      const response = await tableService.update(id, data)
+      if (response && response.status === 200) {
+        setTables((prev:any) =>
+          prev.map((table:any) =>
+            table.id === id ? { ...table, ...data, updated_at: new Date() } : table
+          )
+        )
+      } else {
+        throw new Error("Cập nhật bàn thất bại")
+      }
+    } catch (err) {
+      throw new Error("Lỗi khi cập nhật bàn")
+    }
+  }
+
+  const saveLayout = async () => {
+    try {
+      for (const table of filteredTables) {
+        if (cachedCoordinates[table.id]) {
+          await handleUpdateTable(table.id, {
+            location: {
+              ...table.location,
+              coordinates: {
+                x: cachedCoordinates[table.id].x === 0 || cachedCoordinates[table.id].y === 0 ? 0 : cachedCoordinates[table.id].x,
+                y: cachedCoordinates[table.id].x === 0 || cachedCoordinates[table.id].y === 0 ? 0 : cachedCoordinates[table.id].y,
+              },
+            },
+          })
+        }
+      }
+      // Cập nhật initialCoordinates và oldDataTable sau khi lưu thành công
+      setInitialCoordinates((prev) => ({
+        ...prev,
+        ...cachedCoordinates,
+      }))
+      setOldDataTable(tables) // Cập nhật oldDataTable với dữ liệu mới
+      toast.success("Đã lưu bố trí bàn thành công")
+      setIsLayoutMode(false) // Thoát chế độ sắp xếp sau khi lưu
+    } catch (error) {
+      toast.error("Lỗi khi lưu bố trí bàn")
+    }
+  }
+
   const resetLayout = () => {
     setTableStyles((prev) => {
       const newStyles = { ...prev }
@@ -112,16 +234,46 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
       })
       return newStyles
     })
-    setTables(
-      tables.map((t) =>
-        filteredTables.some((ft) => ft.id === t.id)
-          ? {
+
+    setCachedCoordinates((prev) => {
+      const newCache = { ...prev }
+      filteredTables.forEach((table) => {
+        delete newCache[table.id]
+      })
+      return newCache
+    })
+
+    // Khôi phục vị trí bàn từ oldDataTable theo tầng đã chọn
+    setTables((prevTables:any) =>
+      prevTables.map((t:any) => {
+        if (filteredTables.some((ft) => ft.id === t.id)) {
+          console.log(oldDataTable)
+          const oldTable = oldDataTable.find((ot) => ot.id === t.id)
+          if (oldTable) {
+            return {
               ...t,
-              location: { ...t.location, coordinates: { x: 0, y: 0 } },
+              location: {
+                ...t.location,
+                coordinates: {
+                  x: oldTable.location?.coordinates?.x ?? 0,
+                  y: oldTable.location?.coordinates?.y ?? 0,
+                },
+              },
             }
-          : t
-      )
+          }
+        }
+        return t
+      })
     )
+    setIsLayoutMode(false) // Thoát chế độ sắp xếp sau khi đặt lại
+    toast.success("Đã đặt lại bố trí bàn")
+  }
+
+  const handleCreateReservation = (data: any) => {
+    console.log("Tạo đặt chỗ mới:", data)
+    setIsCreateReservationOpen(false)
+    setSelectedTableForReservation(null)
+    toast.success("Đã gửi thông tin đặt bàn!")
   }
 
   return (
@@ -133,7 +285,7 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
             {selectedFloor === "unassigned"
               ? "Bàn chưa gán tầng"
               : `Tầng ${selectedFloor}`}{" "}
-            - Kéo thả để sắp xếp lại vị trí bàn. Nhấp để xoay bàn.
+            - Kéo thả để sắp xếp lại vị trí bàn. Nhấp để xoay bàn. <br/> <strong>Có thể đặt bàn với những bàn có trạng thái "Còn trống".</strong>
           </p>
         </div>
         <div className="flex gap-2">
@@ -160,6 +312,10 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
           <Button variant="outline" onClick={resetLayout}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Đặt lại
+          </Button>
+          <Button variant="outline" onClick={saveLayout}>
+            <Save className="h-4 w-4 mr-2" />
+            Lưu
           </Button>
         </div>
       </div>
@@ -197,7 +353,7 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
                 left: `${x}px`,
                 top: `${y}px`,
                 transform: `rotate(${rotation}deg)`,
-                cursor: isLayoutMode ? "move" : "pointer",
+                cursor: isLayoutMode ? "move" : table.status === "available" ? "pointer" : "default",
                 zIndex: draggedTable?.id === table.id ? 1000 : 1,
               }
 
@@ -208,7 +364,14 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
                   draggable={isLayoutMode}
                   onDragStart={(e) => handleTableLayoutDragStart(e, table)}
                   onDragEnd={handleTableLayoutDragEnd}
-                  onClick={() => isLayoutMode && rotateTable(table.id)}
+                  onClick={() => {
+                    if (isLayoutMode) {
+                      rotateTable(table.id)
+                    } else if (table.status === "available") {
+                      setSelectedTableForReservation(table)
+                      setIsCreateReservationOpen(true)
+                    }
+                  }}
                   className={`
                     w-20 h-20 border-2 rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-all
                     ${
@@ -221,7 +384,7 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
                         : "bg-gray-100 border-gray-500 text-gray-800"
                     }
                     ${shape === "circle" ? "rounded-full" : shape === "square" ? "rounded-lg" : "rounded-md"}
-                    ${isLayoutMode ? "hover:shadow-lg hover:scale-105" : ""}
+                    ${isLayoutMode ? "hover:shadow-lg hover:scale-105" : table.status === "available" ? "hover:bg-green-200 cursor-pointer" : ""}
                     ${draggedTable?.id === table.id ? "opacity-50" : ""}
                   `}
                 >
@@ -263,12 +426,23 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
                   <p className="font-medium mb-1">Hướng dẫn:</p>
                   <p>• Kéo bàn để di chuyển</p>
                   <p>• Nhấp để xoay bàn</p>
+                  <p>• Nhấn Lưu để xác nhận vị trí</p>
                 </div>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Create Reservation Dialog */}
+      <CreateReservationDialog
+        isOpen={isCreateReservationOpen}
+        onOpenChange={(open) => {
+          setIsCreateReservationOpen(open)
+          if (!open) setSelectedTableForReservation(null)
+        }}
+        onCreateReservation={(data) => handleCreateReservation({ ...data, table_id: selectedTableForReservation?.id })}
+      />
     </div>
   )
-}
+}  

@@ -79,37 +79,41 @@ export interface DishStats {
 }
 
 class StatisticsService {
-  async getRevenueStats(
-    startDate?: Date,
-    endDate?: Date
-  ): Promise<RevenueStats> {
-    const where: any = {};
-    if (startDate || endDate) {
-      where.created_at = {};
-      if (startDate) where.created_at[Op.gte] = startDate;
-      if (endDate) where.created_at[Op.lte] = endDate;
-    }
+  async getRevenueStats(): Promise<RevenueStats> {
+    const [
+      totalRevenue,
+      totalPayments,
+      totalOrderRevenue,
+      totalDepositRevenue,
+    ] = await Promise.all([
+      // Tổng tiền thanh toán hoàn thành
+      Payment.sum("amount", { where: { status: "completed" } }),
 
-    const [totalRevenue, totalOrders, totalReservations, totalPayments] =
-      await Promise.all([
-        Payment.sum("amount", { where: { ...where, status: "completed" } }),
-        Order.count({ where }),
-        Reservation.count({ where }),
-        Payment.count({ where }),
-      ]);
+      // Tổng số payment (mọi trạng thái)
+      Payment.count(),
 
-    const averageOrderValue =
-      totalOrders > 0 ? (totalRevenue || 0) / totalOrders : 0;
-    const averageReservationValue =
-      totalReservations > 0 ? (totalRevenue || 0) / totalReservations : 0;
+      // Tổng tiền thanh toán cho order hoàn thành
+      Payment.sum("amount", {
+        where: {
+          status: "completed",
+          order_id: { [Op.ne]: null }, // order_id khác null
+        },
+      }),
+
+      // Tổng tiền thanh toán cho đặt cọc hoàn thành
+      Payment.sum("amount", {
+        where: {
+          status: "completed",
+          reservation_id: { [Op.ne]: null }, // reservation_id khác null
+        },
+      }),
+    ]);
 
     return {
       total_revenue: totalRevenue || 0,
-      total_orders: totalOrders,
-      total_reservations: totalReservations,
       total_payments: totalPayments,
-      average_order_value: averageOrderValue,
-      average_reservation_value: averageReservationValue,
+      total_order_revenue: totalOrderRevenue || 0,
+      total_deposit_revenue: totalDepositRevenue || 0,
     };
   }
 

@@ -103,12 +103,10 @@ export function PaymentManagement({ className }: PaymentManagementProps) {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [stats, setStats] = useState({
-    average_order_value: 0,
-    average_reservation_value: 0,
-    total_orders: 0,
+    total_deposit_revenue: 0,
+    total_order_revenue: 0,
     total_payments: 0,
-    total_reservations: 0,
-    total_revenue:0
+    total_revenue: 0,
   });
   // Load payments and stats on component mount
   useEffect(() => {
@@ -293,10 +291,10 @@ export function PaymentManagement({ className }: PaymentManagementProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Số tiền thanh toán hóa đơn trung bình
+                  Số tiền thanh toán hóa đơn
                 </p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {stats.average_order_value}
+                  {formatCurrency(stats.total_order_revenue)}
                 </p>
               </div>
               <Clock className="h-8 w-8 text-orange-600" />
@@ -309,10 +307,10 @@ export function PaymentManagement({ className }: PaymentManagementProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Số tiền thanh toán đặt cọc trung bình
+                  Số tiền thanh toán đặt cọc
                 </p>
                 <p className="text-2xl font-bold text-green-600">
-                  {stats.average_reservation_value}
+                  {formatCurrency(stats.total_deposit_revenue)}
                 </p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-600" />

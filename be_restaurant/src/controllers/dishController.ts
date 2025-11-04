@@ -6,6 +6,9 @@ import { getPaginationParams, buildPaginationResult } from "../utils/pagination"
 import dishService from "../services/dishService"
 import dishIngredientService from "../services/dishIngredientService"
 import { DishIngredient, Ingredient } from "../models"
+import express from "express"
+import multer from "multer"
+import cloudService, { uploadImageToCloudinary } from "../services/cloudService"
 
 export const getAllDishes = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -31,6 +34,27 @@ export const getAllDishes = async (req: Request, res: Response, next: NextFuncti
 
     const result = buildPaginationResult(rows, count, page, limit)
     res.json({ status: "success", data: result })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const searchDishes = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { count, rows, page, limit } = await dishService.search(req.query)
+
+    const totalPages = Math.ceil(count / limit)
+
+    return res.json({
+      status: "success",
+      data: {
+        totalItems: count,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        items: rows,
+      },
+    })
   } catch (error) {
     next(error)
   }
@@ -97,9 +121,16 @@ export const getDishById = async (req: Request, res: Response, next: NextFunctio
 
 export const createDish = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { ingredients, dishData } = req.body;
-    console.log(ingredients)
-    console.log(dishData)
+    const ingredients = JSON.parse(req.body.ingredients);
+    const dishData = JSON.parse(req.body.dishData);
+    const file = req.file;
+    if(!file){
+      res.status(200).json({status:'error', message:"Thiếu file hình ảnh" })
+      return;
+    }
+    const uploadResult = await uploadImageToCloudinary(file.path, "dish")
+    dishData.media_urls = [uploadResult.secure_url]
+    
     if(await dishService.checkExistedName(dishData.name)){
       res.status(200).json({status:'existed', message:"Tên món ăn đã tồn tại" })
       return;
@@ -156,8 +187,17 @@ export const updateDish = async (req: Request, res: Response, next: NextFunction
     if (!dish) {
       throw new AppError("Dish not found", 404)
     }
-
-    await dish.update(req.body)
+    const file = req.file;
+    const updateData: any = { ...req.body };
+    // Nếu front gửi JSON dạng string trong multipart -> parse lại
+    if (typeof updateData.media_urls === "string") {
+      try { updateData.media_urls = JSON.parse(updateData.media_urls); } catch {}
+    }
+    if (file) {
+      const uploadResult = await uploadImageToCloudinary(file.path, "dish");
+      updateData.media_urls = [uploadResult.secure_url];
+    }
+    await dish.update(updateData)
     res.json({ status: "success", data: dish })
   } catch (error) {
     next(error)

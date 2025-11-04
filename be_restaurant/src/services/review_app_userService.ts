@@ -73,9 +73,9 @@ class ReviewService extends BaseService<Review> {
    */
   async createReview(
     userId: string,
-    reviewData: { rating: number; comment: string; order_id?: string, dish_id?: string }
+    reviewData: { rating: number; comment: string; order_id?: string; dish_id?: string; table_id?: string; order_item_id?: string }
   ) {
-    const { rating, comment, order_id, dish_id } = reviewData;
+    const { rating, comment, order_id, dish_id, table_id, order_item_id } = reviewData;
 
     if (!comment) {
       throw new AppError("Comment is required", 400);
@@ -85,15 +85,49 @@ class ReviewService extends BaseService<Review> {
       throw new AppError("A rating between 1 and 5 is required", 400);
     }
 
-    const newReview = await this.create({
+    // Determine review type: prefer dish-level references, then table/order references.
+    // This prevents Sequelize notNull violations when frontend omits 'type'.
+    let type: "dish" | "table" | undefined;
+    if (dish_id || order_item_id) {
+      type = "dish";
+    } else if (table_id || order_id) {
+      type = "table";
+    }
+
+    if (!type) {
+      // No target specified; require the client to reference either a dish (dish_id/order_item_id) or a table/order
+      throw new AppError("Review must reference a target: provide dish_id/order_item_id or table_id/order_id", 400);
+    }
+
+    const created = await this.create({
       user_id: userId,
       rating,
       comment,
       order_id,
+      order_item_id,
       dish_id,
+      table_id,
+      type,
     });
 
-    return newReview;
+    // Fetch the created review including the user so the response contains the user's name
+    const fetched = await this.findById((created as any).id, {
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "full_name"],
+        },
+      ],
+    });
+
+    // Normalize to plain object and map full_name -> name for frontend
+    const obj = (fetched as any).toJSON ? (fetched as any).toJSON() : fetched;
+    if (obj.user && obj.user.full_name && !obj.user.name) {
+      obj.user.name = obj.user.full_name;
+    }
+
+    return obj;
   }
 
   async findAllWithUser(options?: any) {

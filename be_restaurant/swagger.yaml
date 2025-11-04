@@ -1297,6 +1297,161 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /orders/stats/monthly:
+    get:
+      tags:
+        - Orders
+      summary: Get monthly statistics
+      description: Get revenue, customer count, and order count for the last 12 months (admin/employee only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Monthly statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month:
+                          type: string
+                          format: date
+                          description: Month in YYYY-MM-DD format
+                        revenue:
+                          type: number
+                          description: Total revenue for the month
+                        order_count:
+                          type: integer
+                          description: Number of orders in the month
+                        customer_count:
+                          type: integer
+                          description: Number of unique customers in the month
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /orders/stats/hourly:
+    get:
+      tags:
+        - Orders
+      summary: Get hourly statistics
+      description: Get revenue and order count for the last 24 hours, grouped by 2-hour intervals (admin/employee only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Hourly statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hour_range:
+                          type: string
+                          description: Time range in HH:MM - HH:MM format
+                        revenue:
+                          type: number
+                          description: Total revenue for the time period
+                        order_count:
+                          type: integer
+                          description: Number of orders in the time period
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /orders/stats/customers:
+    get:
+      tags:
+        - Orders
+      summary: Get customer statistics
+      description: Get registered vs walk-in customer statistics for the last 7 days (admin/employee only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Customer statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:
+                          type: string
+                          format: date
+                          description: Day in YYYY-MM-DD format
+                        registered_customers:
+                          type: integer
+                          description: Number of registered customers
+                        walk_in_customers:
+                          type: integer
+                          description: Number of walk-in customers (user_id is null)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /orders/stats/today:
+    get:
+      tags:
+        - Orders
+      summary: Get today's statistics
+      description: Get today's revenue, order count, and reservation count (admin/employee only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Today's statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      revenue:
+                        type: number
+                        description: Total revenue for today
+                      order_count:
+                        type: integer
+                        description: Number of orders today
+                      reservation_count:
+                        type: integer
+                        description: Number of reservations today
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   # Reservation Module
   /reservations:
     get:
@@ -2778,12 +2933,20 @@ paths:
           $ref: '#/components/responses/Forbidden'
 
   # Chat Module
+  # The chat module provides real-time messaging capabilities with chatbot support.
+  # Key features:
+  # - One active session per user (enforced at database level)
+  # - Automatic chatbot responses when enabled
+  # - Real-time messaging via WebSocket
+  # - Support for multiple channels (web, app, zalo)
+  # - Session management (create, close, reopen)
+  
   /chat/session:
     post:
       tags:
         - Chat
       summary: Create a new chat session
-      description: Create a new chat session for a user
+      description: Create a new chat session for a user. If user already has an active session, returns the existing session instead of creating a new one.
       security:
         - BearerAuth: []
       requestBody:
@@ -2808,7 +2971,7 @@ paths:
                   example: true
       responses:
         '201':
-          description: Chat session created successfully
+          description: Chat session created or retrieved successfully
           content:
             application/json:
               schema:
@@ -2832,6 +2995,24 @@ paths:
       description: Get all chat sessions for the authenticated user
       security:
         - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
       responses:
         '200':
           description: Successful response
@@ -2862,6 +3043,24 @@ paths:
       description: Get all chat sessions in the system (admin only)
       security:
         - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
       responses:
         '200':
           description: Successful response
@@ -2902,6 +3101,23 @@ paths:
             type: string
             format: uuid
           example: "123e4567-e89b-12d3-a456-426614174000"
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         '200':
           description: Successful response
@@ -2926,7 +3142,7 @@ paths:
       tags:
         - Chat
       summary: Send a message in a chat session
-      description: Send a new message in a chat session
+      description: Send a new message in a chat session. If chatbot is enabled, it will automatically generate a response.
       security:
         - BearerAuth: []
       parameters:
@@ -3042,6 +3258,605 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /chat/sessions/{id}/assign:
+    post:
+      tags:
+        - Chat
+      summary: Assign chat session to a staff member
+      description: Assign a chat session to a specific staff member (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assigned_to
+              properties:
+                assigned_to:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Session assigned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/priority:
+    patch:
+      tags:
+        - Chat
+      summary: Update session priority
+      description: Update the priority of a chat session (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - priority
+              properties:
+                priority:
+                  type: string
+                  enum: [low, normal, high, urgent]
+                  example: high
+      responses:
+        '200':
+          description: Priority updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/category:
+    patch:
+      tags:
+        - Chat
+      summary: Update session category
+      description: Update the category of a chat session (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - category
+              properties:
+                category:
+                  type: string
+                  enum: [general, support, complaint, feedback, order, reservation]
+                  example: support
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/notes:
+    post:
+      tags:
+        - Chat
+      summary: Add note to session
+      description: Add a note to a chat session (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - note
+              properties:
+                note:
+                  type: string
+                  example: "Customer needs urgent help with order"
+      responses:
+        '200':
+          description: Note added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/rate:
+    post:
+      tags:
+        - Chat
+      summary: Rate chat session
+      description: Rate the satisfaction of a chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rating
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  example: 4
+      responses:
+        '200':
+          description: Rating submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/stats:
+    get:
+      tags:
+        - Chat
+      summary: Get session statistics
+      description: Get statistics for a chat session (admin/employee only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Session statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      session:
+                        $ref: '#/components/schemas/ChatSession'
+                      messageCount:
+                        type: integer
+                        example: 15
+                      unreadCount:
+                        type: integer
+                        example: 3
+                      avgResponseTime:
+                        type: string
+                        format: date-time
+                        example: "2024-01-01T00:02:30Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/messages/{id}/edit:
+    patch:
+      tags:
+        - Chat
+      summary: Edit a message
+      description: Edit a message in a chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message_text
+              properties:
+                message_text:
+                  type: string
+                  example: "Updated message text"
+      responses:
+        '200':
+          description: Message edited successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatMessage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/messages/{id}/delete:
+    delete:
+      tags:
+        - Chat
+      summary: Delete a message
+      description: Delete a message from a chat session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Message deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Message deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/messages/{id}/reaction:
+    post:
+      tags:
+        - Chat
+      summary: Add reaction to message
+      description: Add a reaction to a message
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reaction
+              properties:
+                reaction:
+                  type: string
+                  example: "👍"
+      responses:
+        '200':
+          description: Reaction added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatMessage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/messages/{id}/reaction/{reaction}:
+    delete:
+      tags:
+        - Chat
+      summary: Remove reaction from message
+      description: Remove a reaction from a message
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        - name: reaction
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "👍"
+      responses:
+        '200':
+          description: Reaction removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/sessions/{id}/typing:
+    get:
+      tags:
+        - Chat
+      summary: Get typing users
+      description: Get list of users currently typing in a session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Typing users retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        user_id:
+                          type: string
+                          format: uuid
+                        sender_type:
+                          type: string
+                          enum: [user, bot, human]
+                        is_typing:
+                          type: boolean
+                        started_at:
+                          type: string
+                          format: date-time
+                        user:
+                          $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # User Session Management
+  /chat/user/session:
+    get:
+      tags:
+        - Chat
+      summary: Get or create user session
+      description: Get the active session for the authenticated user, or create a new one if none exists. Ensures only one active session per user.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User session retrieved or created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/user/session/active:
+    get:
+      tags:
+        - Chat
+      summary: Get active user session
+      description: Get the current active session for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Active session retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/user/session/close:
+    post:
+      tags:
+        - Chat
+      summary: Close user session
+      description: Close the active session for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Session closed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ChatSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -3096,49 +3911,82 @@ components:
           format: date-time
           example: "2024-01-01T00:00:00Z"
 
+    Supplier:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "sup_001"
+        name:
+          type: string
+          example: "Fresh Farm Co."
+        contact:
+          type: string
+          nullable: true
+          example: "contact@freshfarm.com | +84 987 654 321"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
     Table:
       type: object
       properties:
         id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "table_001"
         table_number:
           type: string
-          example: "T001"
+          example: "T01"
         capacity:
           type: integer
           example: 4
         deposit:
-          type: integer
-          example: 100000
+          type: number
+          format: decimal
+          example: 200000
         cancel_minutes:
           type: integer
-          example: 15
+          example: 30
         location:
           type: object
           nullable: true
+          example: { "x": 10, "y": 20, "floor": 1 }
         status:
           type: string
           enum: [available, occupied, cleaning, reserved]
-          example: available
+          example: "available"
         panorama_urls:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "https://example.com/panorama/table01.jpg"
         amenities:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "Air conditioner"
         description:
           type: string
-          nullable: true
+          example: "VIP table near window"
         created_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:00:00Z"
         updated_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:20:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
 
     TableGroup:
       type: object
@@ -3180,26 +4028,25 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "dish_001"
         name:
           type: string
-          example: "Pho Bo"
+          example: "Grilled Salmon"
         description:
           type: string
-          nullable: true
-          example: "Traditional Vietnamese beef noodle soup"
+          example: "Delicious grilled salmon with herbs"
         price:
           type: number
           format: decimal
-          example: 45000
+          example: 150000
         category_id:
           type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          example: "cat_001"
         media_urls:
-          type: object
-          nullable: true
+          type: array
+          items:
+            type: string
+            example: "https://example.com/images/salmon.jpg"
         is_best_seller:
           type: boolean
           example: true
@@ -3212,11 +4059,22 @@ components:
         created_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:00:00Z"
         updated_at:
           type: string
           format: date-time
-          example: "2024-01-01T00:00:00Z"
+          example: "2025-10-26T10:15:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        CategoryDish:
+          $ref: "#/components/schemas/CategoryDish"
+        Ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ingredient"
 
     Voucher:
       type: object
@@ -3361,6 +4219,139 @@ components:
           type: string
           format: date-time
           example: "2024-01-01T00:00:00Z"
+
+    CategoryDish:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cat_001"
+        name:
+          type: string
+          example: "Main Dishes"
+        description:
+          type: string
+          example: "Includes all main meal dishes"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:30:00Z"
+    
+    Ingredient:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "ing_001"
+        name:
+          type: string
+          example: "Tomato"
+        unit:
+          type: string
+          example: "kg"
+        barcode:
+          type: string
+          example: "8938505970012"
+        rfid:
+          type: string
+          example: "RF1234567890"
+        min_stock_level:
+          type: number
+          example: 10
+        current_stock:
+          type: number
+          example: 50
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:15:00Z"
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    InventoryImport:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "inv_001"
+        reason:
+          type: string
+          example: "Restocking ingredients"
+        total_price:
+          type: number
+          example: 1500000
+        employee_id:
+          type: string
+          example: "emp_001"
+        supplier_id:
+          type: string
+          example: "sup_001"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-10-26T10:30:00Z"
+        Supplier:
+          $ref: "#/components/schemas/Supplier"
+        Employee:
+          $ref: "#/components/schemas/Employee"
+        Ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ingredient"
+
+    InventoryImportIngredient:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "inv_ing_001"
+        ingredient_id:
+          type: string
+          example: "ing_001"
+        inventory_imports_id:
+          type: string
+          example: "inv_001"
+        quantity:
+          type: number
+          example: 20
+        total_price:
+          type: number
+          example: 100000
+        Ingredient:
+          $ref: "#/components/schemas/Ingredient"
+        InventoryImport:
+          $ref: "#/components/schemas/InventoryImport"
+
+    DishIngredient:
+      type: object
+      properties:
+        dish_id:
+          type: string
+          example: "dish_001"
+        ingredient_id:
+          type: string
+          example: "ing_001"
+        quantity:
+          type: number
+          example: 50
+        Dish:
+          $ref: "#/components/schemas/Dish"
+        Ingredient:
+          $ref: "#/components/schemas/Ingredient"
 
     # Main schemas with relations
     Notification:
@@ -3679,6 +4670,11 @@ components:
           type: string
           format: date-time
           example: "2024-01-01T00:00:00Z"
+        sender_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: "123e4567-e89b-12d3-a456-426614174000"
 
     Error:
       type: object
@@ -3765,3 +4761,17 @@ tags:
     description: Payment and statistics operations
   - name: Chat
     description: Chat and messaging operations
+  - name: Event
+    description: Event management operations
+  - name: Supplier
+    description: Supplier management operations
+  - name: Category
+    description: Category management operations
+  - name: Dish
+    description: Dish management operations
+  - name: Ingredient
+    description: Ingredient management operations
+  - name: Table
+    description: Ingredient management operations
+  - name: InventoryImport
+    description: InventoryImport management operations

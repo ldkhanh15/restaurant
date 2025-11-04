@@ -1,149 +1,148 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../application/providers.dart';
 import '../../domain/models/table.dart';
 
+/// Clean, minimal table-map screen that positions tables by location and x/y.
 class TableMapScreen extends ConsumerWidget {
-  final Function(DiningTable) onTableSelect;
+  final void Function(DiningTable) onTableSelect;
 
   const TableMapScreen({super.key, required this.onTableSelect});
 
-  Color _getTableColor(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return Colors.green.shade200;
-      case TableStatus.reserved:
-        return Colors.orange.shade200;
-      case TableStatus.occupied:
-        return Colors.red.shade200;
-      case TableStatus.cleaning:
-        return Colors.blue.shade200;
-    }
-  }
+  static final ValueNotifier<String> _selectedLocation = ValueNotifier<String>('Tất cả');
 
-  Color _getTableBorderColor(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return Colors.green.shade700;
-      case TableStatus.reserved:
-        return Colors.orange.shade700;
-      case TableStatus.occupied:
-        return Colors.red.shade700;
-      case TableStatus.cleaning:
-        return Colors.blue.shade700;
-    }
-  }
-
-  IconData _getTableIcon(TableType type) {
-    switch (type) {
-      case TableType.vip:
-        return Icons.star;
-      case TableType.couple:
-        return Icons.favorite;
-      case TableType.group:
-        return Icons.group;
-      default:
-        return Icons.table_restaurant;
-    }
-  }
-
-  String _getStatusText(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return 'Trống';
-      case TableStatus.reserved:
-        return 'Đã đặt';
-      case TableStatus.occupied:
-        return 'Sử dụng';
-      case TableStatus.cleaning:
-        return 'Dọn dẹp';
-    }
-  }
+  Widget _tableTile(DiningTable t, double w, double h) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          border: Border.all(color: Colors.black26),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: Text(t.name, textAlign: TextAlign.center),
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tables = ref.watch(tablesProvider);
 
-    return Scaffold(
-      // The AppBar is inherited from the parent screen (TableBookingScreen)
-      body: InteractiveViewer(
-        panEnabled: true,
-        minScale: 0.5,
-        maxScale: 4,
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Container(
-            width: 600, // Fixed width for the map container
-            height: 800, // Fixed height for the map container
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              children: tables.map((table) {
-                // Use default positions if null
-                final left = table.x ?? (tables.indexOf(table) % 5) * 110.0 + 20;
-                final top = table.y ?? (tables.indexOf(table) ~/ 5) * 110.0 + 20;
+    // Build location list
+    final locations = <String>{};
+    for (final t in tables) {
+      locations.add(t.location.isEmpty ? 'Chưa xác định' : t.location);
+    }
+    final locationList = ['Tất cả', ...locations];
 
-                return Positioned(
-                  left: left,
-                  top: top,
-                  child: GestureDetector(
-                      onTap: () {
-                        // Allow opening booking dialog regardless of current table.status.
-                        // Availability for specific date/time will be checked inside the booking dialog.
-                        onTableSelect(table);
-                      },
-                    child: Tooltip(
-                      message: '${_getStatusText(table.status)}\nSức chứa: ${table.capacity}',
-                      child: Container(
-                        width: table.width ?? 80,
-                        height: table.height ?? 80,
-                        decoration: BoxDecoration(
-                          color: _getTableColor(table.status),
-                          border: Border.all(
-                            color: _getTableBorderColor(table.status),
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            )
-                          ]
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _getTableIcon(table.type),
-                              size: 24,
-                              color: _getTableBorderColor(table.status),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              // Use the table name exactly as provided to avoid duplicating
-                              // the word "Bàn" when it's already present in the data.
-                              table.name,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _getTableBorderColor(table.status),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+    return Scaffold(
+      body: Column(
+        children: [
+          SizedBox(
+            height: 56,
+            child: ValueListenableBuilder<String>(
+              valueListenable: _selectedLocation,
+              builder: (context, selected, _) {
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: locationList.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (ctx, i) {
+                    final loc = locationList[i];
+                    return ChoiceChip(
+                      label: Text(loc, overflow: TextOverflow.ellipsis),
+                      selected: loc == selected,
+                      onSelected: (_) => _selectedLocation.value = loc,
+                    );
+                  },
                 );
-              }).toList(),
+              },
             ),
           ),
-        ),
+          Expanded(
+            child: InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  width: double.infinity,
+                  height: 800,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final floorW = constraints.maxWidth;
+                    final floorH = constraints.maxHeight;
+                    final selected = _selectedLocation.value;
+
+                    List<DiningTable> visibleTables;
+                    if (selected == 'Tất cả') {
+                      visibleTables = tables;
+                    } else {
+                      visibleTables = tables.where((t) => (t.location.isEmpty ? 'Chưa xác định' : t.location) == selected).toList();
+                    }
+
+                    // Compute bounds for normalization
+                    final coords = visibleTables.where((t) => t.x != null && t.y != null).toList();
+                    double minX = 0, maxX = 0, minY = 0, maxY = 0;
+                    if (coords.isNotEmpty) {
+                      final xs = coords.map((t) => t.x!.toDouble()).toList();
+                      final ys = coords.map((t) => t.y!.toDouble()).toList();
+                      minX = xs.reduce(math.min);
+                      maxX = xs.reduce(math.max);
+                      minY = ys.reduce(math.min);
+                      maxY = ys.reduce(math.max);
+                    }
+
+                    final spanX = (maxX - minX) == 0 ? 1.0 : (maxX - minX);
+                    final spanY = (maxY - minY) == 0 ? 1.0 : (maxY - minY);
+
+                    final padding = 16.0;
+                    final scaleX = (floorW - padding * 2) / spanX;
+                    final scaleY = (floorH - padding * 2) / spanY;
+
+                    final children = <Widget>[];
+                    for (var i = 0; i < visibleTables.length; i++) {
+                      final t = visibleTables[i];
+                      final w = t.width ?? 80.0;
+                      final h = t.height ?? 60.0;
+
+                      double left, top;
+                      if (t.x != null && t.y != null) {
+                        left = padding + (t.x!.toDouble() - minX) * scaleX - w / 2;
+                        top = padding + (t.y!.toDouble() - minY) * scaleY - h / 2;
+                      } else {
+                        left = padding + (i % 6) * (w + 12);
+                        top = padding + (i ~/ 6) * (h + 12);
+                      }
+
+                      left = left.clamp(0.0, floorW - w);
+                      top = top.clamp(0.0, floorH - h);
+
+                      children.add(Positioned(
+                        left: left,
+                        top: top,
+                        child: GestureDetector(
+                          onTap: () => onTableSelect(t),
+                          child: _tableTile(t, w, h),
+                        ),
+                      ));
+                    }
+
+                    return Stack(children: children);
+                  }),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

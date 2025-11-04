@@ -8,7 +8,9 @@ import 'package:go_router/go_router.dart';
 import '../presentation/widgets/main_navigation.dart';
 import '../presentation/screens/menu/menu_screen.dart';
 import '../presentation/screens/order/order_confirmation_screen.dart';
+import '../presentation/screens/order/order_detail_screen.dart';
 import '../presentation/screens/payment/payment_screen.dart';
+import '../presentation/screens/payment/payment_success_screen.dart';
 import '../presentation/screens/kitchen/kitchen_status_screen.dart';
 import '../presentation/screens/events/event_booking_screen.dart';
 import '../presentation/screens/chat/customer_chat_screen.dart';
@@ -18,6 +20,7 @@ import '../presentation/screens/auth/login_screen.dart';
 import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/home/home_screen.dart';
 import '../presentation/screens/notifications/notifications_screen.dart';
+import '../presentation/screens/account/account_management_screen.dart';
 import '../presentation/screens/blog/blog_list_screen.dart';
 import '../presentation/screens/blog/blog_detail_screen.dart';
 import '../presentation/screens/table_booking_screen.dart';
@@ -37,6 +40,11 @@ class _RestaurantReservationAppState extends ConsumerState<RestaurantReservation
   @override
   void initState() {
     super.initState();
+    // Debug: print registered routes so we can confirm the running build
+    // contains the '/order-confirmation' path.
+    // ignore: avoid_print
+    print('[Router] registered paths: $appRegisteredPaths');
+
     // Initialize app user data from backend if baseUrl is configured
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (ApiConfig.baseUrl.isNotEmpty) {
@@ -144,14 +152,7 @@ final _router = GoRouter(
         return _DishDetailPopupPage(item: item);
       },
     ),
-    // New compatibility route that does not expose the id in the path
-    GoRoute(
-      path: '/menu/detail',
-      builder: (context, state) {
-        final item = state.extra as MenuItem;
-        return _DishDetailPopupPage(item: item);
-      },
-    ),
+    // Route for order confirmation page (bookings navigate here with extra Booking object)
     GoRoute(
       path: '/order-confirmation',
       builder: (context, state) {
@@ -159,9 +160,43 @@ final _router = GoRouter(
         return OrderConfirmationScreen(booking: booking);
       },
     ),
+    // New compatibility route that does not expose the id in the path
+    GoRoute(
+      name: 'orderDetail',
+      path: '/order-detail/:id',
+      builder: (context, state) {
+        final order = state.extra as dynamic;
+        final id = state.pathParameters['id'] ?? state.uri.queryParameters['orderId'];
+        return OrderDetailScreen(order: order, orderId: id);
+      },
+    ),
+    // Backwards-compatible route that accepts the full Order in extra or a query param
+    GoRoute(
+      path: '/order-detail',
+      builder: (context, state) {
+        final order = state.extra as dynamic;
+        final id = state.uri.queryParameters['orderId'];
+        return OrderDetailScreen(order: order, orderId: id);
+      },
+    ),
     GoRoute(
       path: '/payment',
-      builder: (context, state) => const PaymentScreen(),
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        final orderId = extra != null ? extra['orderId'] as String? : null;
+        final voucherIds = extra != null ? (extra['voucherIds'] as List<dynamic>?)?.map((e) => e as String).toList() : null;
+  final discount = extra != null ? (extra['discount'] as num?)?.toDouble() : null;
+  final finalAmount = extra != null ? (extra['finalAmount'] as num?)?.toDouble() : null;
+  final subtotal = extra != null ? (extra['subtotal'] as num?)?.toDouble() : null;
+        return PaymentScreen(initialOrderId: orderId, initialVoucherIds: voucherIds, initialDiscount: discount, initialFinalAmount: finalAmount, initialSubtotal: subtotal);
+      },
+    ),
+    GoRoute(
+      path: '/payment-success',
+      builder: (context, state) {
+        final order = state.extra as dynamic;
+        return PaymentSuccessScreen(order: order as dynamic);
+      },
     ),
     GoRoute(
       path: '/kitchen-status',
@@ -190,6 +225,14 @@ final _router = GoRouter(
     GoRoute(
       path: '/notifications',
       builder: (context, state) => const NotificationsScreen(),
+    ),
+    GoRoute(
+      path: '/account',
+      builder: (context, state) {
+        final tab = state.uri.queryParameters['tab'];
+        final orderId = state.uri.queryParameters['orderId'];
+        return AccountManagementScreen(initialTab: tab, initialOrderId: orderId);
+      },
     ),
     GoRoute(
       path: '/blog',
@@ -223,6 +266,42 @@ final _router = GoRouter(
         ),
   ],
 );
+// Expose the app's root router so other modules can navigate using the root
+// route table when the local BuildContext may be nested inside other
+// Navigators/Shells. Prefer using named navigation where possible.
+GoRouter get appRouter => _router;
+
+// A small, manually maintained list of registered routes for quick
+// debugging. Keep this list in sync with the routes above if you add/remove
+// routes. It's only used for runtime troubleshooting (debug prints).
+const List<String> appRegisteredPaths = [
+  '/',
+  '/menu',
+  '/order-confirmation',
+  '/menu/:id',
+  '/order-detail/:id',
+  '/order-detail',
+  '/payment',
+  '/kitchen-status',
+  '/events',
+  '/chat',
+  '/reviews',
+  '/vouchers',
+  '/home',
+  '/notifications',
+  '/account',
+  '/blog',
+  '/blog/:id',
+  '/notification',
+  '/my-bookings',
+  '/login',
+  '/signup',
+];
+
+// Debug: print registered paths at import time so the running app's logs show
+// which routes are available. Useful to confirm the build on device includes
+// the /order-confirmation route.
+// (Moved to initState to avoid top-level execution during import.)
 
 // A small page wrapper that immediately opens the modal popup and pops the
 // route when the modal is dismissed. This preserves existing navigation
