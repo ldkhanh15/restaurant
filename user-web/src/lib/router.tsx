@@ -137,12 +137,12 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
 
     // Update browser URL
-<<<<<<< HEAD:user-web/lib/router.tsx
-    // window.history.pushState({}, "", path)
-    window.location.href = path
-=======
+// <<<<<<< HEAD:user-web/lib/router.tsx
+//     // window.history.pushState({}, "", path)
+//     window.location.href = path
+//     =======
     window.history.pushState({}, "", path);
->>>>>>> 2aaaa7c1394c8d59af39fc7798885f6478100829:user-web/src/lib/router.tsx
+// >>>>>>> 2aaaa7c1394c8d59af39fc7798885f6478100829:user-web/src/lib/router.tsx
 
     setCurrentRoute(route);
     setHistory((prev) => [...prev, route]);

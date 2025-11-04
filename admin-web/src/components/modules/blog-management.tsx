@@ -27,7 +27,7 @@ import {
   deleteMultipleImagesFromCloudinary,
   uploadImageToCloudinary,
 } from "@/services/cloudinaryService";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "react-toastify";
 import {
   Card,
   CardContent,
@@ -106,12 +106,10 @@ export function BlogManagement() {
     tags: [] as string[],
     status: "draft" as "draft" | "published" | "deleted",
     thumbnail_url: "",
-    cover_image_url: "",
   });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
 
   // Validation state
   const [validationErrors, setValidationErrors] = useState<{
@@ -432,7 +430,11 @@ export function BlogManagement() {
             : post
         )
       );
-    } catch (_) {}
+      toast.success(`Đã cập nhật trạng thái bài viết thành ${newStatus === 'published' ? 'đã xuất bản' : newStatus === 'draft' ? 'nháp' : 'lưu trữ'}`);
+    } catch (error) {
+      console.error("Failed to update post status:", error);
+      toast.error("Không thể cập nhật trạng thái bài viết");
+    }
   };
 
   const fetchPosts = async () => {
@@ -447,11 +449,7 @@ export function BlogManagement() {
       setPosts(response.data || []);
     } catch (error) {
       console.error("Failed to fetch posts:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách bài viết",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách bài viết");
     } finally {
       setIsLoading(false);
     }
@@ -461,23 +459,13 @@ export function BlogManagement() {
     const file = event.target.files?.[0];
     if (file) {
       // Validate file type
-      if (!file.type.startsWith("image/")) {
-        toast({
-          title: "Lỗi",
-          description: "Vui lòng chọn file ảnh hợp lệ",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate file size (5MB)
+    if (!file.type.startsWith("image/")) {
+      toast.error("Vui lòng chọn file ảnh hợp lệ");
+      return;
+    }      // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
         validateField("thumbnail", file);
-        toast({
-          title: "Lỗi",
-          description: "Kích thước ảnh không được vượt quá 5MB",
-          variant: "destructive",
-        });
+        toast.error("Kích thước ảnh không được vượt quá 5MB");
         return;
       }
 
@@ -515,15 +503,13 @@ export function BlogManagement() {
       // Reset progress after a short delay
       setTimeout(() => setUploadProgress(0), 1000);
 
+      toast.success("Ảnh đã được upload thành công");
+
       return urls;
     } catch (error) {
       console.error("Failed to upload image:", error);
       setUploadProgress(0);
-      toast({
-        title: "Lỗi",
-        description: "Không thể upload ảnh",
-        variant: "destructive",
-      });
+      toast.error("Không thể upload ảnh");
       return null;
     } finally {
       setUploadingImage(false);
@@ -539,7 +525,6 @@ export function BlogManagement() {
       tags: [],
       status: "draft",
       thumbnail_url: "",
-      cover_image_url: "",
     });
     setSelectedImage(null);
     setImagePreview("");
@@ -559,7 +544,6 @@ export function BlogManagement() {
       tags: Array.isArray(post.tags) ? post.tags : [],
       status: post.status || "draft",
       thumbnail_url: post.thumbnail_url || "",
-      cover_image_url: post.cover_image_url || "",
     });
     setImagePreview(post.thumbnail_url || "");
     setIsEditDialogOpen(true);
@@ -570,10 +554,7 @@ export function BlogManagement() {
     // Validate form before submission
     if (!validateForm()) {
       console.log("Validation failed:", validationErrors);
-      toast({
-        title: "Lỗi validation",
-        description: "Vui lòng kiểm tra lại các trường bắt buộc",
-      });
+      toast.error("Vui lòng kiểm tra lại các trường bắt buộc");
       return;
     }
 
@@ -609,20 +590,14 @@ export function BlogManagement() {
             p.id === selectedPost.id ? { ...p, ...postData } : p
           )
         );
-        toast({
-          title: "Thành công",
-          description: "Đã cập nhật bài viết",
-        });
+        toast.success("Đã cập nhật bài viết");
         setIsEditDialogOpen(false);
       } else {
         console.log("Creating new post with data:", postData);
         // Create
         const response = await blogService.create(postData);
         setPosts((prev) => [response.data, ...prev]);
-        toast({
-          title: "Thành công",
-          description: "Đã tạo bài viết mới",
-        });
+        toast.success("Đã tạo bài viết mới");
         setIsCreateDialogOpen(false);
       }
 
@@ -641,11 +616,7 @@ export function BlogManagement() {
         }
       }
 
-      toast({
-        title: "Lỗi",
-        description: "Không thể lưu bài viết",
-        variant: "destructive",
-      });
+      toast.error("Không thể lưu bài viết");
     } finally {
       setIsSubmitting(false);
     }
@@ -657,17 +628,10 @@ export function BlogManagement() {
     try {
       await blogService.remove(postId);
       setPosts((prev) => prev.filter((p) => p.id !== postId));
-      toast({
-        title: "Thành công",
-        description: "Đã xóa bài viết",
-      });
+      toast.success("Đã xóa bài viết");
     } catch (error) {
       console.error("Failed to delete post:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa bài viết",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa bài viết");
     }
   };
 
@@ -1226,12 +1190,7 @@ export function BlogManagement() {
                                 // Validate file size
                                 if (file.size > 5 * 1024 * 1024) {
                                   validateField("thumbnail", file);
-                                  toast({
-                                    title: "Lỗi",
-                                    description:
-                                      "Kích thước ảnh không được vượt quá 5MB",
-                                    variant: "destructive",
-                                  });
+                                  toast.error("Kích thước ảnh không được vượt quá 5MB");
                                   return;
                                 }
                                 setSelectedImage(file);
@@ -1894,12 +1853,7 @@ export function BlogManagement() {
                                 // Validate file size
                                 if (file.size > 5 * 1024 * 1024) {
                                   validateField("thumbnail", file);
-                                  toast({
-                                    title: "Lỗi",
-                                    description:
-                                      "Kích thước ảnh không được vượt quá 5MB",
-                                    variant: "destructive",
-                                  });
+                                  toast.error("Kích thước ảnh không được vượt quá 5MB");
                                   return;
                                 }
                                 setSelectedImage(file);
@@ -2176,7 +2130,7 @@ export function BlogManagement() {
               <TableBody>
                 {filteredPosts.map((post) => (
                   <TableRow key={post.id}>
-                     <TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
                         {post.author?.face_image_url ? (
                           <img
@@ -2209,7 +2163,7 @@ export function BlogManagement() {
                         </div>
                       )}
                     </TableCell>
-                   
+
                     <TableCell className="max-w-[250px]">
                       <div>
                         <p className="font-medium truncate">{post.title}</p>
