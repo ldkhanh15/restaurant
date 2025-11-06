@@ -18,7 +18,9 @@ export const getAllBlogPosts = async (req: Request, res: Response, next: NextFun
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
-    const { rows, count } = await blogPostService.findAll({
+    console.log("Controller: Fetching all blog posts with pagination and sorting");
+
+    const { rows, count } = await blogPostService.getAllBlogPosts({
       limit,
       offset,
       order: [[sortBy, sortOrder]],
@@ -56,6 +58,7 @@ export const createBlogPost = async (req: Request, res: Response, next: NextFunc
       body.slug = localSlugify(String(body.title))
     }
     body.author_id = req.user?.id
+    console.log("Creating blog post with data:", body)
     const post = await blogPostService.create(body)
     res.status(201).json({ status: "success", data: post })
   } catch (error) {

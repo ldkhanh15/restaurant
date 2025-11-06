@@ -10,11 +10,11 @@ export const getAllReviews = async (req: Request, res: Response, next: NextFunct
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
     const { rows, count } = await reviewService.findAllWithUser({
-      limit,
+      limit,  
       offset,
       order: [[sortBy, sortOrder]],
     })
-
+    
     const result = buildPaginationResult(rows, count, page, limit)
     res.json({ status: "success", data: result })
   } catch (error) {
