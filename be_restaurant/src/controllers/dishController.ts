@@ -12,53 +12,45 @@ import cloudService, { uploadImageToCloudinary } from "../services/cloudService"
 
 export const getAllDishes = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page = 1, limit = 10, sortBy = 'created_at', sortOrder = 'ASC' } = getPaginationParams(req.query)
+    const hasSearchParams = ['name', 'category_id', 'is_best_seller','sort', 'seasonal', 'active', 'price_min', 'price_max', 'price_exact', 'price_ranges'].some(param => param in req.query);
 
-    const offset = (page - 1) * limit
+    const { page = 1, limit = 10 } = getPaginationParams(req.query);
+    if (hasSearchParams) {
+      // --- Use search functionality ---
+      const { count, rows } = await dishService.search(req.query);
 
-    const { count, rows } = await Dish.findAndCountAll({
-      limit,
-      offset,
-      order: [[sortBy, sortOrder]],
-      include: [
-        { model: CategoryDish, as: "category" },
-        {
-          model: Ingredient,
-          as: "ingredients",
-          through: {
-            attributes: ["quantity"], 
+      // Build pagination result same as else
+      const result = buildPaginationResult(rows, count, +page, +limit);
+
+      return res.json({ status: "success", data: result });
+    } else {
+      // --- Regular pagination ---
+      const { sortBy = "name", sortOrder = 'ASC' } = getPaginationParams(req.query);
+      const offset = (+page - 1) * +limit;
+
+      const { count, rows } = await Dish.findAndCountAll({
+        limit: +limit,
+        offset,
+        order: [[sortBy, sortOrder]],
+        include: [
+          { model: CategoryDish, as: "category" },
+          {
+            model: Ingredient,
+            as: "ingredients",
+            through: { attributes: ["quantity"] }
           }
-        }
-      ],
-    })
+        ],
+      });
 
-    const result = buildPaginationResult(rows, count, page, limit)
-    res.json({ status: "success", data: result })
+      const result = buildPaginationResult(rows, count, +page, +limit);
+      return res.json({ status: "success", data: result });
+    }
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
-export const searchDishes = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { count, rows, page, limit } = await dishService.search(req.query)
 
-    const totalPages = Math.ceil(count / limit)
-
-    return res.json({
-      status: "success",
-      data: {
-        totalItems: count,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        items: rows,
-      },
-    })
-  } catch (error) {
-    next(error)
-  }
-}
 
 export const getDishesByCategoryId = async (req: Request, res: Response, next: NextFunction) => {
   try {

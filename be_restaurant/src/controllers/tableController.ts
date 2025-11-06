@@ -9,6 +9,7 @@ import { uploadMultipleImagesToCloudinary } from "../services/cloudService"
 
 export const getAllTables = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Return all tables without pagination if all=true
     if (req.query.all === 'true') {
         const result = await tableService.findAll({ order: [['created_at', 'ASC']] });
         const data =
@@ -26,6 +27,39 @@ export const getAllTables = async (req: Request, res: Response, next: NextFuncti
           data,
         })
     }
+
+    // Check if any search parameters are present
+    const hasSearchParams = [
+      'table_number',
+      'status',
+      'capacity_min',
+      'capacity_max',
+      'capacity_exact',
+      'deposit_min',
+      'deposit_max',
+      'deposit_exact',
+      'cancel_minutes_min',
+      'cancel_minutes_max'
+    ].some(param => param in req.query)
+
+    if (hasSearchParams) {
+      // Use search functionality if search parameters are present
+      const { count, rows, page, limit } = await tableService.search(req.query)
+      const totalPages = Math.ceil(count / limit)
+
+      return res.json({
+        status: "success",
+        data: {
+          totalItems: count,
+          totalPages,
+          currentPage: page,
+          itemsPerPage: limit,
+          items: rows,
+        },
+      })
+    }
+
+    // Use regular pagination if no search parameters
     const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
@@ -51,26 +85,7 @@ export const getTableById = async (req: Request, res: Response, next: NextFuncti
   }
 }
 
-export const searchTables = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { count, rows, page, limit } = await tableService.search(req.query)
 
-    const totalPages = Math.ceil(count / limit)
-
-    res.json({
-      status: "success",
-      data: {
-        totalItems: count,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        items: rows,
-      },
-    })
-  } catch (error) {
-    next(error)
-  }
-}
 
 export const getTablesByStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {

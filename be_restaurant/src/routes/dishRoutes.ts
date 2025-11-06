@@ -7,7 +7,6 @@ import {
   deleteDish,
   getDishesByCategoryId,
   upsertIngredientToDish,
-  searchDishes,
 } from "../controllers/dishController";
 import { authenticate, authorize } from "../middlewares/auth";
 import upload from "../middlewares/upload";
@@ -15,7 +14,6 @@ import upload from "../middlewares/upload";
 const router = Router();
 
 router.get("/", getAllDishes);
-router.get("/search", searchDishes);
 router.get("/:id", getDishById);
 router.get("/category/:id", getDishesByCategoryId);
 router.post("/", upload.single("media_file"), createDish);
