@@ -1,0 +1,227 @@
+version: "3.8"
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: restaurant-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-restaurant_db}
+      MYSQL_USER: ${DB_USER:-restaurant_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-restaurant_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./be_restaurant/data.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${DB_ROOT_PASSWORD:-rootpassword}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - restaurant-network
+
+  # Redis (optional, for caching/sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: restaurant-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - restaurant-network
+
+  # Backend API (Express/Node.js)
+  backend:
+    build:
+      context: ./be_restaurant
+      dockerfile: Dockerfile
+    container_name: restaurant-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-restaurant_db}
+      DB_USER: ${DB_USER:-restaurant_user}
+      DB_PASSWORD: ${DB_PASSWORD:-restaurant_password}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+    volumes:
+      - ./be_restaurant/uploads:/app/uploads
+      - ./be_restaurant/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - restaurant-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Chatbot API (Python FastAPI)
+  chatbot:
+    build:
+      context: ./chatbot
+      dockerfile: Dockerfile
+    container_name: restaurant-chatbot
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    environment:
+      BE_URL: http://backend:3000/api
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-your-gemini-api-key}
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./chatbot/logs:/app/logs
+      - ./chatbot/hiwell_chatbot.db:/app/hiwell_chatbot.db
+      - ./model_recommend:/app/model_recommend
+    depends_on:
+      - backend
+    networks:
+      - restaurant-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import requests; requests.get('http://localhost:7860/api/health').raise_for_status()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Admin Web (Next.js)
+  admin-web:
+    build:
+      context: ./admin-web
+      dockerfile: Dockerfile
+    container_name: restaurant-admin-web
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NEXT_PUBLIC_WS_URL: ws://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - restaurant-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Web (Next.js)
+  user-web:
+    build:
+      context: ./user-web
+      dockerfile: Dockerfile
+    container_name: restaurant-user-web
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NEXT_PUBLIC_WS_URL: ws://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - restaurant-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3001/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Flutter Builder (build artifacts only, not a runtime service)
+  flutter-builder:
+    build:
+      context: .
+      dockerfile: docker/Flutter-builder.Dockerfile
+    container_name: flutter-builder
+    volumes:
+      - ./artifacts/flutter:/artifacts
+    profiles:
+      - build-only
+    # This service only runs when explicitly called for building
+
+  # React Native Builder (build artifacts only, not a runtime service)
+  rn-builder:
+    build:
+      context: .
+      dockerfile: docker/RN-builder.Dockerfile
+    container_name: rn-builder
+    volumes:
+      - ./artifacts/react-native:/artifacts
+    profiles:
+      - build-only
+    # This service only runs when explicitly called for building
+
+networks:
+  restaurant-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local

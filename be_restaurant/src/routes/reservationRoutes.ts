@@ -132,13 +132,12 @@ router.post(
   reservationController.checkInReservation
 );
 
-// Cancel reservation
+// Cancel reservation (admin/employee or owner)
 router.post(
   "/:id/cancel",
-  authorize("admin", "employee"),
   [
     param("id").isUUID().withMessage("Invalid reservation ID"),
-    body("reason").notEmpty().withMessage("Cancellation reason is required"),
+    body("reason").optional().isString(),
     validate,
   ],
   reservationController.cancelReservation
@@ -149,6 +148,43 @@ router.delete(
   "/:id",
   [param("id").isUUID().withMessage("Invalid reservation ID"), validate],
   reservationController.deleteReservation
+);
+
+// Reservation dish management
+router.post(
+  "/:id/dishes",
+  [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
+    body("dish_id").isUUID().withMessage("Invalid dish ID"),
+    body("quantity")
+      .isInt({ min: 1 })
+      .withMessage("Quantity must be at least 1"),
+    validate,
+  ],
+  reservationController.addDishToReservation
+);
+
+router.patch(
+  "/:id/dishes/:dishId",
+  [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
+    param("dishId").isUUID().withMessage("Invalid dish ID"),
+    body("quantity")
+      .isInt({ min: 1 })
+      .withMessage("Quantity must be at least 1"),
+    validate,
+  ],
+  reservationController.updateDishQuantity
+);
+
+router.delete(
+  "/:id/dishes/:dishId",
+  [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
+    param("dishId").isUUID().withMessage("Invalid dish ID"),
+    validate,
+  ],
+  reservationController.removeDishFromReservation
 );
 
 export default router;

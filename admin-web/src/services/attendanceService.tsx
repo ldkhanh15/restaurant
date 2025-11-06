@@ -1,19 +1,6 @@
 import apiClient from "./apiClient";
 
 // Định nghĩa interface cho response
-interface ApiResponse<T> {
-  status?: string;
-  success?: boolean;
-  data: T;
-  count?: number;
-  pagination?: {
-    page: number;
-    limit: number;
-    totalPages: number;
-    totalItems?: number;
-  };
-  message?: string;
-}
 
 const attendanceApi = {
   // Attendance CRUD
@@ -25,18 +12,18 @@ const attendanceApi = {
     let url = `/attendance?page=${page}&limit=${limit}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
 
-    const response = await apiClient.get<ApiResponse<any>>(url);
+    const response = await apiClient.get(url);
 
     return response;
   },
 
   getAttendanceLog: async (id: string) => {
-    const response = await apiClient.get<ApiResponse<any>>(`/attendance/${id}`);
+    const response = await apiClient.get(`/attendance/${id}`);
     return response;
   },
 
   createAttendanceLog: async (attendanceData: any) => {
-    const response = await apiClient.post<ApiResponse<any>>(
+    const response = await apiClient.post(
       "/attendance",
       attendanceData
     );
@@ -44,7 +31,7 @@ const attendanceApi = {
   },
 
   updateAttendanceLog: async (id: string, attendanceData: any) => {
-    const response = await apiClient.put<ApiResponse<any>>(
+    const response = await apiClient.put(
       `/attendance/${id}`,
       attendanceData
     );
@@ -52,7 +39,7 @@ const attendanceApi = {
   },
 
   deleteAttendanceLog: async (id: string) => {
-    const response = await apiClient.delete<ApiResponse<any>>(
+    const response = await apiClient.delete(
       `/attendance/${id}`
     );
     return response;

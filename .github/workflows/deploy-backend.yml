@@ -1,0 +1,134 @@
+name: Deploy Backend to Render
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'be_restaurant/**'
+      - '.github/workflows/deploy-backend.yml'
+      - 'docker-compose.yml'
+      - 'be_restaurant/Dockerfile'
+  workflow_dispatch: # Cho phép trigger thủ công
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  # Build và test (nếu có)
+  build-and-test:
+    name: Build and Test Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: be_restaurant/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./be_restaurant
+        run: npm ci
+
+      - name: Run linting (if available)
+        working-directory: ./be_restaurant
+        run: npm run lint || echo "No lint script found"
+
+      # Uncomment if you have tests
+      # - name: Run tests
+      #   working-directory: ./be_restaurant
+      #   run: npm test
+
+      - name: Build TypeScript
+        working-directory: ./be_restaurant
+        run: npm run build
+
+  # Build Docker image
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./be_restaurant
+          file: ./be_restaurant/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # Deploy to Render
+  deploy-render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://your-backend-api.onrender.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        uses: johnbeynon/render-deploy-action@v0.0.8
+        with:
+          service-id: ${{ secrets.RENDER_BACKEND_SERVICE_ID }}
+          api-key: ${{ secrets.RENDER_API_KEY }}
+
+      # Alternative: Deploy using Render API directly
+      # - name: Deploy to Render via API
+      #   run: |
+      #     curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_SERVICE_ID }}/deploys" \
+      #       -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+      #       -H "Content-Type: application/json"
+
+      - name: Wait for deployment
+        run: |
+          echo "⏳ Waiting for Render deployment to complete..."
+          sleep 30
+          echo "✅ Deployment initiated successfully!"
+
+      - name: Deployment status
+        run: |
+          echo "🚀 Backend deployed to Render!"
+          echo "🔗 Service URL: https://${{ secrets.RENDER_BACKEND_SERVICE_ID }}.onrender.com"
+

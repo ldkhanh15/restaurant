@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
@@ -30,29 +30,30 @@ import {
   X,
   ChevronRight,
   Filter,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
-import { mockDishes, MockDish } from "@/mock/mockDishes";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { dishService, type Dish } from "@/services/dishService";
+
+// Minimal dish shape passed back to parent (compatible with existing handlers)
+export type SelectableDish = {
+  id: string;
+  name: string;
+  price: number;
+  media_urls: string[];
+  description?: string;
+};
 
 interface DishSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectDish: (dish: MockDish) => void;
+  onSelectDish: (dish: SelectableDish) => void;
   selectedDishIds?: string[];
   title?: string;
   description?: string;
 }
-
-const categories = [
-  { id: "all", name: "Tất cả", icon: "🍽️" },
-  { id: "cat-main", name: "Món Chính", icon: "🍽️" },
-  { id: "cat-appetizer", name: "Khai Vị", icon: "🥗" },
-  { id: "cat-dessert", name: "Tráng Miệng", icon: "🍰" },
-  { id: "cat-drink", name: "Đồ Uống", icon: "🍷" },
-  { id: "cat-vegetarian", name: "Món Chay", icon: "🥬" },
-];
 
 export default function DishSelectionDialog({
   open,
@@ -64,75 +65,90 @@ export default function DishSelectionDialog({
 }: DishSelectionDialogProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedDishDetail, setSelectedDishDetail] = useState<MockDish | null>(
-    null
-  );
-  const [sortBy, setSortBy] = useState<"name" | "price" | "rating">("name");
+  const [sortBy, setSortBy] = useState<"name" | "price">("name");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [dishes, setDishes] = useState<Dish[]>([]);
 
-  // Get unique categories from dishes
-  const availableCategories = useMemo(() => {
-    const categoryMap = new Map<string, { name: string; icon: string }>();
-    mockDishes.forEach((dish) => {
-      if (!categoryMap.has(dish.category_id)) {
-        const cat = categories.find((c) => c.id === dish.category_id);
-        if (cat) {
-          categoryMap.set(dish.category_id, {
-            name: dish.category_name || cat.name,
-            icon: cat.icon,
-          });
-        }
-      }
-    });
-    return Array.from(categoryMap.entries()).map(([id, data]) => ({
-      id,
-      ...data,
-    }));
-  }, []);
+  // Fetch dishes (first page)
+  const loadDishes = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setPage(1);
+      const res = await dishService.search({
+        page: 1,
+        limit: 12,
+        sortBy: sortBy === "price" ? "price" : "name",
+        sortOrder: "ASC",
+        name: searchQuery || undefined,
+        active: true,
+      });
+      const data = res.data;
+      setDishes(data.items || []);
+      setTotalPages(data.totalPages || 1);
+      setPage(data.currentPage || 1);
+    } catch (e) {
+      setDishes([]);
+      setTotalPages(1);
+      setPage(1);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, sortBy]);
 
-  const filteredDishes = useMemo(() => {
-    let filtered = mockDishes.filter((dish) => {
-      // Category filter
-      if (selectedCategory !== "all" && dish.category_id !== selectedCategory) {
-        return false;
-      }
+  // Load more (next page)
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || page >= totalPages) return;
+    try {
+      setIsLoadingMore(true);
+      const next = page + 1;
+      const res = await dishService.search({
+        page: next,
+        limit: 12,
+        sortBy: sortBy === "price" ? "price" : "name",
+        sortOrder: "ASC",
+        name: searchQuery || undefined,
+        active: true,
+      });
+      const data = res.data;
+      setDishes((prev) => [...prev, ...(data.items || [])]);
+      setTotalPages(data.totalPages || totalPages);
+      setPage(data.currentPage || next);
+    } catch (e) {
+      // ignore
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, page, totalPages, searchQuery, sortBy]);
 
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        if (
-          !dish.name.toLowerCase().includes(query) &&
-          !dish.description.toLowerCase().includes(query)
-        ) {
-          return false;
-        }
-      }
+  // Reset and fetch when dialog opens or filters change
+  useEffect(() => {
+    if (!open) return;
+    const id = setTimeout(() => {
+      loadDishes();
+    }, 150);
+    return () => clearTimeout(id);
+  }, [open, loadDishes]);
 
-      return true;
-    });
-
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "price":
-          return a.price - b.price;
-        case "rating":
-          return (b.rating || 0) - (a.rating || 0);
-        default:
-          return a.name.localeCompare(b.name);
-      }
-    });
-
-    return filtered;
-  }, [selectedCategory, searchQuery, sortBy]);
-
-  const handleDishClick = (dish: MockDish) => {
-    setSelectedDishDetail(dish);
+  // Infinite scroll
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 100) {
+      loadMore();
+    }
   };
 
-  const handleAddFromDetail = (dish: MockDish) => {
-    onSelectDish(dish);
-    setSelectedDishDetail(null);
+  const handleDishClick = (dish: Dish) => {
+    const payload: SelectableDish = {
+      id: dish.id,
+      name: dish.name,
+      price: dish.price,
+      media_urls: dish.media_urls || [],
+      description: dish.description,
+    };
+    onSelectDish(payload);
   };
 
   return (
@@ -157,44 +173,12 @@ export default function DishSelectionDialog({
               />
             </div>
 
-            {/* Category Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              <Button
-                variant={selectedCategory === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory("all")}
-                className={cn(
-                  selectedCategory === "all" &&
-                    "bg-gradient-gold text-primary-foreground hover:opacity-90",
-                  "border-accent/20 whitespace-nowrap"
-                )}
-              >
-                Tất cả
-              </Button>
-              {availableCategories.map((cat) => (
-                <Button
-                  key={cat.id}
-                  variant={selectedCategory === cat.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={cn(
-                    selectedCategory === cat.id &&
-                      "bg-gradient-gold text-primary-foreground hover:opacity-90",
-                    "border-accent/20 whitespace-nowrap"
-                  )}
-                >
-                  <span className="mr-1">{cat.icon}</span>
-                  {cat.name}
-                </Button>
-              ))}
-            </div>
-
             {/* Sort */}
             <div className="flex items-center gap-2 text-sm">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <span className="text-muted-foreground">Sắp xếp:</span>
               <div className="flex gap-2">
-                {(["name", "price", "rating"] as const).map((sort) => (
+                {(["name", "price"] as const).map((sort) => (
                   <Button
                     key={sort}
                     variant={sortBy === sort ? "default" : "ghost"}
@@ -208,7 +192,6 @@ export default function DishSelectionDialog({
                   >
                     {sort === "name" && "Tên"}
                     {sort === "price" && "Giá"}
-                    {sort === "rating" && "Đánh giá"}
                   </Button>
                 ))}
               </div>
@@ -216,11 +199,19 @@ export default function DishSelectionDialog({
           </div>
 
           {/* Dishes List */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            {filteredDishes.length > 0 ? (
+          <div
+            className="flex-1 overflow-y-auto px-6 py-4"
+            onScroll={handleScroll}
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Đang tải món
+                ăn...
+              </div>
+            ) : dishes.length > 0 ? (
               <div className="space-y-3">
                 <AnimatePresence>
-                  {filteredDishes.map((dish, index) => {
+                  {dishes.map((dish, index) => {
                     const isSelected = selectedDishIds.includes(dish.id);
 
                     return (
@@ -246,18 +237,13 @@ export default function DishSelectionDialog({
                               {/* Dish Image */}
                               <div className="relative w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
                                 <Image
-                                  src={dish.media_urls[0] || "/placeholder.svg"}
+                                  src={
+                                    dish.media_urls?.[0] || "/placeholder.svg"
+                                  }
                                   alt={dish.name}
                                   fill
                                   className="object-cover"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 hover:opacity-100 transition-opacity" />
-                                {dish.is_best_seller && (
-                                  <Badge className="absolute top-2 left-2 bg-gradient-gold text-primary-foreground border-0 text-xs">
-                                    <Star className="w-3 h-3 mr-1 fill-current" />
-                                    Bán Chạy
-                                  </Badge>
-                                )}
                               </div>
 
                               {/* Dish Info */}
@@ -267,50 +253,13 @@ export default function DishSelectionDialog({
                                     <h3 className="font-bold text-lg text-primary mb-1 line-clamp-1">
                                       {dish.name}
                                     </h3>
-                                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                                      {dish.description}
-                                    </p>
+                                    {dish.description && (
+                                      <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                                        {dish.description}
+                                      </p>
+                                    )}
                                   </div>
                                   <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 ml-2" />
-                                </div>
-
-                                <div className="flex items-center gap-4 flex-wrap">
-                                  {/* Rating */}
-                                  {dish.rating && (
-                                    <div className="flex items-center gap-1">
-                                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                      <span className="text-sm font-semibold">
-                                        {dish.rating.toFixed(1)}
-                                      </span>
-                                      {dish.reviews_count && (
-                                        <span className="text-xs text-muted-foreground">
-                                          ({dish.reviews_count})
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* Prep Time */}
-                                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                    <Clock className="h-4 w-4" />
-                                    <span>{dish.prep_time} phút</span>
-                                  </div>
-
-                                  {/* Category */}
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs border-accent/20"
-                                  >
-                                    {dish.category_name}
-                                  </Badge>
-
-                                  {/* Seasonal */}
-                                  {dish.seasonal && (
-                                    <Badge className="bg-green-500/90 text-white border-0 text-xs">
-                                      <Sparkles className="w-3 h-3 mr-1" />
-                                      Theo Mùa
-                                    </Badge>
-                                  )}
                                 </div>
 
                                 {/* Price and Add Button */}
@@ -332,7 +281,7 @@ export default function DishSelectionDialog({
                                     size="sm"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      onSelectDish(dish);
+                                      handleDishClick(dish);
                                     }}
                                     disabled={isSelected}
                                   >
@@ -357,6 +306,21 @@ export default function DishSelectionDialog({
                     );
                   })}
                 </AnimatePresence>
+
+                {page < totalPages && (
+                  <div className="flex items-center justify-center py-4 text-muted-foreground">
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Đang
+                        tải thêm...
+                      </>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={loadMore}>
+                        Tải thêm
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
@@ -373,191 +337,7 @@ export default function DishSelectionDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Dish Detail Sheet */}
-      <Sheet
-        open={!!selectedDishDetail}
-        onOpenChange={(open) => !open && setSelectedDishDetail(null)}
-      >
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          {selectedDishDetail && (
-            <div className="h-full flex flex-col p-3">
-              <SheetHeader className="flex-shrink-0 pb-4 border-b">
-                <SheetTitle className="font-elegant text-2xl">
-                  {selectedDishDetail.name}
-                </SheetTitle>
-                <SheetDescription>
-                  {selectedDishDetail.description}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="mt-6 space-y-6 flex-1 overflow-y-auto pb-4">
-                {/* Image */}
-                <div className="relative aspect-video rounded-lg overflow-hidden border-2 border-accent/20">
-                  <Image
-                    src={selectedDishDetail.media_urls[0] || "/placeholder.svg"}
-                    alt={selectedDishDetail.name}
-                    fill
-                    className="object-cover"
-                  />
-                  <div className="absolute top-4 left-4 flex gap-2">
-                    {selectedDishDetail.is_best_seller && (
-                      <Badge className="bg-gradient-gold text-primary-foreground border-0">
-                        <Star className="w-3 h-3 mr-1 fill-current" />
-                        Bán Chạy
-                      </Badge>
-                    )}
-                    {selectedDishDetail.seasonal && (
-                      <Badge className="bg-green-500/90 text-white border-0">
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        Theo Mùa
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Info Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Giá</p>
-                    <p className="font-bold text-xl text-accent">
-                      {selectedDishDetail.price.toLocaleString("vi-VN")}đ
-                    </p>
-                  </div>
-                  {selectedDishDetail.rating && (
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Đánh giá</p>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                        <span className="font-semibold">
-                          {selectedDishDetail.rating.toFixed(1)}
-                        </span>
-                        {selectedDishDetail.reviews_count && (
-                          <span className="text-xs text-muted-foreground">
-                            ({selectedDishDetail.reviews_count})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Thời gian</p>
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-semibold">
-                        {selectedDishDetail.prep_time} phút
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Danh mục</p>
-                    <Badge variant="outline" className="border-accent/20">
-                      {selectedDishDetail.category_name}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Ingredients */}
-                {selectedDishDetail.ingredients &&
-                  selectedDishDetail.ingredients.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Nguyên liệu</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedDishDetail.ingredients.map((ing, idx) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            className="border-accent/20"
-                          >
-                            {ing}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Allergens */}
-                {selectedDishDetail.allergens &&
-                  selectedDishDetail.allergens.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold mb-2 text-amber-600">
-                        Dị ứng
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedDishDetail.allergens.map((allergen, idx) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            className="border-amber-500/50 text-amber-600"
-                          >
-                            {allergen}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Nutrition */}
-                {selectedDishDetail.nutrition && (
-                  <div>
-                    <h4 className="font-semibold mb-2">Dinh dưỡng</h4>
-                    <div className="grid grid-cols-4 gap-4">
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">
-                          Calories
-                        </p>
-                        <p className="font-bold">
-                          {selectedDishDetail.nutrition.calories}
-                        </p>
-                      </div>
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Protein</p>
-                        <p className="font-bold">
-                          {selectedDishDetail.nutrition.protein}g
-                        </p>
-                      </div>
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Carbs</p>
-                        <p className="font-bold">
-                          {selectedDishDetail.nutrition.carbs}g
-                        </p>
-                      </div>
-                      <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Fat</p>
-                        <p className="font-bold">
-                          {selectedDishDetail.nutrition.fat}g
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* View Full Details Button */}
-                <div className="flex gap-3 pt-4 border-t flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    className="flex-1 border-accent/20 hover:bg-accent/10"
-                    onClick={() => {
-                      router.push(`/dishes/${selectedDishDetail.id}`);
-                      setSelectedDishDetail(null);
-                      onOpenChange(false);
-                    }}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    Xem Chi Tiết & Đánh Giá
-                  </Button>
-                  <Button
-                    className="flex-1 bg-gradient-gold text-primary-foreground hover:opacity-90"
-                    onClick={() => handleAddFromDetail(selectedDishDetail)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Thêm Vào Đơn
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Detail sheet removed for API version to keep dialog light */}
     </>
   );
 }

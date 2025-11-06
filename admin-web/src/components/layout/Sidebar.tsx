@@ -18,12 +18,12 @@ import {
   Ticket,
   BarChart3,
   CalendarCheck,
-  FileWarning,
-  CircleUserRound,
   Instagram as Restaurant,
   UtensilsCrossed,
   Table,
   CreditCard,
+  CircleUserRound,
+  FileWarning,
 } from "lucide-react";
 
 const modules = [
@@ -40,9 +40,9 @@ const modules = [
   { id: "blog", label: "Blog", icon: FileText },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "notifications", label: "Thông báo", icon: Bell },
+  { id: "vouchers", label: "Voucher", icon: Ticket },
   { id: "reviews", label: "Đánh giá", icon: Star },
   { id: "complaints", label: "Khiếu nại", icon: FileWarning },
-  { id: "vouchers", label: "Voucher", icon: Ticket },
   { id: "supplier", label: "Nhà cung cấp", icon: CircleUserRound },
 ];
 

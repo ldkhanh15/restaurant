@@ -25,6 +25,7 @@ export function ComplaintManagement() {
   const fetchComplaint = async () => {
     try {
       const response = await complaintApi.getAllComplaints();
+      console.log("API response for complaints:", response.data);
       console.log("Fetched complaints:", response.data);
       setComplaints(response.data);
     } catch (error) {

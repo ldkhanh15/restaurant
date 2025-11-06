@@ -137,9 +137,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
 
     // Update browser URL
-    // window.history.pushState({}, "", path)
-    window.location.href = path
-
     window.history.pushState({}, "", path);
 
     setCurrentRoute(route);

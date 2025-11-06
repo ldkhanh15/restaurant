@@ -56,6 +56,7 @@ import {
 import { api, Order, OrderItem, Voucher } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { useOrderWebSocket } from "@/hooks/useOrderWebSocket";
 
 const ORDER_STATUSES = [
   {
@@ -120,11 +121,120 @@ export default function OrderDetailPage() {
   const [newItemInstructions, setNewItemInstructions] = useState<string>("");
   const [isAddingItem, setIsAddingItem] = useState(false);
 
+  const orderSocket = useOrderWebSocket();
+
+  const loadOrder = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.orders.getById(orderId);
+      // Handle ApiResponse type
+      const orderData = (response as any).data || response;
+      setOrder(orderData as Order);
+    } catch (error) {
+      console.error("Failed to load order:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải thông tin đơn hàng",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (orderId) {
       loadOrder();
     }
   }, [orderId]);
+
+  // Join order room for real-time updates
+  useEffect(() => {
+    if (orderSocket.isConnected && orderId) {
+      orderSocket.joinOrder(orderId);
+      return () => {
+        orderSocket.leaveOrder(orderId);
+      };
+    }
+  }, [orderSocket.isConnected, orderId, orderSocket]);
+
+  // Listen to real-time order item events
+  useEffect(() => {
+    if (!orderSocket.isConnected || !order) return;
+
+    const handleItemCreated = (data: any) => {
+      console.log("[Admin OrderDetail] Order item created:", data);
+      if (data.orderId === orderId) {
+        loadOrder(); // Refresh to get updated items
+      }
+    };
+
+    const handleItemQuantityChanged = (data: any) => {
+      console.log("[Admin OrderDetail] Order item quantity changed:", data);
+      if (data.orderId === orderId && data.item) {
+        setOrder((prev) => {
+          if (!prev) return null;
+          const existingItem = prev.items?.find(
+            (item) => item.id === data.itemId
+          );
+          if (existingItem) {
+            return {
+              ...prev,
+              items: prev.items?.map((item) =>
+                item.id === data.itemId ? { ...item, ...data.item } : item
+              ),
+              total_amount: data.order.total_amount || prev.total_amount,
+              final_amount: data.order.final_amount || prev.final_amount,
+            };
+          }
+          return prev;
+        });
+      }
+    };
+
+    const handleItemDeleted = (data: any) => {
+      console.log("[Admin OrderDetail] Order item deleted:", data);
+      if (data.orderId === orderId && data.itemId) {
+        setOrder((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            items: prev.items?.filter((item) => item.id !== data.itemId),
+            total_amount: data.order.total_amount || prev.total_amount,
+            final_amount: data.order.final_amount || prev.final_amount,
+          };
+        });
+      }
+    };
+
+    const handleItemStatusChanged = (data: any) => {
+      console.log("[Admin OrderDetail] Order item status changed:", data);
+      if (data.orderId === orderId && data.item) {
+        setOrder((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            items: prev.items?.map((item) =>
+              item.id === data.itemId ? { ...item, ...data.item } : item
+            ),
+            total_amount: data.order.total_amount || prev.total_amount,
+            final_amount: data.order.final_amount || prev.final_amount,
+          };
+        });
+      }
+    };
+
+    // Register listeners
+    orderSocket.onOrderItemCreated(handleItemCreated);
+    orderSocket.onOrderItemQuantityChanged(handleItemQuantityChanged);
+    orderSocket.onOrderItemDeleted(handleItemDeleted);
+    orderSocket.onOrderItemStatusChanged(handleItemStatusChanged);
+
+    // Cleanup function
+    return () => {
+      // Note: Socket listeners are managed by the hook, but we can add cleanup if needed
+    };
+  }, [orderSocket.isConnected, orderSocket, order, orderId]);
 
   useEffect(() => {
     if (!showAddItemDialog) return;
@@ -138,23 +248,6 @@ export default function OrderDetailPage() {
       }
     })();
   }, [showAddItemDialog]);
-
-  const loadOrder = async () => {
-    try {
-      setIsLoading(true);
-      const response = await api.orders.getById(orderId);
-      setOrder(response);
-    } catch (error) {
-      console.error("Failed to load order:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải thông tin đơn hàng",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const updateOrderStatus = async (status: string) => {
     try {
@@ -356,11 +449,15 @@ export default function OrderDetailPage() {
         const response = await api.orders.requestPayment(orderId, {
           method: paymentMethod,
           amount: order.final_amount,
+          client: "admin", // Admin-web
         });
 
         // Redirect đến VNPay
-        if (response?.redirect_url) {
-          window.location.href = response.redirect_url;
+        const redirectUrl =
+          (response as any)?.data?.redirect_url ||
+          (response as any)?.redirect_url;
+        if (redirectUrl) {
+          window.location.href = redirectUrl;
         }
       }
     } catch (error) {

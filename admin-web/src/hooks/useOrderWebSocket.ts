@@ -55,8 +55,13 @@ interface UseOrderWebSocketReturn {
   onVoucherApplied: (callback: (order: any) => void) => void;
   onVoucherRemoved: (callback: (order: any) => void) => void;
   onOrderMerged: (callback: (order: any) => void) => void;
-  onOrderItemStatusChanged: (callback: (data: OrderItemStatus) => void) => void;
+  onOrderItemStatusChanged: (
+    callback: (data: OrderItemStatus | any) => void
+  ) => void;
   onOrderNoteAdded: (callback: (data: OrderNote) => void) => void;
+  onOrderItemCreated: (callback: (data: any) => void) => void;
+  onOrderItemQuantityChanged: (callback: (data: any) => void) => void;
+  onOrderItemDeleted: (callback: (data: any) => void) => void;
   removeListeners: () => void;
 }
 
@@ -243,9 +248,37 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
   );
 
   const onOrderItemStatusChanged = useCallback(
-    (callback: (data: OrderItemStatus) => void) => {
+    (callback: (data: OrderItemStatus | any) => void) => {
       if (socket) {
         socket.on("order:item_status_updated", callback);
+        socket.on("admin:order:item_status_changed", callback);
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemCreated = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:order:item_created", callback);
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemQuantityChanged = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:order:item_quantity_changed", callback);
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemDeleted = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:order:item_deleted", callback);
       }
     },
     [socket]
@@ -276,6 +309,10 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
       socket.removeAllListeners("order:status_updated");
       socket.removeAllListeners("order:item_status_updated");
       socket.removeAllListeners("order:note_added");
+      socket.removeAllListeners("admin:order:item_created");
+      socket.removeAllListeners("admin:order:item_quantity_changed");
+      socket.removeAllListeners("admin:order:item_deleted");
+      socket.removeAllListeners("admin:order:item_status_changed");
       // Legacy
       socket.removeAllListeners("orderCreated");
       socket.removeAllListeners("orderUpdated");
@@ -316,6 +353,9 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
     onOrderMerged,
     onOrderItemStatusChanged,
     onOrderNoteAdded,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
     removeListeners,
   };
 }

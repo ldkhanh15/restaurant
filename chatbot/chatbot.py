@@ -17,7 +17,10 @@ import magic  # For MIME type detection
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("chatbot.log"), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler("chatbot.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -520,7 +523,7 @@ Handle ALL customer queries comprehensively with detailed context understanding:
      * Yêu cầu đặc biệt: preferences
    - Ask: "Thông tin trên đã đúng chưa ạ? Hiwell sẽ tiến hành đặt bàn ngay nhé!"
    - If confirmed, call POST /reservations with all data
-   - After creation, show reservation ID and link: "✅ Đã đặt bàn thành công! Mã đặt bàn: {id[:8]}. [Xem chi tiết](http://localhost:3000/reservations/:id)"
+   - After creation, show reservation ID and link: "✅ Đã đặt bàn thành công! Mã đặt bàn: {{id[:8]}}. [Xem chi tiết](http://localhost:3000/reservations/:id)"
    - Use "next_step": "confirm_reservation"
    
    **Important for Reservation:**
