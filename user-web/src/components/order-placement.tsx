@@ -128,7 +128,7 @@ export default function OrderPlacement() {
                 : item
             )
           );
-        } else {
+    } else {
           setCart([
             ...cart,
             {
@@ -181,7 +181,7 @@ export default function OrderPlacement() {
 
   const total = subtotal - discount;
 
-  return (
+    return (
     <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
@@ -236,7 +236,7 @@ export default function OrderPlacement() {
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent z-10" />
                         <img
                           src={dish.media_urls[0] || "/placeholder.jpg"}
-                          alt={dish.name}
+                        alt={dish.name}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
                         {flyingItem?.id === dish.id && (
@@ -285,10 +285,10 @@ export default function OrderPlacement() {
                       </CardContent>
                     </Card>
                   </motion.div>
-                ))}
-              </div>
+                            ))}
+                          </div>
             </motion.div>
-          </div>
+                        </div>
 
           {/* Cart Section */}
           <div className="lg:col-span-1">
@@ -344,8 +344,8 @@ export default function OrderPlacement() {
                                   src={item.image || "/placeholder.jpg"}
                                   alt={item.name}
                                   className="w-full h-full object-cover"
-                                />
-                              </div>
+                    />
+                  </div>
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-primary truncate mb-1">
                                   {item.name}
@@ -384,10 +384,10 @@ export default function OrderPlacement() {
                                     onClick={() => removeFromCart(item.dish_id)}
                                   >
                                     <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
+                      </Button>
+                    </div>
+                  </div>
+                  </div>
                           </motion.div>
                         ))
                       )}
@@ -400,9 +400,9 @@ export default function OrderPlacement() {
                     <Separator />
 
                     {/* Voucher */}
-                    <div>
-                      <Button
-                        variant="outline"
+                          <div>
+                          <Button
+                            variant="outline"
                         className="w-full justify-between border-accent/20 hover:bg-accent/5"
                         onClick={() => setShowVoucherDialog(true)}
                       >
@@ -413,8 +413,8 @@ export default function OrderPlacement() {
                             : "Áp dụng voucher"}
                         </span>
                         <Sparkles className="h-4 w-4 text-accent" />
-                      </Button>
-                    </div>
+                          </Button>
+                        </div>
 
                     {/* Summary */}
                     <div className="space-y-2 text-sm">
@@ -443,9 +443,9 @@ export default function OrderPlacement() {
                           {total.toLocaleString("vi-VN")}đ
                         </span>
                       </div>
-                    </div>
+                </div>
 
-                    {/* Payment Method */}
+            {/* Payment Method */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">
                         Phương thức thanh toán
@@ -462,7 +462,7 @@ export default function OrderPlacement() {
                           size="sm"
                         >
                           <Banknote className="h-4 w-4 mr-2" />
-                          Tiền mặt
+                      Tiền mặt
                         </Button>
                         <Button
                           variant={
@@ -477,8 +477,8 @@ export default function OrderPlacement() {
                           <Smartphone className="h-4 w-4 mr-2" />
                           VNPay
                         </Button>
-                      </div>
-                    </div>
+                  </div>
+                </div>
 
                     {/* Special Requests */}
                     <div>
@@ -492,7 +492,7 @@ export default function OrderPlacement() {
                         onChange={(e) => setSpecialRequests(e.target.value)}
                         className="mt-1 min-h-[80px] border-accent/20 focus:border-accent"
                       />
-                    </div>
+                </div>
 
                     {/* Order Button */}
                     <motion.div
@@ -510,7 +510,7 @@ export default function OrderPlacement() {
                     </motion.div>
                   </div>
                 )}
-              </Card>
+            </Card>
             </motion.div>
           </div>
         </div>

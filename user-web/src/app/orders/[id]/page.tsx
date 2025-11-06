@@ -40,7 +40,7 @@ import {
 import { useOrderStore } from "@/store/orderStore";
 import { useAuth } from "@/lib/auth";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
-import { MockDish } from "@/mock/mockDishes";
+import type { SelectableDish } from "@/components/shared/DishSelectionDialog";
 
 const itemStatusConfig: Record<
   string,
@@ -191,6 +191,18 @@ export default function OrderDetailPage({
     setDetailError,
   ]);
 
+  // Refresh order after actions
+  const refreshOrder = async () => {
+    try {
+      const response = await orderService.getOrderById(id);
+      if (response.status === "success") {
+        setSelectedOrder(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to refresh order:", err);
+    }
+  };
+
   // Join order room for real-time updates
   useEffect(() => {
     if (orderSocket.isConnected && id) {
@@ -286,28 +298,95 @@ export default function OrderDetailPage({
         });
       }
     });
+
+    // Listen to order item events - update items and totals
+    const handleItemCreated = (data: any) => {
+      console.log("[OrderDetail] Order item created:", data);
+      if (data.orderId === id && data.item) {
+        // Refresh order to get updated items list
+        refreshOrder();
+        toast({
+          title: "Đã thêm món",
+          description: `${
+            data.item.dish?.name || data.item.dish_id
+          } đã được thêm vào đơn hàng`,
+        });
+      }
+    };
+
+    const handleItemQuantityChanged = (data: any) => {
+      console.log("[OrderDetail] Order item quantity changed:", data);
+      if (data.orderId === id && data.item) {
+        // Update item in selected order
+        updateSelectedOrder({
+          items: selectedOrder?.items?.map((item: OrderItem) =>
+            item.id === data.itemId ? { ...item, ...data.item } : item
+          ),
+          total_amount:
+            data.order.total_amount || selectedOrder?.total_amount || 0,
+          final_amount:
+            data.order.final_amount || selectedOrder?.final_amount || 0,
+        });
+      }
+    };
+
+    const handleItemDeleted = (data: any) => {
+      console.log("[OrderDetail] Order item deleted:", data);
+      if (data.orderId === id && data.itemId) {
+        // Remove item from selected order
+        updateSelectedOrder({
+          items: selectedOrder?.items?.filter(
+            (item: OrderItem) => item.id !== data.itemId
+          ),
+          total_amount:
+            data.order.total_amount || selectedOrder?.total_amount || 0,
+          final_amount:
+            data.order.final_amount || selectedOrder?.final_amount || 0,
+        });
+        toast({
+          title: "Đã xóa món",
+          description: "Món đã được xóa khỏi đơn hàng",
+        });
+      }
+    };
+
+    const handleItemStatusChanged = (data: any) => {
+      console.log("[OrderDetail] Order item status changed:", data);
+      if (data.orderId === id && data.item) {
+        // Update item status in selected order
+        updateSelectedOrder({
+          items: selectedOrder?.items?.map((item: OrderItem) =>
+            item.id === data.itemId ? { ...item, ...data.item } : item
+          ),
+          total_amount:
+            data.order.total_amount || selectedOrder?.total_amount || 0,
+          final_amount:
+            data.order.final_amount || selectedOrder?.final_amount || 0,
+        });
+      }
+    };
+
+    // Register listeners
+    orderSocket.onOrderItemCreated(handleItemCreated);
+    orderSocket.onOrderItemQuantityChanged(handleItemQuantityChanged);
+    orderSocket.onOrderItemDeleted(handleItemDeleted);
+    orderSocket.onOrderItemStatusChanged(handleItemStatusChanged);
+
+    // Cleanup function
+    return () => {
+      // Note: Socket listeners are managed by the hook, but we can add cleanup if needed
+    };
   }, [
     orderSocket.isConnected,
     orderSocket,
     selectedOrder,
     id,
     updateSelectedOrder,
+    refreshOrder,
   ]);
 
-  // Refresh order after actions
-  const refreshOrder = async () => {
-    try {
-      const response = await orderService.getOrderById(id);
-      if (response.status === "success") {
-        setSelectedOrder(response.data);
-      }
-    } catch (err) {
-      console.error("Failed to refresh order:", err);
-    }
-  };
-
   // Handle add dish
-  const handleAddDish = async (dish: MockDish) => {
+  const handleAddDish = async (dish: SelectableDish) => {
     if (!selectedOrder) return;
 
     try {
@@ -507,7 +586,8 @@ export default function OrderDetailPage({
   // Handle request payment
   const handleRequestPayment = async () => {
     try {
-      const response = await orderService.requestPayment(id);
+      // Pass client=user to backend
+      const response = await orderService.requestPayment(id, "user");
       if (response.status === "success" && response.data.redirect_url) {
         // Redirect to payment URL
         window.location.href = response.data.redirect_url;

@@ -90,6 +90,30 @@ export default function registerOrderSocket(io: Server) {
 }
 
 /**
+ * Helper function to serialize order object to avoid circular references
+ */
+function serializeOrder(order: any): any {
+  if (!order) return null;
+  const orderData =
+    order && typeof order.toJSON === "function" ? order.toJSON() : order;
+  return {
+    id: orderData.id,
+    orderId: orderData.id,
+    status: orderData.status,
+    payment_status: orderData.payment_status,
+    total_amount: orderData.total_amount,
+    final_amount: orderData.final_amount,
+    user_id: orderData.user_id,
+    customer_id: orderData.customer_id,
+    table_id: orderData.table_id,
+    reservation_id: orderData.reservation_id,
+    voucher_id: orderData.voucher_id,
+    created_at: orderData.created_at,
+    updated_at: orderData.updated_at,
+  };
+}
+
+/**
  * Event Emitters (for use in services/controllers)
  */
 export const orderEvents = {
@@ -147,42 +171,36 @@ export const orderEvents = {
   },
 
   paymentRequested: (io: Server, order: any) => {
-    const payload = {
-      orderId: order.id,
-      ...order,
-    };
+    const payload = serializeOrder(order);
+    if (!payload) return;
 
     broadcastToAdmin(io, "admin:order:payment_requested", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = payload.user_id || payload.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_requested", payload);
     }
   },
 
   paymentCompleted: (io: Server, order: any) => {
-    const payload = {
-      orderId: order.id,
-      ...order,
-    };
+    const payload = serializeOrder(order);
+    if (!payload) return;
 
     broadcastToAdmin(io, "admin:order:payment_completed", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = payload.user_id || payload.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_completed", payload);
     }
   },
 
   paymentFailed: (io: Server, order: any) => {
-    const payload = {
-      orderId: order.id,
-      ...order,
-    };
+    const payload = serializeOrder(order);
+    if (!payload) return;
 
     broadcastToAdmin(io, "admin:order:payment_failed", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = payload.user_id || payload.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_failed", payload);
     }
@@ -236,6 +254,152 @@ export const orderEvents = {
     const customerId = order.user_id || order.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:merged", payload);
+    }
+  },
+
+  // OrderItem Events
+  orderItemCreated: (io: Server, orderId: string, item: any, order: any) => {
+    const payload = {
+      orderId,
+      itemId: item.id,
+      item: {
+        id: item.id,
+        order_id: item.order_id,
+        dish_id: item.dish_id,
+        quantity: item.quantity,
+        price: item.price,
+        status: item.status,
+        dish: item.dish,
+        ...item,
+      },
+      order: {
+        id: order.id,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        status: order.status,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Broadcast to all admins in order room
+    io.of("/admin")
+      .to(`order:${orderId}`)
+      .emit("admin:order:item_created", payload);
+
+    // Forward to customer if exists
+    const customerId = order.user_id || order.customer_id;
+    if (customerId) {
+      forwardToCustomer(io, customerId, "order:item_created", payload);
+    }
+  },
+
+  orderItemQuantityChanged: (
+    io: Server,
+    orderId: string,
+    item: any,
+    order: any
+  ) => {
+    const payload = {
+      orderId,
+      itemId: item.id,
+      item: {
+        id: item.id,
+        order_id: item.order_id,
+        dish_id: item.dish_id,
+        quantity: item.quantity,
+        price: item.price,
+        status: item.status,
+        dish: item.dish,
+        ...item,
+      },
+      order: {
+        id: order.id,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        status: order.status,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Broadcast to all admins in order room
+    io.of("/admin")
+      .to(`order:${orderId}`)
+      .emit("admin:order:item_quantity_changed", payload);
+
+    // Forward to customer if exists
+    const customerId = order.user_id || order.customer_id;
+    if (customerId) {
+      forwardToCustomer(io, customerId, "order:item_quantity_changed", payload);
+    }
+  },
+
+  orderItemDeleted: (
+    io: Server,
+    orderId: string,
+    itemId: string,
+    order: any
+  ) => {
+    const payload = {
+      orderId,
+      itemId,
+      order: {
+        id: order.id,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        status: order.status,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Broadcast to all admins in order room
+    io.of("/admin")
+      .to(`order:${orderId}`)
+      .emit("admin:order:item_deleted", payload);
+
+    // Forward to customer if exists
+    const customerId = order.user_id || order.customer_id;
+    if (customerId) {
+      forwardToCustomer(io, customerId, "order:item_deleted", payload);
+    }
+  },
+
+  orderItemStatusChanged: (
+    io: Server,
+    orderId: string,
+    item: any,
+    order: any
+  ) => {
+    const payload = {
+      orderId,
+      itemId: item.id,
+      item: {
+        id: item.id,
+        order_id: item.order_id,
+        dish_id: item.dish_id,
+        quantity: item.quantity,
+        price: item.price,
+        status: item.status,
+        dish: item.dish,
+        ...item,
+      },
+      order: {
+        id: order.id,
+        total_amount: order.total_amount,
+        final_amount: order.final_amount,
+        status: order.status,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Broadcast to all admins in order room
+    io.of("/admin")
+      .to(`order:${orderId}`)
+      .emit("admin:order:item_status_changed", payload);
+
+    // Forward to customer if exists
+    const customerId = order.user_id || order.customer_id;
+    if (customerId) {
+      forwardToCustomer(io, customerId, "order:item_status_changed", payload);
     }
   },
 };

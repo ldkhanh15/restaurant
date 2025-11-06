@@ -1,0 +1,76 @@
+name: Deploy User Web to Vercel
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'user-web/**'
+      - '.github/workflows/deploy-user-web.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'user-web/**'
+  workflow_dispatch: # Cho phép trigger thủ công
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_USER_WEB_PROJECT_ID }}
+
+jobs:
+  deploy:
+    name: Build and Deploy User Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: user-web/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./user-web
+
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./user-web
+
+      - name: Deploy Project Artifacts to Vercel
+        id: deploy
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./user-web
+
+      - name: Output deployment URL
+        run: |
+          echo "🚀 User Web deployed successfully!"
+          echo "🌐 Deployment URL: ${{ steps.deploy.outputs.url }}"
+          echo "🔗 Preview URL: ${{ steps.deploy.outputs.previewUrl }}"
+
+      # Optional: Comment on PR with deployment URL
+      - name: Comment PR with deployment URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 **User Web Preview Deployment**\n\n' +
+                    '🌐 Preview URL: ${{ steps.deploy.outputs.url }}\n\n' +
+                    'Deployment completed successfully!'
+            })
+

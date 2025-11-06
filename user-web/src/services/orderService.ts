@@ -146,9 +146,13 @@ export const orderService = {
 
   // Request payment
   requestPayment: (
-    orderId: string
+    orderId: string,
+    client?: "admin" | "user"
   ): Promise<{
     status: string;
     data: { redirect_url: string };
-  }> => apiClient.post(`/orders/${orderId}/payment/request`),
+  }> =>
+    apiClient.post(`/orders/${orderId}/payment/request`, {
+      client: client || "user",
+    }),
 };

@@ -9,6 +9,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  // Enable standalone output for Docker
+  output: "standalone",
+  // TEMP: disable webpack persistent file cache to avoid EIO on OneDrive/Windows
+  webpack: (config) => {
+    // Disable filesystem cache which can cause EIO errors on network/OneDrive paths
+    config.cache = false;
+    return config;
+  },
+};
 
-export default nextConfig
+export default nextConfig;

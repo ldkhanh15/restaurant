@@ -19,7 +19,14 @@ export const vnpayCallback = async (
     const params = req.query as Record<string, any>;
     const { isValid, isSuccess, kind, targetId } =
       paymentService.verifyVnpayReturn(params);
-    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+
+    const adminClient = process.env.CLIENT_ADMIN_URL || "http://localhost:8081";
+    const userClient = process.env.CLIENT_USER_URL || "http://localhost:3000";
+
+    // Determine client by looking at txnRef suffix (_ADM or _USR)
+    const txnRefRaw = String(params.vnp_TxnRef || "");
+    const isAdminTxn = /_(ADM)(?:_|$)/.test(txnRefRaw);
+    const clientUrl = isAdminTxn ? adminClient : userClient;
 
     if (!isValid) {
       return res.redirect(`${clientUrl}/payment/failed?reason=invalid_hash`);
@@ -35,7 +42,9 @@ export const vnpayCallback = async (
       if (isSuccess) {
         await OrderService.handlePaymentSuccess(order.id);
         await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
-        return res.redirect(`${clientUrl}/payment/success?order_id=${order.id}`);
+        return res.redirect(
+          `${clientUrl}/payment/success?order_id=${order.id}`
+        );
       } else {
         await OrderService.handlePaymentFailure(order.id);
         await paymentService.updatePaymentStatusByTxnRef(txnRef, "failed");
@@ -52,7 +61,7 @@ export const vnpayCallback = async (
       const txnRef = String(params.vnp_TxnRef || "");
       if (isSuccess) {
         await ReservationService.handleDepositPaymentSuccess(reservation.id);
-       
+
         await paymentService.updatePaymentStatusByTxnRef(txnRef, "completed");
         return res.redirect(
           `${clientUrl}/payment/success?reservation_id=${reservation.id}`
@@ -134,7 +143,6 @@ export const vnpayIpn = async (
     next(error);
   }
 };
-
 
 // Payment CRUD Controllers
 export const getAllPayments = async (
@@ -442,18 +450,24 @@ export const getDashboardOverview = async (
         start_date ? new Date(start_date as string) : undefined,
         end_date ? new Date(end_date as string) : undefined
       ),
-      statisticsService.getTableRevenueStats(
-        start_date ? new Date(start_date as string) : undefined,
-        end_date ? new Date(end_date as string) : undefined
-      ).then(stats => stats.slice(0, 5)), // Top 5 tables
-      statisticsService.getCustomerSpendingStats(
-        start_date ? new Date(start_date as string) : undefined,
-        end_date ? new Date(end_date as string) : undefined
-      ).then(stats => stats.slice(0, 5)), // Top 5 customers
-      statisticsService.getDishStats(
-        start_date ? new Date(start_date as string) : undefined,
-        end_date ? new Date(end_date as string) : undefined
-      ).then(stats => stats.slice(0, 5)), // Top 5 dishes
+      statisticsService
+        .getTableRevenueStats(
+          start_date ? new Date(start_date as string) : undefined,
+          end_date ? new Date(end_date as string) : undefined
+        )
+        .then((stats) => stats.slice(0, 5)), // Top 5 tables
+      statisticsService
+        .getCustomerSpendingStats(
+          start_date ? new Date(start_date as string) : undefined,
+          end_date ? new Date(end_date as string) : undefined
+        )
+        .then((stats) => stats.slice(0, 5)), // Top 5 customers
+      statisticsService
+        .getDishStats(
+          start_date ? new Date(start_date as string) : undefined,
+          end_date ? new Date(end_date as string) : undefined
+        )
+        .then((stats) => stats.slice(0, 5)), // Top 5 dishes
     ]);
 
     res.json({

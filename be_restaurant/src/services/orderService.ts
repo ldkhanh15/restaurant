@@ -305,6 +305,12 @@ class OrderService {
       throw new AppError("Quantity must be at least 1", 400);
     }
 
+    // Check if item already exists before adding
+    const existingItemBefore = await OrderItem.findOne({
+      where: { order_id: orderId, dish_id: data.dish_id },
+    });
+    const wasNewItem = !existingItemBefore;
+
     const item = await orderRepository.addItem(
       orderId,
       data.dish_id,
@@ -319,6 +325,37 @@ class OrderService {
     await notificationService.notifyOrderUpdated(updatedOrder!);
     try {
       orderEvents.orderUpdated(getIO(), updatedOrder!);
+
+      // Emit orderItemCreated or orderItemQuantityChanged event
+      const itemWithDish = await OrderItem.findByPk(item.id, {
+        include: [
+          {
+            model: Dish,
+            as: "dish",
+            attributes: ["id", "name", "price", "media_urls", "description"],
+          },
+        ],
+      });
+
+      if (itemWithDish && updatedOrder) {
+        if (wasNewItem) {
+          // New item created
+          orderEvents.orderItemCreated(
+            getIO(),
+            orderId,
+            itemWithDish.toJSON(),
+            updatedOrder
+          );
+        } else {
+          // Existing item quantity updated
+          orderEvents.orderItemQuantityChanged(
+            getIO(),
+            orderId,
+            itemWithDish.toJSON(),
+            updatedOrder
+          );
+        }
+      }
     } catch (error) {
       console.error("Failed to emit order updated event:", error);
     }
@@ -339,6 +376,32 @@ class OrderService {
       await this.recalculateOrderTotals(order.id);
       const updatedOrder = await orderRepository.findById(order.id);
       await notificationService.notifyOrderUpdated(updatedOrder!);
+
+      // Emit orderItemQuantityChanged event
+      try {
+        const itemWithDish = await OrderItem.findByPk(itemId, {
+          include: [
+            {
+              model: Dish,
+              as: "dish",
+              attributes: ["id", "name", "price", "media_urls", "description"],
+            },
+          ],
+        });
+        if (itemWithDish && updatedOrder) {
+          orderEvents.orderItemQuantityChanged(
+            getIO(),
+            order.id,
+            itemWithDish.toJSON(),
+            updatedOrder
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to emit order item quantity changed event:",
+          error
+        );
+      }
     }
 
     return item;
@@ -358,6 +421,33 @@ class OrderService {
     await this.recalculateOrderTotals(itemOrder.order_id as string);
     const item = await orderRepository.updateItemStatus(itemId, status);
 
+    // Emit orderItemStatusChanged event
+    try {
+      const order = await Order.findByPk(itemOrder.order_id as string);
+      if (order) {
+        const updatedOrder = await orderRepository.findById(order.id);
+        const itemWithDish = await OrderItem.findByPk(itemId, {
+          include: [
+            {
+              model: Dish,
+              as: "dish",
+              attributes: ["id", "name", "price", "media_urls", "description"],
+            },
+          ],
+        });
+        if (itemWithDish && updatedOrder) {
+          orderEvents.orderItemStatusChanged(
+            getIO(),
+            order.id,
+            itemWithDish.toJSON(),
+            updatedOrder
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to emit order item status changed event:", error);
+    }
+
     return item;
   }
 
@@ -369,17 +459,19 @@ class OrderService {
     if (item.status !== "pending") {
       throw new AppError("Item is not pending", 400);
     }
+    const orderId = item.order_id as string;
     await orderRepository.deleteItem(itemId);
 
     // Recalculate order totals
-    await this.recalculateOrderTotals(item.order_id as string);
+    await this.recalculateOrderTotals(orderId);
 
-    const updatedOrder = await orderRepository.findById(
-      item.order_id as string
-    );
+    const updatedOrder = await orderRepository.findById(orderId);
     await notificationService.notifyOrderUpdated(updatedOrder!);
     try {
       orderEvents.orderUpdated(getIO(), updatedOrder!);
+
+      // Emit orderItemDeleted event
+      orderEvents.orderItemDeleted(getIO(), orderId, itemId, updatedOrder!);
     } catch (error) {
       console.error("Failed to emit order updated event:", error);
     }
@@ -419,13 +511,13 @@ class OrderService {
     ) {
       throw new AppError("Order does not meet voucher minimum value", 400);
     }
-    console.log('voucher', voucher);
+    console.log("voucher", voucher);
     // Calculate discount
     let discountAmount = 0;
     if (voucher.discount_type === "percentage") {
       console.log("voucher.value", voucher.value);
       console.log("order.total_amount", order.total_amount);
-      console.log('type',voucher.discount_type)
+      console.log("type", voucher.discount_type);
       discountAmount = Math.min(
         (Number(order.total_amount) * Number(voucher.value)) / 100,
         Number(order.total_amount)
@@ -433,7 +525,10 @@ class OrderService {
     } else {
       console.log("voucher.value", voucher.value);
       console.log("order.total_amount", order.total_amount);
-      discountAmount = Math.min(Number(voucher.value), Number(order.total_amount));
+      discountAmount = Math.min(
+        Number(voucher.value),
+        Number(order.total_amount)
+      );
     }
     console.log("discountAmount", discountAmount);
     const updatedOrder = await orderRepository.applyVoucher(
@@ -530,7 +625,11 @@ class OrderService {
     return { message: "Support requested successfully" };
   }
 
-  async requestPayment(orderId: string, bankCode?: string) {
+  async requestPayment(
+    orderId: string,
+    bankCode?: string,
+    client: "admin" | "user" = "user"
+  ) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
       throw new AppError("Order not found", 404);
@@ -547,7 +646,8 @@ class OrderService {
     const paymentUrl = paymentService.generateVnpayOrderUrl(
       order,
       bankCode,
-      clientIp
+      clientIp,
+      client
     );
     await paymentService.createPendingPayment({
       order_id: orderId,

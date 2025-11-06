@@ -24,6 +24,10 @@ interface UseOrderSocketReturn {
   onVoucherApplied: (callback: (order: Order) => void) => void;
   onVoucherRemoved: (callback: (order: Order) => void) => void;
   onOrderMerged: (callback: (order: Order) => void) => void;
+  onOrderItemCreated: (callback: (data: any) => void) => void;
+  onOrderItemQuantityChanged: (callback: (data: any) => void) => void;
+  onOrderItemDeleted: (callback: (data: any) => void) => void;
+  onOrderItemStatusChanged: (callback: (data: any) => void) => void;
   removeListeners: () => void;
 }
 
@@ -253,6 +257,50 @@ export function useOrderSocket(): UseOrderSocketReturn {
     [socket, updateOrder]
   );
 
+  const onOrderItemCreated = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("order:item_created", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemQuantityChanged = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("order:item_quantity_changed", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemDeleted = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("order:item_deleted", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onOrderItemStatusChanged = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("order:item_status_changed", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
   // Store getters
   const getOrder = useCallback(
     (orderId: string) => {
@@ -280,6 +328,10 @@ export function useOrderSocket(): UseOrderSocketReturn {
       socket.removeAllListeners("order:voucher_applied");
       socket.removeAllListeners("order:voucher_removed");
       socket.removeAllListeners("order:merged");
+      socket.removeAllListeners("order:item_created");
+      socket.removeAllListeners("order:item_quantity_changed");
+      socket.removeAllListeners("order:item_deleted");
+      socket.removeAllListeners("order:item_status_changed");
     }
   }, [socket]);
 
@@ -307,6 +359,10 @@ export function useOrderSocket(): UseOrderSocketReturn {
     onVoucherApplied,
     onVoucherRemoved,
     onOrderMerged,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
+    onOrderItemStatusChanged,
     removeListeners,
   };
 }

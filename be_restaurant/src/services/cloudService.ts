@@ -3,9 +3,9 @@ import fs from 'fs'
 
 // ⚙️ Cấu hình Cloudinary SDK (chỉ làm 1 lần)
 cloudinary.config({
-  cloud_name: 'dsudwzjut',
-  api_key: '949799532858167',
-  api_secret: 'uEKiSoVdWkdwuXs4LYWOkqz-WcM',
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
 export default cloudinary

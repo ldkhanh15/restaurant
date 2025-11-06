@@ -228,7 +228,14 @@ class ReservationService {
 
     // If VIP user, create order immediately
     if (isVip && data.pre_order_items && data.pre_order_items.length > 0) {
-      console.log(`[ReservationService] Creating order for VIP reservation user_id=${data.user_id} table_id=${data.table_id} reservation_temp=${/* temporary reservation id unknown yet */ ''} pre_order_items=`, data.pre_order_items)
+      console.log(
+        `[ReservationService] Creating order for VIP reservation user_id=${
+          data.user_id
+        } table_id=${data.table_id} reservation_temp=${
+          /* temporary reservation id unknown yet */ ""
+        } pre_order_items=`,
+        data.pre_order_items
+      );
       const order = await Order.create({
         user_id: data.user_id,
         table_id: data.table_id,
@@ -430,7 +437,10 @@ class ReservationService {
           order = existingOrder;
         } else {
           // Create new order
-          console.log(`[ReservationService] updateReservation creating new order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`, data.pre_order_items)
+          console.log(
+            `[ReservationService] updateReservation creating new order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`,
+            data.pre_order_items
+          );
           order = await Order.create({
             user_id: reservation.user_id,
             table_id: reservation.table_id,
@@ -597,7 +607,7 @@ class ReservationService {
       ...preferences,
       cancellation_reason: reason,
       cancelled_at: new Date().toISOString(),
-      cancelled_by: "admin", // Could be enhanced to use req.user.id
+      cancelled_by: reservation.user_id ? "user" : "admin", // Could be enhanced to use req.user.id
     };
 
     // Update reservation status to cancelled and save reason
@@ -621,12 +631,7 @@ class ReservationService {
     }
 
     // Send notification and WebSocket event
-    try {
-      await notificationService.notifyReservationUpdated(updatedReservation);
-    } catch (error) {
-      console.error("Failed to send cancellation notification:", error);
-    }
-
+    await notificationService.notifyReservationUpdated(updatedReservation);
     try {
       reservationEvents.reservationStatusChanged(getIO(), updatedReservation);
     } catch (error) {
@@ -662,7 +667,8 @@ class ReservationService {
   async createDepositPayment(
     reservationId: string,
     amount: number,
-    bankCode?: string
+    bankCode?: string,
+    client?: "admin" | "user"
   ) {
     const reservation = await reservationRepository.findById(reservationId);
     if (!reservation) {
@@ -694,7 +700,8 @@ class ReservationService {
       reservationId,
       amount,
       bankCode,
-      clientIp
+      clientIp,
+      client || "user"
     );
     console.log("url", url);
     return { redirect_url: url };
@@ -709,7 +716,10 @@ class ReservationService {
     // Create order with pre-order items if they exist
     const preOrderItems = reservation?.pre_order_items;
     if (preOrderItems && preOrderItems.length > 0) {
-      console.log(`[ReservationService] handleDepositPaymentSuccess creating order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`, preOrderItems)
+      console.log(
+        `[ReservationService] handleDepositPaymentSuccess creating order for reservation=${reservation.id} user_id=${reservation.user_id} pre_order_items=`,
+        preOrderItems
+      );
       const order = await Order.create({
         user_id: reservation.user_id,
         table_id: reservation.table_id,
@@ -792,6 +802,227 @@ class ReservationService {
     }
 
     return reservation;
+  }
+
+  // Helper methods for managing pre-order dishes
+  async addDishToReservation(
+    reservationId: string,
+    dishId: string,
+    quantity: number
+  ) {
+    const reservation = await this.getReservationById(reservationId);
+    if (!reservation) {
+      throw new AppError("Reservation not found", 404);
+    }
+
+    // Check if reservation can be modified
+    const canModify = await reservationRepository.canModify(reservationId);
+    if (!canModify) {
+      throw new AppError("Reservation cannot be modified at this time", 400);
+    }
+
+    // Validate dish
+    const dish = await Dish.findByPk(dishId);
+    if (!dish || !dish.active) {
+      throw new AppError("Dish not found or inactive", 404);
+    }
+
+    // Get current pre_order_items
+    const preOrderItems = (reservation.pre_order_items || []) as Array<{
+      dish_id: string;
+      quantity: number;
+    }>;
+
+    // Check if dish already exists
+    const existingIndex = preOrderItems.findIndex(
+      (item) => item.dish_id === dishId
+    );
+
+    if (existingIndex >= 0) {
+      // Update quantity
+      preOrderItems[existingIndex].quantity += quantity;
+    } else {
+      // Add new dish
+      preOrderItems.push({ dish_id: dishId, quantity });
+    }
+
+    // Update reservation
+    const updatedReservation = await reservationRepository.update(
+      reservationId,
+      { pre_order_items: preOrderItems }
+    );
+
+    // Emit dish added event
+    try {
+      const dishWithDetails = {
+        dish_id: dishId,
+        quantity:
+          existingIndex >= 0 ? preOrderItems[existingIndex].quantity : quantity,
+        dish: {
+          id: dish.id,
+          name: dish.name,
+          price: dish.price,
+          media_urls: dish.media_urls,
+          description: dish.description,
+        },
+      };
+      reservationEvents.reservationDishAdded(
+        getIO(),
+        reservationId,
+        dishWithDetails,
+        updatedReservation
+      );
+    } catch (error) {
+      console.error("Failed to emit reservation dish added event:", error);
+    }
+
+    // Also emit reservation updated
+    await notificationService.notifyReservationUpdated(updatedReservation);
+    try {
+      reservationEvents.reservationUpdated(getIO(), updatedReservation);
+    } catch (error) {
+      console.error("Failed to emit reservation updated event:", error);
+    }
+
+    return updatedReservation;
+  }
+
+  async updateDishQuantity(
+    reservationId: string,
+    dishId: string,
+    quantity: number
+  ) {
+    const reservation = await this.getReservationById(reservationId);
+    if (!reservation) {
+      throw new AppError("Reservation not found", 404);
+    }
+
+    // Check if reservation can be modified
+    const canModify = await reservationRepository.canModify(reservationId);
+    if (!canModify) {
+      throw new AppError("Reservation cannot be modified at this time", 400);
+    }
+
+    if (quantity < 1) {
+      throw new AppError("Quantity must be at least 1", 400);
+    }
+
+    // Get current pre_order_items
+    const preOrderItems = (reservation.pre_order_items || []) as Array<{
+      dish_id: string;
+      quantity: number;
+    }>;
+
+    const existingIndex = preOrderItems.findIndex(
+      (item) => item.dish_id === dishId
+    );
+
+    if (existingIndex < 0) {
+      throw new AppError("Dish not found in reservation", 404);
+    }
+
+    // Update quantity
+    preOrderItems[existingIndex].quantity = quantity;
+
+    // Update reservation
+    const updatedReservation = await reservationRepository.update(
+      reservationId,
+      { pre_order_items: preOrderItems }
+    );
+
+    // Emit dish updated event
+    try {
+      const dish = await Dish.findByPk(dishId);
+      const dishWithDetails = {
+        dish_id: dishId,
+        quantity,
+        dish: dish
+          ? {
+              id: dish.id,
+              name: dish.name,
+              price: dish.price,
+              media_urls: dish.media_urls,
+              description: dish.description,
+            }
+          : null,
+      };
+      reservationEvents.reservationDishUpdated(
+        getIO(),
+        reservationId,
+        dishWithDetails,
+        updatedReservation
+      );
+    } catch (error) {
+      console.error("Failed to emit reservation dish updated event:", error);
+    }
+
+    // Also emit reservation updated
+    await notificationService.notifyReservationUpdated(updatedReservation);
+    try {
+      reservationEvents.reservationUpdated(getIO(), updatedReservation);
+    } catch (error) {
+      console.error("Failed to emit reservation updated event:", error);
+    }
+
+    return updatedReservation;
+  }
+
+  async removeDishFromReservation(reservationId: string, dishId: string) {
+    const reservation = await this.getReservationById(reservationId);
+    if (!reservation) {
+      throw new AppError("Reservation not found", 404);
+    }
+
+    // Check if reservation can be modified
+    const canModify = await reservationRepository.canModify(reservationId);
+    if (!canModify) {
+      throw new AppError("Reservation cannot be modified at this time", 400);
+    }
+
+    // Get current pre_order_items
+    const preOrderItems = (reservation.pre_order_items || []) as Array<{
+      dish_id: string;
+      quantity: number;
+    }>;
+
+    const existingIndex = preOrderItems.findIndex(
+      (item) => item.dish_id === dishId
+    );
+
+    if (existingIndex < 0) {
+      throw new AppError("Dish not found in reservation", 404);
+    }
+
+    // Remove dish
+    preOrderItems.splice(existingIndex, 1);
+
+    // Update reservation
+    const updatedReservation = await reservationRepository.update(
+      reservationId,
+      { pre_order_items: preOrderItems }
+    );
+
+    // Emit dish removed event
+    try {
+      reservationEvents.reservationDishRemoved(
+        getIO(),
+        reservationId,
+        dishId,
+        updatedReservation
+      );
+    } catch (error) {
+      console.error("Failed to emit reservation dish removed event:", error);
+    }
+
+    // Also emit reservation updated
+    await notificationService.notifyReservationUpdated(updatedReservation);
+    try {
+      reservationEvents.reservationUpdated(getIO(), updatedReservation);
+    } catch (error) {
+      console.error("Failed to emit reservation updated event:", error);
+    }
+
+    return updatedReservation;
   }
 }
 
