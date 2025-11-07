@@ -4,13 +4,47 @@ import Voucher from "../models/Voucher"
 import { AppError } from "../middlewares/errorHandler"
 import Reservation from "../models/Reservation"
 import paymentService from "../services/payment_app_userService"
-import { VNPAY_CONFIG } from "../config/vnpay.config"
+import { VNPAY_CONFIG, generateSecureHash } from "../config/vnpay.config"
 import OrderService from "../services/orderService"
 import { getIO } from "../sockets"
 import { orderEvents } from "../sockets/orderSocket"
 
+// Helper: build a redirect URL for the client. Prefers app deep link when kind='app' and
+// CLIENT_APP_SCHEME is configured, otherwise falls back to CLIENT_URL web path.
+function buildClientRedirectUrl(opts: { kind: 'app' | 'web'; path: string; fallbackPath?: string }) {
+    const clientUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '')
+    const appSchemeRaw = (process.env.CLIENT_APP_SCHEME || '').trim()
+
+    if (opts.kind === 'app' && appSchemeRaw) {
+        // If APP SCHEME is an http(s) URL, use it as a web fallback URL
+        if (/^https?:\/\//i.test(appSchemeRaw)) {
+            const base = appSchemeRaw.replace(/\/$/, '')
+            return base + (opts.path.startsWith('/') ? opts.path : '/' + opts.path)
+        }
+
+        // Normalize custom scheme (e.g. 'restaurantapp://' or 'restaurantapp')
+        let scheme = appSchemeRaw.replace(/:\/\/*$/, '')
+        // If path begins with '/', drop the leading slash for app-scheme concatenation
+        const path = opts.path.startsWith('/') ? opts.path.slice(1) : opts.path
+        return scheme + '://' + path
+    }
+
+    // Web redirect (or missing app scheme)
+    const usePath = opts.fallbackPath ?? opts.path
+    return clientUrl + (usePath.startsWith('/') ? usePath : '/' + usePath)
+}
+
 export const createVnpayPayment = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        // Dev-only: log incoming request body/query/headers to help debug missing order_id
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                console.debug('[payment_app_user] createVnpayPayment request body:', JSON.stringify(req.body))
+                console.debug('[payment_app_user] createVnpayPayment query:', JSON.stringify(req.query))
+                console.debug('[payment_app_user] createVnpayPayment headers sample:', JSON.stringify({ accept: req.headers.accept, 'user-agent': req.headers['user-agent'], authorization: req.headers.authorization ? String(req.headers.authorization).slice(0, 40) + '...' : undefined }))
+            } catch (e) { /* ignore */ }
+        }
+
         // Extract order_id early so we can include it in dev mock responses if needed
         const { order_id } = req.body as { order_id?: string }
 
@@ -67,7 +101,8 @@ export const createVnpayPayment = async (req: Request, res: Response, next: Next
         }
 
         // Get client IP
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
+        const forwarded = req.headers['x-forwarded-for'];
+        const clientIp = Array.isArray(forwarded) ? forwarded[0] : (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : (req.ip || "127.0.0.1"));
         // If client passed an expected amount, ensure it matches server computation (if vouchers were provided)
         if (typeof amount === 'number' && computedFinalAmount !== undefined) {
             // Allow small rounding differences
@@ -77,9 +112,56 @@ export const createVnpayPayment = async (req: Request, res: Response, next: Next
             }
         }
 
+        // Dev-only: allow per-request override of return URL via `_override_return` (only in non-production)
+        const _override = (req.body && req.body._override_return) || (req.query && req.query._override_return)
+        let overrideReturnUrl: string | undefined = undefined
+        if (_override && process.env.NODE_ENV !== 'production') {
+            try {
+                const u = new URL(String(_override))
+                if (u.protocol === 'http:' || u.protocol === 'https:') overrideReturnUrl = u.toString()
+            } catch (e) { /* ignore invalid override */ }
+        }
+
         // Generate VNPay redirect URL — pass amount override if server computed it
         const amountOverride = computedFinalAmount ?? (typeof amount === 'number' ? amount : undefined)
-        const url = paymentService.generateVnpayRedirectUrl(order, bankCode, clientIp, amountOverride)
+        const url = paymentService.generateVnpayRedirectUrl(order, bankCode, clientIp, amountOverride, overrideReturnUrl)
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                console.debug('[payment_app_user] Generated VNPay redirect URL:', url)
+            } catch (_) {}
+        }
+        // Extra debug: log parsed query params (txnRef, amount, tmn, hash) to help troubleshoot VNPay format errors
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                const u = new URL(url)
+                const qp = Object.fromEntries(u.searchParams.entries())
+                console.debug('[payment_app_user] VNPay params sample:', {
+                    vnp_TxnRef: qp.vnp_TxnRef,
+                    vnp_Amount: qp.vnp_Amount,
+                    vnp_TmnCode: qp.vnp_TmnCode,
+                    vnp_SecureHash: qp.vnp_SecureHash ? qp.vnp_SecureHash.substr(0, 8) + '...' : undefined,
+                })
+            } catch (err) {
+                console.error('[payment_app_user] Failed to parse VNPay url for debug', err)
+            }
+        }
+
+        // Decide whether to redirect the client immediately to VNPay.
+        // Keep existing behavior (JSON response with redirect_url) for API clients.
+        // But when the request originates from a browser (Accept: text/html) or
+        // the client explicitly asks for redirect via query/header, perform a 302.
+        const wantRedirectExplicit = (String(req.query?.redirect || '').toLowerCase() === 'true') || (String(req.headers['x-redirect'] || '').toLowerCase() === 'true')
+        const acceptHeader = String(req.headers['accept'] || '')
+        const userAgent = String(req.headers['user-agent'] || '')
+
+        const looksLikeBrowser = acceptHeader.includes('text/html') || /mozilla|chrome|safari/i.test(userAgent)
+
+        if (wantRedirectExplicit || looksLikeBrowser) {
+            // Use 302 redirect so browser will open VNPay's hosted pages (bank selection, login, OTP)
+            return res.redirect(url)
+        }
+
+        // Default for API clients: return the URL so the client can open it in an in-app WebView
         res.json({ status: "success", data: { redirect_url: url } })
     } catch (error) {
         next(error)
@@ -139,11 +221,98 @@ export const vnpayCallback = async (req: Request, res: Response, next: NextFunct
     try {
         const params = req.query as Record<string, any>
 
+        // Temporary debug log to help understand why debug responses may not be returned
+        try {
+            if (process.env.NODE_ENV !== 'production') {
+                console.error('[VNPAY TRACE] vnpayCallback invoked. NODE_ENV=', process.env.NODE_ENV, 'vnp_debug=', req.query?.vnp_debug || req.query?.debug)
+                console.error('[VNPAY TRACE] incoming params sample:', { vnp_TxnRef: params.vnp_TxnRef, vnp_SecureHash: params.vnp_SecureHash ? String(params.vnp_SecureHash).substr(0, 8) + '...' : undefined });
+            }
+        } catch (e) { /* ignore */ }
+
         // Verify VNPay return parameters
-        const { isValid, isSuccess, kind, targetId } = paymentService.verifyVnpayReturn(params)
+        let { isValid, isSuccess, kind, targetId } = paymentService.verifyVnpayReturn(params)
+
+        // Fallback: some txnRef formats or earlier changes may produce undefined
+        // kind/targetId from the service. If verification succeeded but kind is
+        // missing, try a tolerant parse of params.vnp_TxnRef here so the
+        // controller routing still works. This keeps the fix local to app_user
+        // files and avoids touching shared services.
+        if (isValid && !kind && typeof params.vnp_TxnRef === 'string') {
+            try {
+                const raw = params.vnp_TxnRef as string
+                // Normalize: trim and keep original casing for prefix checks
+                const trimmed = raw.trim()
+                const firstUnderscore = trimmed.indexOf('_')
+                let prefix = trimmed
+                let id = ''
+                if (firstUnderscore >= 0) {
+                    prefix = trimmed.substring(0, firstUnderscore)
+                    id = trimmed.substring(firstUnderscore + 1)
+                }
+                // Accept common alternative prefixes (lower/upper) and legacy forms
+                const p = prefix.toUpperCase()
+                if (p === 'ORDER' || p === 'ORD' || p === 'ORDR') {
+                    kind = 'order'
+                    targetId = id || undefined
+                } else if (p === 'DEPOSIT_ORDER' || p === 'DEPOSITORD' || p === 'DEP_ORDER') {
+                    kind = 'deposit_order'
+                    targetId = id || undefined
+                } else if (p === 'DEPOSIT_RES' || p === 'DEPOSITRES' || p === 'DEP_RES') {
+                    kind = 'deposit_reservation'
+                    targetId = id || undefined
+                }
+            } catch (e) {
+                // non-fatal: leave kind/targetId as-is
+                console.debug('[payment_app_user] txnRef fallback parse failed', e)
+            }
+        }
+        // Ensure trace is visible in all environments (console.log used because the project logger may not be initialized yet)
+        try {
+            console.log('[VNPAY TRACE] verifyResult', { isValid, isSuccess, kind, targetId, txnRef: params.vnp_TxnRef })
+        } catch (e) { /* ignore logging failure */ }
 
         if (!isValid) {
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=invalid_hash`)
+            // In development, return debug JSON to aid troubleshooting when:
+            // - NODE_ENV !== 'production' OR
+            // - debug query param present (vnp_debug=1) OR
+            // - VNP_ALLOW_DEBUG=true OR
+            // - request host looks like an ngrok forwarding host (convenience for dev)
+            const debugRequested = String(req.query?.vnp_debug || req.query?.debug || '').toLowerCase() === '1' || String(process.env.VNP_ALLOW_DEBUG || '').toLowerCase() === 'true' || (process.env.NODE_ENV !== 'production')
+
+            // Treat ngrok hostnames as debug requests automatically in dev to avoid
+            // requiring env changes on the developer machine.
+            const hostHeader = String(req.headers.host || '')
+            const fromNgrok = /ngrok/i.test(hostHeader)
+
+            if (debugRequested || fromNgrok) {
+                try {
+                    const paramsForVerify = { ...params }
+                    delete paramsForVerify.vnp_SecureHash
+                    delete paramsForVerify.vnp_SecureHashType
+                    const expectedHash = generateSecureHash(paramsForVerify)
+
+                    const debugQuery = new URLSearchParams({
+                        reason: 'invalid_hash',
+                        provided: params.vnp_SecureHash,
+                        expected: expectedHash,
+                    }).toString()
+
+                    const clientRedirect = buildClientRedirectUrl({ 
+                        kind: 'app', 
+                        path: `/payment/failed?${debugQuery}`,
+                        fallbackPath: `/payment/failed?${debugQuery}`
+                    })
+                    return res.redirect(clientRedirect)
+                } catch (err) {
+                    console.error('[payment_app_user] debug response generation error', err)
+                    // Fallback to a simpler redirect if debug info fails to generate
+                    const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `/payment/failed?reason=invalid_hash&debug_error=true`, fallbackPath: `/payment/failed?reason=invalid_hash&debug_error=true` })
+                    return res.redirect(clientRedirect)
+                }
+            }
+
+            const clientRedirect = buildClientRedirectUrl({ kind: 'web', path: `/payment/failed?reason=invalid_hash` })
+            return res.redirect(clientRedirect)
         }
 
         if (kind === "order") {
@@ -160,10 +329,13 @@ export const vnpayCallback = async (req: Request, res: Response, next: NextFunct
                     // Fallback: ensure order is marked paid
                     try { await order.update({ payment_status: "paid", status: "paid", payment_method: "vnpay" }) } catch {}
                 }
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?order_id=${order.id}`)
+                // Prefer deep link into the app when available
+                const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/success?order_id=${order.id}`, fallbackPath: `/payment/success?order_id=${order.id}` })
+                return res.redirect(clientRedirect)
             } else {
                 await order.update({ payment_status: "failed" })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?order_id=${order.id}`)
+                const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/failed?order_id=${order.id}`, fallbackPath: `/payment/failed?order_id=${order.id}` })
+                return res.redirect(clientRedirect)
             }
         }
 
@@ -175,9 +347,11 @@ export const vnpayCallback = async (req: Request, res: Response, next: NextFunct
             if (isSuccess) {
                 const amount = Number(params.vnp_Amount || 0) / 100
                 await order.update({ deposit_amount: Number(order.deposit_amount || 0) + amount })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?type=deposit&order_id=${order.id}`)
+                const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/success?type=deposit&order_id=${order.id}`, fallbackPath: `/payment/success?type=deposit&order_id=${order.id}` })
+                return res.redirect(clientRedirect)
             }
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?type=deposit&order_id=${order.id}`)
+            const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/failed?type=deposit&order_id=${order.id}`, fallbackPath: `/payment/failed?type=deposit&order_id=${order.id}` })
+            return res.redirect(clientRedirect)
         }
 
         if (kind === "deposit_reservation") {
@@ -188,12 +362,14 @@ export const vnpayCallback = async (req: Request, res: Response, next: NextFunct
             if (isSuccess) {
                 const amount = Number(params.vnp_Amount || 0) / 100
                 await reservation.update({ deposit_amount: Number(reservation.deposit_amount || 0) + amount })
-                return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/success?type=deposit&reservation_id=${reservation.id}`)
+                const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/success?type=deposit&reservation_id=${reservation.id}`, fallbackPath: `/payment/success?type=deposit&reservation_id=${reservation.id}` })
+                return res.redirect(clientRedirect)
             }
-            return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?type=deposit&reservation_id=${reservation.id}`)
+            const clientRedirect = buildClientRedirectUrl({ kind: 'app', path: `payment/failed?type=deposit&reservation_id=${reservation.id}`, fallbackPath: `/payment/failed?type=deposit&reservation_id=${reservation.id}` })
+            return res.redirect(clientRedirect)
         }
 
-        return res.redirect(`${process.env.CLIENT_URL || "http://localhost:3000"}/payment/failed?reason=unknown_type`)
+        return res.redirect(buildClientRedirectUrl({ kind: 'web', path: `/payment/failed?reason=unknown_type` }))
     } catch (error) {
         next(error)
     }
@@ -201,12 +377,38 @@ export const vnpayCallback = async (req: Request, res: Response, next: NextFunct
 
 export const vnpayIpn = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        // Log incoming IPN for debugging (headers + body) in non-production
+        try {
+            if (process.env.NODE_ENV !== 'production') {
+                console.debug('[payment_app_user] VNPay IPN headers:', JSON.stringify(req.headers))
+                console.debug('[payment_app_user] VNPay IPN body:', JSON.stringify(req.body))
+            }
+        } catch (e) { /* ignore logging failure */ }
+
         const params = req.body as Record<string, any>
 
         // Verify VNPay IPN parameters
         const { isValid, isSuccess, kind, targetId } = paymentService.verifyVnpayReturn(params)
 
         if (!isValid) {
+            // If debug allowed, compute expected hash and include in logs/response for troubleshooting
+            try {
+                    if (process.env.NODE_ENV !== 'production' || String(process.env.VNP_ALLOW_DEBUG || '').toLowerCase() === 'true') {
+                    const { generateSecureHash } = require('../config/vnpay.config')
+                    const paramsForVerify = { ...params }
+                    delete paramsForVerify.vnp_SecureHash
+                    delete paramsForVerify.vnp_SecureHashType
+                    const expected = generateSecureHash(paramsForVerify)
+                    let signData: string | undefined = undefined
+                    try { signData = require('../config/vnpay.config').buildSignData(paramsForVerify) } catch (e) { /* ignore */ }
+                    console.debug('[payment_app_user] VNPay IPN invalid checksum, provided:', params.vnp_SecureHash, 'expected:', expected, 'signData:', signData)
+                    // Still respond with checksum failed code (VNPay expects RspCode format)
+                    return res.json({ RspCode: '97', Message: 'Checksum failed', provided: params.vnp_SecureHash || '', expected, signData })
+                }
+            } catch (err) {
+                console.error('[payment_app_user] VNPay IPN debug compute error', err)
+            }
+
             return res.json({ RspCode: "97", Message: "Checksum failed" })
         }
 
@@ -250,6 +452,8 @@ export const vnpayIpn = async (req: Request, res: Response, next: NextFunction) 
             return res.json({ RspCode: "00", Message: "Success" })
         }
 
+
+        console.error('[VNPAY TRACE] unknown type branch reached', { kind, paramsTxnRef: params.vnp_TxnRef })
         return res.json({ RspCode: "02", Message: "Unhandled" })
     } catch (error) {
         next(error)
@@ -285,9 +489,19 @@ export const createDepositForOrder = async (req: Request, res: Response, next: N
                 },
             })
         }
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
-        const url = paymentService.generateVnpayDepositUrl("order", order_id, Number(amount), bankCode, clientIp)
-        res.json({ status: "success", data: { redirect_url: url } })
+    const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
+    // Dev-only: accept _override_return for deposit flows as well
+    const _override = (req.body && req.body._override_return) || (req.query && req.query._override_return)
+    let overrideReturnUrl: string | undefined = undefined
+    if (_override && process.env.NODE_ENV !== 'production') {
+        try { const u = new URL(String(_override)); if (u.protocol === 'http:' || u.protocol === 'https:') overrideReturnUrl = u.toString() } catch (e) {}
+    }
+    const url = paymentService.generateVnpayDepositUrl("order", order_id, Number(amount), bankCode, clientIp, overrideReturnUrl)
+
+    const wantRedirect = (String(req.query?.redirect || '').toLowerCase() === 'true') || (String(req.headers['x-redirect'] || '').toLowerCase() === 'true')
+    if (wantRedirect) return res.redirect(url)
+
+    res.json({ status: "success", data: { redirect_url: url } })
     } catch (error) {
         next(error)
     }
@@ -322,9 +536,19 @@ export const createDepositForReservation = async (req: Request, res: Response, n
                 },
             })
         }
-        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
-        const url = paymentService.generateVnpayDepositUrl("reservation", reservation_id, Number(amount), bankCode, clientIp)
-        res.json({ status: "success", data: { redirect_url: url } })
+    const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || "127.0.0.1"
+    // Dev-only: accept _override_return for deposit flows as well
+    const _overrideRes = (req.body && req.body._override_return) || (req.query && req.query._override_return)
+    let overrideReturnUrlRes: string | undefined = undefined
+    if (_overrideRes && process.env.NODE_ENV !== 'production') {
+        try { const u = new URL(String(_overrideRes)); if (u.protocol === 'http:' || u.protocol === 'https:') overrideReturnUrlRes = u.toString() } catch (e) {}
+    }
+    const url = paymentService.generateVnpayDepositUrl("reservation", reservation_id, Number(amount), bankCode, clientIp, overrideReturnUrlRes)
+
+    const wantRedirect = (String(req.query?.redirect || '').toLowerCase() === 'true') || (String(req.headers['x-redirect'] || '').toLowerCase() === 'true')
+    if (wantRedirect) return res.redirect(url)
+
+    res.json({ status: "success", data: { redirect_url: url } })
     } catch (error) {
         next(error)
     }
@@ -344,9 +568,39 @@ export const devSuccessPage = async (req: Request, res: Response, next: NextFunc
                 const type = query.type || ''
 
                         const clientUrl = process.env.CLIENT_URL || ''
-                        const appScheme = process.env.CLIENT_APP_SCHEME || 'restaurantapp://'
+                                const appScheme = process.env.CLIENT_APP_SCHEME || 'restaurantapp://'
 
-                        const html = `<!doctype html>
+                                // If VNPay is configured, attempt to build a VNPay redirect URL for this order (dev only)
+                                let vnPayUrl = ''
+                                if (process.env.NODE_ENV !== 'production' && VNPAY_CONFIG.VNP_TMN_CODE && VNPAY_CONFIG.VNP_HASH_SECRET) {
+                                    try {
+                                        const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || '127.0.0.1'
+                                        if (orderId) {
+                                            const orderObj = await Order.findByPk(orderId)
+                                            if (orderObj) {
+                                                // Generate a VNPay redirect URL (no amount override, no bankCode)
+                                                vnPayUrl = paymentService.generateVnpayRedirectUrl(orderObj, undefined, clientIp)
+                                            } else {
+                                                // Dev helper: if order not present in DB, build a temporary order-like object
+                                                // so developers can test VNPay flow without creating DB records.
+                                                const tempOrder = {
+                                                    id: orderId || `DEV_${Date.now()}`,
+                                                    total_amount: 100000,
+                                                    final_amount: 100000,
+                                                    payment_status: 'pending',
+                                                }
+                                                vnPayUrl = paymentService.generateVnpayRedirectUrl(tempOrder as any, undefined, clientIp)
+                                            }
+                                        }
+                                    } catch (e) {
+                                        // ignore generation errors in dev page
+                                        vnPayUrl = ''
+                                    }
+                                }
+
+                                // Auto-open VNPay when caller requests it via ?auto_open=true
+                                const autoOpen = String(query.auto_open || '') === 'true'
+                                const html = `<!doctype html>
         <html>
             <head>
                 <meta charset="utf-8" />
@@ -408,6 +662,7 @@ export const devSuccessPage = async (req: Request, res: Response, next: NextFunc
                         </div>
 
                         <div class="actions">
+                            ${vnPayUrl ? `<a class="btn primary small" id="openVnPay" href="${vnPayUrl}" target="_blank" rel="noopener">Open VNPay</a>` : ``}
                             <button class="btn primary small" id="openApp">Open app</button>
                             <button class="btn ghost small" id="copyId">Copy order id</button>
                             <a class="btn ghost small" href="${clientUrl || '#'}" id="backToWeb" ${clientUrl? '':'onclick="return false;"'}>Back to website</a>
@@ -418,10 +673,12 @@ export const devSuccessPage = async (req: Request, res: Response, next: NextFunc
                     </div>
                 </div>
 
-                <script>
+                        <script>
                     const orderId = document.getElementById('orderId')?.textContent || ''
                     const reservationId = document.getElementById('reservationId')?.textContent || ''
                     const appScheme = ${JSON.stringify(appScheme)}
+                            const vnPayUrl = ${JSON.stringify(vnPayUrl)}
+                            const autoOpenFlag = ${JSON.stringify(autoOpen)}
                     document.getElementById('copyId')?.addEventListener('click', async () => {
                         try {
                             await navigator.clipboard.writeText(orderId || reservationId || '')
@@ -445,6 +702,21 @@ export const devSuccessPage = async (req: Request, res: Response, next: NextFunc
                             // Also set a fallback: after 1.5s, focus back here
                             setTimeout(function() { /* noop */ }, 1500);
                         })
+
+                        // If VNPay URL available, clicking the link will navigate there. Also support opening via JS for target=_blank behavior.
+                        document.getElementById('openVnPay')?.addEventListener('click', (e) => {
+                            // allow normal navigation; no special handling required
+                        })
+
+                        // Auto-open VNPay in a new tab/window when requested (useful for local dev)
+                        if (vnPayUrl && autoOpenFlag) {
+                            try {
+                                window.open(vnPayUrl, '_blank', 'noopener')
+                            } catch (e) {
+                                // if popup blocked, navigate instead
+                                window.location.href = vnPayUrl
+                            }
+                        }
 
                     document.getElementById('closeWin')?.addEventListener('click', () => {
                         try { window.close() } catch(e) { /* ignore */ }
