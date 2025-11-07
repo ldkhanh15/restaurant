@@ -22,8 +22,10 @@ import {
   Gift,
   CheckCircle,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
+import { toast } from "@/hooks/use-toast";
 import {
   slideInRight,
   containerVariants,
@@ -51,7 +53,15 @@ const eventTypes = [
   { id: "celebration", additionalCost: 300000 },
 ];
 
-export default function DepositPaymentStep() {
+interface DepositPaymentStepProps {
+  onSubmit: () => Promise<void> | void;
+  isSubmitting: boolean;
+}
+
+export default function DepositPaymentStep({
+  onSubmit,
+  isSubmitting,
+}: DepositPaymentStepProps) {
   const { draft, updateDraft, isVIP } = useReservationStore();
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherApplied, setVoucherApplied] = useState(false);
@@ -72,43 +82,53 @@ export default function DepositPaymentStep() {
   // Deposit: 20% of total, minimum 200k (VIP skip)
   const depositAmount = isVIP ? 0 : Math.max(total * 0.2, 200000);
 
+  const reservationDateLabel = draft.date
+    ? new Intl.DateTimeFormat("vi-VN", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(draft.date)
+    : "";
+  const reservationTimeLabel = draft.time;
+  const durationLabel = `${draft.duration_minutes} phút`;
+  const guestLabel = `${draft.num_people} khách`;
+  const tableLabel = draft.selected_table_name || "Bàn đã chọn";
+
   const handleApplyVoucher = () => {
-    // Mock voucher validation
+    if (voucherCode.trim().length === 0) return;
     if (voucherCode.toUpperCase() === "HIWELL20") {
       updateDraft({
         voucher_code: voucherCode,
         voucher_discount: subtotal * 0.2,
       });
       setVoucherApplied(true);
+      toast({
+        title: "Đã áp dụng voucher",
+        description: `Đã giảm ${(subtotal * 0.2).toLocaleString("vi-VN")}đ`,
+      });
     } else {
-      alert("Mã voucher không hợp lệ");
+      toast({
+        title: "Voucher không hợp lệ",
+        description: "Vui lòng kiểm tra lại mã của bạn",
+        variant: "destructive",
+      });
     }
   };
 
-  const handlePayment = async () => {
+  const handlePrimaryAction = () => {
     updateDraft({ deposit_amount: depositAmount });
 
-    if (!draft.payment_method && !isVIP) {
-      alert("Vui lòng chọn phương thức thanh toán");
+    if (!isVIP && !draft.payment_method) {
+      toast({
+        title: "Chưa chọn phương thức thanh toán",
+        description: "Vui lòng chọn một phương thức để tiếp tục",
+        variant: "destructive",
+      });
       return;
     }
 
-    // Mock VNPay payment
-    try {
-      const mockCreatePayment = async () => {
-        await new Promise((res) => setTimeout(res, 800));
-        const txnRef = `TXN-${Date.now()}`;
-        return {
-          paymentUrl: `/mock-vnpay?txnRef=${txnRef}&amount=${depositAmount}`,
-        };
-      };
-
-      const result = await mockCreatePayment();
-      window.location.href = result.paymentUrl;
-    } catch (error) {
-      console.error("Payment error:", error);
-      alert("Có lỗi xảy ra khi tạo thanh toán");
-    }
+    onSubmit();
   };
 
   return (
@@ -137,12 +157,43 @@ export default function DepositPaymentStep() {
             </CardTitle>
             <CardDescription className="text-base mt-2">
               {isVIP
-                ? "Bạn là khách VIP, không cần đặt cọc"
-                : "Vui lòng đặt cọc để hoàn tất đặt bàn"}
+                ? "Bạn là khách VIP, có thể hoàn tất đặt bàn mà không cần đặt cọc."
+                : "Bạn cần đặt cọc để hoàn tất đặt bàn. Khoản đặt cọc sẽ được hệ thống tự động tính khi chuyển sang cổng thanh toán."}
             </CardDescription>
           </motion.div>
         </CardHeader>
         <CardContent className="space-y-6">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <motion.div
+              variants={itemVariants}
+              className="p-4 border rounded-lg bg-muted/30 space-y-2"
+            >
+              <p className="text-sm text-muted-foreground">Thời gian</p>
+              <p className="font-semibold text-primary">
+                {reservationDateLabel}
+              </p>
+              <p className="text-sm">{reservationTimeLabel}</p>
+            </motion.div>
+            <motion.div
+              variants={itemVariants}
+              className="p-4 border rounded-lg bg-muted/30 space-y-2"
+            >
+              <p className="text-sm text-muted-foreground">Bàn và khách</p>
+              <p className="font-semibold text-primary">{tableLabel}</p>
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4" />
+                <span>{guestLabel}</span>
+                <Separator orientation="vertical" className="h-4" />
+                <span>{durationLabel}</span>
+              </div>
+            </motion.div>
+          </motion.div>
+
           {/* Cost Summary */}
           <motion.div
             variants={containerVariants}
@@ -220,6 +271,41 @@ export default function DepositPaymentStep() {
             </motion.div>
           </motion.div>
 
+          {draft.pre_orders.length > 0 && (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-3"
+            >
+              <motion.h3
+                variants={itemVariants}
+                className="font-semibold text-lg"
+              >
+                Món đặt trước
+              </motion.h3>
+              <div className="grid gap-2">
+                {draft.pre_orders.map((item, index) => (
+                  <motion.div
+                    key={`${item.dish_id}-${index}`}
+                    variants={itemVariants}
+                    className="flex items-center justify-between text-sm bg-muted/30 border border-accent/10 rounded-md px-3 py-2"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{item.dish_name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.price.toLocaleString("vi-VN")}đ x {item.quantity}
+                      </span>
+                    </div>
+                    <span className="font-semibold text-primary">
+                      {(item.price * item.quantity).toLocaleString("vi-VN")}đ
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* Voucher */}
           <motion.div
             variants={itemVariants}
@@ -284,19 +370,12 @@ export default function DepositPaymentStep() {
                   animate="visible"
                   className="space-y-4"
                 >
-                  <motion.div variants={itemVariants}>
-                    <p className="font-semibold mb-2">Số tiền đặt cọc:</p>
-                    <motion.p
-                      key={depositAmount}
-                      initial={{ scale: 1.1 }}
-                      animate={{ scale: 1 }}
-                      className="text-2xl font-bold text-primary"
-                    >
-                      {depositAmount.toLocaleString("vi-VN")}đ
-                    </motion.p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      (20% tổng giá trị hoặc tối thiểu 200.000đ)
-                    </p>
+                  <motion.div
+                    variants={itemVariants}
+                    className="p-4 bg-muted/30 border border-dashed border-accent/30 rounded-lg text-sm text-muted-foreground"
+                  >
+                    Khoản đặt cọc sẽ được tính tự động ở bước thanh toán. Bạn
+                    chỉ cần chọn phương thức phù hợp để tiếp tục.
                   </motion.div>
 
                   {/* Payment Method */}
@@ -382,6 +461,32 @@ export default function DepositPaymentStep() {
               </p>
             </motion.div>
           )}
+
+          <motion.div
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            className="flex justify-end"
+          >
+            <Button
+              onClick={handlePrimaryAction}
+              disabled={isSubmitting}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 min-w-[200px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                    Đang xử lý...
+                  </span>
+                </>
+              ) : isVIP ? (
+                "Hoàn tất đặt bàn"
+              ) : (
+                "Tiếp tục thanh toán đặt cọc"
+              )}
+            </Button>
+          </motion.div>
         </CardContent>
       </Card>
     </motion.div>

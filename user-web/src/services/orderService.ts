@@ -155,4 +155,11 @@ export const orderService = {
     apiClient.post(`/orders/${orderId}/payment/request`, {
       client: client || "user",
     }),
+
+  // Request cash payment (notify admin)
+  requestCashPayment: (
+    orderId: string,
+    data?: { note?: string }
+  ): Promise<{ status: string; data: { message: string } }> =>
+    apiClient.post(`/orders/${orderId}/payment/cash`, data),
 };

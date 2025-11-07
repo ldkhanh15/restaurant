@@ -384,7 +384,20 @@ class NotificationService {
       },
     });
   }
-
+  async notifyRequestPayment(order: any) {
+    return await this.createNotification({
+      type: "request_payment",
+      title: "Yêu cầu thanh toán",
+      content: `Khách đã yêu cầu thanh toán cho đơn hàng #${order.id}`,
+      data: {
+        order_id: order.id,
+        table_id: order.table_id,
+        table_group_id: order.table_group_id,
+        amount: order.final_amount,
+        payment_method: order.payment_method,
+      },
+    });
+  }
   private isValidNotificationType(type: string): boolean {
     const validTypes = [
       "low_stock",

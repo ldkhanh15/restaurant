@@ -639,8 +639,11 @@ class OrderService {
       throw new AppError("Order already paid", 400);
     }
 
-    // Update order status to waiting_payment
-    await orderRepository.update(orderId, { status: "waiting_payment" });
+    // Update order status and payment method
+    const updatedOrder = await orderRepository.update(orderId, {
+      status: "waiting_payment",
+      payment_method: "vnpay",
+    });
 
     const clientIp = "127.0.0.1"; // You should get this from request
     const paymentUrl = paymentService.generateVnpayOrderUrl(
@@ -651,17 +654,62 @@ class OrderService {
     );
     await paymentService.createPendingPayment({
       order_id: orderId,
-      amount: order.final_amount,
+      amount: Number(order.final_amount ?? order.total_amount ?? 0),
       method: "vnpay",
       transaction_id: paymentUrl.txnRef,
     });
     try {
-      orderEvents.paymentRequested(getIO(), order);
+      const payload =
+        typeof (updatedOrder as any).toJSON === "function"
+          ? (updatedOrder as any).toJSON()
+          : updatedOrder;
+      orderEvents.paymentRequested(getIO(), {
+        ...payload,
+        payment_method: "vnpay",
+      });
     } catch (error) {
       console.error("Failed to emit payment requested event:", error);
     }
 
     return { redirect_url: paymentUrl.url };
+  }
+
+  async requestCashPayment(orderId: string, note?: string) {
+    const order = await orderRepository.findById(orderId);
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
+
+    if (order.payment_status === "paid") {
+      throw new AppError("Order already paid", 400);
+    }
+
+    const updatedOrder = await orderRepository.update(orderId, {
+      status: "waiting_payment",
+      payment_method: "cash",
+    });
+
+    await paymentService.createPendingPayment({
+      order_id: orderId,
+      amount: Number(order.final_amount ?? order.total_amount ?? 0),
+      method: "cash",
+    });
+    await notificationService.notifyRequestPayment(order);
+    try {
+      const payload =
+        typeof (updatedOrder as any).toJSON === "function"
+          ? (updatedOrder as any).toJSON()
+          : updatedOrder;
+      orderEvents.paymentRequested(getIO(), {
+        ...payload,
+        payment_method: "cash",
+        payment_note: note || undefined,
+      });
+    } catch (error) {
+      console.error("Failed to emit payment requested event:", error);
+    }
+
+    return { message: "Cash payment request sent" };
   }
 
   async handlePaymentSuccess(orderId: string) {
@@ -775,20 +823,21 @@ class OrderService {
     }
 
     const items = await OrderItem.findAll({
-      where: { order_id: orderId, status: "completed" },
+      where: { order_id: orderId },
     });
-    const subtotal = Number(
-      items.reduce(
-        (sum, item) => sum + Number(item.price) * Number(item.quantity),
-        0
-      )
-    );
+
+    const subtotal = items.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      return sum + price * quantity;
+    }, 0);
+
     const eventFee = Number(order.event_fee) || 0;
     const deposit = Number(order.deposit_amount) || 0;
     const discount = Number(order.voucher_discount_amount) || 0;
 
-    const totalAmount = subtotal;
-    const finalAmount = Math.max(0, subtotal + eventFee - deposit - discount);
+    const totalAmount = subtotal + eventFee;
+    const finalAmount = Math.max(0, totalAmount - deposit - discount);
     await order.update({
       total_amount: totalAmount,
       final_amount: finalAmount,

@@ -18,17 +18,18 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getTablesByFloor } from "@/mock/mockTables";
+import type { Table } from "@/services/tableService";
 
 interface FloorMapProps {
   floorId: string;
   selectedTableId: string | null;
   onTableSelect: (tableId: string) => void;
   showSidebar?: boolean;
+  tables: Table[]; // Tables passed from parent
 }
 
 const statusConfig: Record<
-  "available" | "reserved" | "occupied" | "vip",
+  "available" | "reserved" | "occupied" | "vip" | "cleaning",
   {
     bg: string;
     border: string;
@@ -51,6 +52,13 @@ const statusConfig: Record<
     label: "Đã đặt",
     glow: "shadow-yellow-500/50",
   },
+  cleaning: {
+    bg: "bg-gradient-to-br from-blue-400 to-blue-600",
+    border: "border-blue-700",
+    icon: Clock,
+    label: "Đang dọn",
+    glow: "shadow-blue-500/50",
+  },
   occupied: {
     bg: "bg-gradient-to-br from-red-400 to-red-600",
     border: "border-red-700",
@@ -72,10 +80,50 @@ export default function FloorMap({
   selectedTableId,
   onTableSelect,
   showSidebar = true,
+  tables,
 }: FloorMapProps) {
-  const tables = getTablesByFloor(floorId);
   const [hoveredTable, setHoveredTable] = useState<string | null>(null);
-  const selectedTable = tables.find((t) => t.id === selectedTableId);
+
+  const getFloorNumberFromId = (id: string) => {
+    if (!id) return undefined;
+    const matched = id.match(/(\d+)/);
+    return matched ? parseInt(matched[1], 10) : undefined;
+  };
+
+  // Filter tables by floor and map to display format
+  const displayTables = tables
+    .filter((table) => {
+      const tableFloor = table.location?.floor ?? (table as any)?.floorNumber;
+      const targetFloor = getFloorNumberFromId(floorId);
+      return targetFloor === undefined || tableFloor === targetFloor;
+    })
+    .map((table, index) => {
+      const amenities = Array.isArray((table as any)?.amenities)
+        ? (table as any).amenities
+        : [];
+      const isVIP = amenities.some((amenity: string) =>
+        amenity?.toLowerCase().includes("vip")
+      );
+
+      const fallbackX = 120 + (index % 6) * 120;
+      const fallbackY = 100 + Math.floor(index / 6) * 120;
+
+      return {
+        id: table.id,
+        name: table.table_number,
+        capacity: table.capacity,
+        status: table.status ?? "available",
+        isVIP,
+        x: table.location?.coordinates?.x ?? fallbackX,
+        y: table.location?.coordinates?.y ?? fallbackY,
+        floor_name:
+          table.location?.area ||
+          `Tầng ${table.location?.floor ?? getFloorNumberFromId(floorId) ?? 1}`,
+        area: table.location?.area,
+      };
+    });
+
+  const selectedTable = displayTables.find((t) => t.id === selectedTableId);
 
   return (
     <div className="relative w-full">
@@ -165,12 +213,13 @@ export default function FloorMap({
                   className="relative w-full h-full"
                   style={{ minWidth: "800px", minHeight: "600px" }}
                 >
-                  {tables.length > 0 ? (
-                    tables.map((table, index) => {
+                  {displayTables.length > 0 ? (
+                    displayTables.map((table, index) => {
                       const isSelected = table.id === selectedTableId;
                       const isHovered = hoveredTable === table.id;
                       const tableStatus = table.isVIP ? "vip" : table.status;
-                      const status = statusConfig[tableStatus];
+                      const status =
+                        statusConfig[tableStatus] || statusConfig.available;
                       const StatusIcon = status.icon;
                       const size = table.isVIP
                         ? table.capacity * 18 + 60

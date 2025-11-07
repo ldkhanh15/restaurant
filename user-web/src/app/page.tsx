@@ -227,7 +227,7 @@ export default function HomePage() {
     if (user) {
       router.push("/reservations");
     } else {
-      router.push("/login");
+      router.push("/login?redirect=/reservations");
     }
   };
 
@@ -286,7 +286,9 @@ export default function HomePage() {
               size="lg"
               className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 h-auto text-base font-medium"
               onClick={() =>
-                user ? router.push("/reservations") : router.push("/login")
+                user
+                  ? router.push("/reservations")
+                  : router.push("/login?redirect=/reservations")
               }
             >
               <Calendar className="mr-2 h-5 w-5" />

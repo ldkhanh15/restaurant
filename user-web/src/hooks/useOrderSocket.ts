@@ -36,6 +36,96 @@ export function useOrderSocket(): UseOrderSocketReturn {
   const { user } = useAuth();
   const { orders, ordersByUser, addOrder, updateOrder } = useSocketStore();
 
+  const toNumber = (value: any): number => {
+    if (value === null || value === undefined) return 0;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const extractTotals = useCallback((source: any) => {
+    if (!source) {
+      return { totalAmount: 0, finalAmount: 0 };
+    }
+
+    const finalAmountCandidate =
+      source.final_amount ??
+      source.finalAmount ??
+      source.total ??
+      source.total_amount;
+    const totalAmountCandidate =
+      source.total_amount ?? source.totalAmount ?? finalAmountCandidate;
+
+    return {
+      totalAmount: toNumber(totalAmountCandidate),
+      finalAmount: toNumber(finalAmountCandidate),
+    };
+  }, []);
+
+  const buildOrder = useCallback(
+    (data: any): Order => {
+      const base = data?.order ? { ...data.order, ...data } : data;
+      const totals = extractTotals(base);
+      const id = base.orderId || base.id;
+      return {
+        id,
+        user_id:
+          base.user_id ??
+          base.customer_id ??
+          base.order?.user_id ??
+          base.order?.customer_id,
+        customer_id:
+          base.customer_id ??
+          base.user_id ??
+          base.order?.customer_id ??
+          base.order?.user_id,
+        table_id: base.table_id ?? base.order?.table_id,
+        status: base.status ?? base.order?.status ?? "pending",
+        total: totals.finalAmount,
+        total_amount: totals.totalAmount,
+        final_amount: totals.finalAmount,
+        payment_status: base.payment_status ?? base.order?.payment_status,
+        created_at:
+          base.created_at ||
+          base.createdAt ||
+          base.order?.created_at ||
+          new Date().toISOString(),
+        updated_at:
+          base.updated_at ||
+          base.updatedAt ||
+          base.order?.updated_at ||
+          new Date().toISOString(),
+        ...base,
+      };
+    },
+    [extractTotals]
+  );
+
+  const applyTotalsUpdate = useCallback(
+    (orderId: string, source: any) => {
+      const totals = extractTotals(source);
+      const status = source?.status;
+      const paymentStatus = source?.payment_status;
+      const updates: Partial<Order> = {
+        total: totals.finalAmount,
+        total_amount: totals.totalAmount,
+        final_amount: totals.finalAmount,
+        updated_at:
+          source?.updated_at || source?.updatedAt || new Date().toISOString(),
+      };
+
+      if (status !== undefined && status !== null) {
+        updates.status = status;
+      }
+
+      if (paymentStatus !== undefined && paymentStatus !== null) {
+        updates.payment_status = paymentStatus;
+      }
+
+      updateOrder(orderId, updates);
+    },
+    [extractTotals, updateOrder]
+  );
+
   // Room management
   const joinOrder = useCallback(
     (orderId: string) => {
@@ -73,126 +163,78 @@ export function useOrderSocket(): UseOrderSocketReturn {
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:created", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            user_id: data.user_id || data.customer_id,
-            customer_id: data.customer_id || data.user_id,
-            table_id: data.table_id,
-            status: data.status,
-            total: data.total || 0,
-            created_at:
-              data.created_at || data.createdAt || new Date().toISOString(),
-            updated_at:
-              data.updated_at || data.updatedAt || new Date().toISOString(),
-            ...data,
-          };
+          const order = buildOrder(data);
           addOrder(order);
           callback(order);
         });
       }
     },
-    [socket, addOrder]
+    [socket, addOrder, buildOrder]
   );
 
   const onOrderUpdated = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:updated", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            user_id: data.user_id || data.customer_id,
-            customer_id: data.customer_id || data.user_id,
-            table_id: data.table_id,
-            status: data.status,
-            total: data.total || 0,
-            created_at:
-              data.created_at || data.createdAt || new Date().toISOString(),
-            updated_at:
-              data.updated_at || data.updatedAt || new Date().toISOString(),
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onOrderStatusChanged = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:status_changed", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            user_id: data.user_id || data.customer_id,
-            customer_id: data.customer_id || data.user_id,
-            table_id: data.table_id,
-            status: data.status,
-            total: data.total || 0,
-            created_at:
-              data.created_at || data.createdAt || new Date().toISOString(),
-            updated_at:
-              data.updated_at || data.updatedAt || new Date().toISOString(),
-            ...data,
-          };
-          updateOrder(order.id, {
-            status: order.status,
-            updated_at: order.updated_at,
-          });
+          const order = buildOrder(data);
+          updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onPaymentRequested = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:payment_requested", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onPaymentCompleted = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:payment_completed", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, { ...order, status: "completed" });
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onPaymentFailed = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:payment_failed", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onSupportRequested = useCallback(
@@ -213,92 +255,95 @@ export function useOrderSocket(): UseOrderSocketReturn {
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:voucher_applied", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onVoucherRemoved = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:voucher_removed", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onOrderMerged = useCallback(
     (callback: (order: Order) => void) => {
       if (socket) {
         socket.on("order:merged", (data: any) => {
-          const order: Order = {
-            id: data.orderId || data.id,
-            ...data,
-          };
+          const order = buildOrder(data);
           updateOrder(order.id, order);
           callback(order);
         });
       }
     },
-    [socket, updateOrder]
+    [socket, updateOrder, buildOrder]
   );
 
   const onOrderItemCreated = useCallback(
     (callback: (data: any) => void) => {
       if (socket) {
         socket.on("order:item_created", (data: any) => {
+          if (data?.orderId && data?.order) {
+            applyTotalsUpdate(data.orderId, data.order);
+          }
           callback(data);
         });
       }
     },
-    [socket]
+    [socket, applyTotalsUpdate]
   );
 
   const onOrderItemQuantityChanged = useCallback(
     (callback: (data: any) => void) => {
       if (socket) {
         socket.on("order:item_quantity_changed", (data: any) => {
+          if (data?.orderId && data?.order) {
+            applyTotalsUpdate(data.orderId, data.order);
+          }
           callback(data);
         });
       }
     },
-    [socket]
+    [socket, applyTotalsUpdate]
   );
 
   const onOrderItemDeleted = useCallback(
     (callback: (data: any) => void) => {
       if (socket) {
         socket.on("order:item_deleted", (data: any) => {
+          if (data?.orderId && data?.order) {
+            applyTotalsUpdate(data.orderId, data.order);
+          }
           callback(data);
         });
       }
     },
-    [socket]
+    [socket, applyTotalsUpdate]
   );
 
   const onOrderItemStatusChanged = useCallback(
     (callback: (data: any) => void) => {
       if (socket) {
         socket.on("order:item_status_changed", (data: any) => {
+          if (data?.orderId && data?.order) {
+            applyTotalsUpdate(data.orderId, data.order);
+          }
           callback(data);
         });
       }
     },
-    [socket]
+    [socket, applyTotalsUpdate]
   );
 
   // Store getters

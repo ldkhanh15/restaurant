@@ -92,12 +92,10 @@ export default function CustomerInfoStep() {
                 <Input
                   id="customer_name"
                   value={draft.customer_name}
-                  onChange={(e) =>
-                    updateDraft({ customer_name: e.target.value })
-                  }
+                  readOnly
+                  disabled
                   placeholder="Nguyễn Văn An"
-                  required
-                  className="border-accent/20 focus:border-accent transition-all duration-200"
+                  className="border-accent/20 bg-muted focus-visible:ring-0"
                 />
               </motion.div>
               <motion.div
@@ -117,12 +115,10 @@ export default function CustomerInfoStep() {
                   id="customer_phone"
                   type="tel"
                   value={draft.customer_phone}
-                  onChange={(e) =>
-                    updateDraft({ customer_phone: e.target.value })
-                  }
+                  readOnly
+                  disabled
                   placeholder="0901234567"
-                  required
-                  className="border-accent/20 focus:border-accent transition-all duration-200"
+                  className="border-accent/20 bg-muted focus-visible:ring-0"
                 />
               </motion.div>
             </motion.div>
@@ -144,11 +140,10 @@ export default function CustomerInfoStep() {
                 id="customer_email"
                 type="email"
                 value={draft.customer_email}
-                onChange={(e) =>
-                  updateDraft({ customer_email: e.target.value })
-                }
+                readOnly
+                disabled
                 placeholder="an.nguyen@email.com"
-                className="border-accent/20 focus:border-accent transition-all duration-200"
+                className="border-accent/20 bg-muted focus-visible:ring-0"
               />
             </motion.div>
 
@@ -172,6 +167,37 @@ export default function CustomerInfoStep() {
                 }
                 className="border-accent/20 focus:border-accent transition-all duration-200"
               />
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
+              className="space-y-2"
+              whileHover={{ scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Label htmlFor="duration_minutes" className="font-medium">
+                Thời lượng sử dụng (phút) *
+              </Label>
+              <Input
+                id="duration_minutes"
+                type="number"
+                min="30"
+                max="480"
+                step="15"
+                value={draft.duration_minutes}
+                onChange={(e) =>
+                  updateDraft({
+                    duration_minutes: Math.min(
+                      480,
+                      Math.max(30, parseInt(e.target.value) || 30)
+                    ),
+                  })
+                }
+                className="border-accent/20 focus:border-accent transition-all duration-200"
+              />
+              <p className="text-xs text-muted-foreground">
+                Thời lượng tối thiểu 30 phút và tối đa 480 phút (8 giờ)
+              </p>
             </motion.div>
 
             <motion.div

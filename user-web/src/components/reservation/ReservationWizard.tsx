@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
+import { reservationService } from "@/services/reservationService";
+import { toast } from "@/hooks/use-toast";
 import ProgressStepper from "./ProgressStepper";
 import CustomerInfoStep from "./CustomerInfoStep";
 import TimeSelectionStep from "./TimeSelectionStep";
@@ -39,7 +41,7 @@ const steps = [
 ];
 
 export default function ReservationWizard() {
-  const { draft, currentStep, setCurrentStep, updateDraft, isVIP } =
+  const { draft, currentStep, setCurrentStep, updateDraft, isVIP, resetDraft } =
     useReservationStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservationId, setReservationId] = useState<string | null>(null);
@@ -50,7 +52,8 @@ export default function ReservationWizard() {
         return !!(
           draft.customer_name &&
           draft.customer_phone &&
-          draft.num_people > 0
+          draft.num_people > 0 &&
+          draft.duration_minutes >= 30
         );
       case 2:
         return !!(draft.date && draft.time);
@@ -79,16 +82,96 @@ export default function ReservationWizard() {
   };
 
   const handleSubmit = async () => {
+    if (!draft.selected_table_id || !draft.date || !draft.time) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng điền đầy đủ thông tin đặt bàn",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // API call to create reservation
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const mockId = `RES-${Date.now()}`;
-      setReservationId(mockId);
+      // Combine date and time
+      const reservationTime = new Date(draft.date);
+      const [hours, minutes] = draft.time.split(":").map(Number);
+      reservationTime.setHours(hours, minutes, 0, 0);
+
+      // Prepare pre_order_items
+      const pre_order_items = draft.pre_orders.map((item) => ({
+        dish_id: item.dish_id,
+        quantity: item.quantity,
+      }));
+
+      // Create reservation
+      const response = await reservationService.createReservation({
+        table_id: draft.selected_table_id,
+        reservation_time: reservationTime.toISOString(),
+        duration_minutes: draft.duration_minutes,
+        num_people: draft.num_people,
+        preferences: {
+          customer_name: draft.customer_name,
+          customer_phone: draft.customer_phone,
+          customer_email: draft.customer_email,
+          special_requests: draft.special_requests,
+          event_details: draft.event_details,
+          selected_services: draft.selected_services,
+        },
+        event_id: draft.event_id || undefined,
+        pre_order_items:
+          pre_order_items.length > 0 ? pre_order_items : undefined,
+      });
+
+      const result = response.data;
+      const createdReservation = result.reservation;
+      const requiresPayment = Boolean(result.requires_payment);
+      const paymentInfo = result.payment_url;
+
+      if (typeof result.deposit_amount === "number") {
+        updateDraft({ deposit_amount: result.deposit_amount });
+      }
+
+      if (requiresPayment && paymentInfo?.url) {
+        resetDraft();
+        window.location.href = paymentInfo.url;
+        return;
+      }
+
+      setReservationId(createdReservation.id);
+      resetDraft();
       setCurrentStep(7);
-    } catch (error) {
+      toast({
+        title: "Đặt bàn thành công",
+        description: "Đặt bàn của bạn đã được tạo thành công",
+      });
+    } catch (error: any) {
       console.error("Failed to create reservation:", error);
-      alert("Có lỗi xảy ra. Vui lòng thử lại.");
+      const backendMessage = error?.response?.data?.message as
+        | string
+        | undefined;
+
+      if (
+        typeof backendMessage === "string" &&
+        backendMessage.includes("Table is already reserved")
+      ) {
+        toast({
+          title: "Khung giờ đã có khách",
+          description:
+            "Bàn và thời gian bạn chọn đã được đặt trước. Vui lòng chọn thời gian hoặc bàn khác.",
+          variant: "destructive",
+        });
+        setCurrentStep(2);
+      } else {
+        toast({
+          title: "Lỗi",
+          description:
+            backendMessage ||
+            error.message ||
+            "Có lỗi xảy ra. Vui lòng thử lại.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +194,12 @@ export default function ReservationWizard() {
       case 5:
         return <PreorderDishStep />;
       case 6:
-        return <DepositPaymentStep />;
+        return (
+          <DepositPaymentStep
+            onSubmit={handleSubmit}
+            isSubmitting={isSubmitting}
+          />
+        );
       default:
         return null;
     }
@@ -159,7 +247,7 @@ export default function ReservationWizard() {
               <Button
                 variant="outline"
                 onClick={handleBack}
-                disabled={currentStep === 1}
+                disabled={currentStep === 1 || isSubmitting}
                 className="border-accent/20 hover:bg-accent/5 disabled:opacity-50"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -167,31 +255,7 @@ export default function ReservationWizard() {
               </Button>
             </motion.div>
 
-            {currentStep === 6 ? (
-              <motion.div
-                variants={buttonVariants}
-                whileHover="hover"
-                whileTap="tap"
-              >
-                <Button
-                  onClick={handleSubmit}
-                  disabled={!canProceedToNext() || isSubmitting}
-                  className="bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary-foreground mr-2" />
-                      Đang xử lý...
-                    </>
-                  ) : (
-                    <>
-                      Hoàn Tất Đặt Bàn
-                      <CheckCircle className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </motion.div>
-            ) : (
+            {currentStep < 6 && (
               <motion.div
                 variants={buttonVariants}
                 whileHover="hover"

@@ -13,11 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Minus, ShoppingCart, X } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
-import { mockDishes } from "@/mock/mockDishes";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { toast } from "@/components/ui/use-toast";
-import DishSelectionDialog from "@/components/shared/DishSelectionDialog";
+import { toast } from "@/hooks/use-toast";
+import DishSelectionDialog, {
+  type SelectableDish,
+} from "@/components/shared/DishSelectionDialog";
 import {
   slideInRight,
   containerVariants,
@@ -30,7 +31,7 @@ export default function PreorderDishStep() {
   const { draft, updateDraft } = useReservationStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const addDish = (dish: (typeof mockDishes)[0]) => {
+  const addDish = (dish: SelectableDish) => {
     const existingIndex = draft.pre_orders.findIndex(
       (item) => item.dish_id === dish.id
     );
@@ -121,9 +122,7 @@ export default function PreorderDishStep() {
               <DishSelectionDialog
                 open={isMenuOpen}
                 onOpenChange={setIsMenuOpen}
-                onSelectDish={(dish) => {
-                  addDish(dish);
-                }}
+                onSelectDish={addDish}
                 selectedDishIds={draft.pre_orders.map((po) => po.dish_id)}
                 title="Chọn Món Đặt Trước"
                 description="Chọn món bạn muốn đặt trước cho bữa ăn"
@@ -155,7 +154,6 @@ export default function PreorderDishStep() {
             >
               <AnimatePresence mode="popLayout">
                 {draft.pre_orders.map((item, index) => {
-                  const dish = mockDishes.find((d) => d.id === item.dish_id);
                   return (
                     <motion.div
                       key={item.dish_id}
@@ -171,18 +169,16 @@ export default function PreorderDishStep() {
                         <CardContent className="p-4">
                           <div className="flex gap-4">
                             {/* Dish Image */}
-                            {dish && (
+                            {item.dish_id && (
                               <motion.div
-                                className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0"
+                                className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0 bg-muted"
                                 whileHover={{ scale: 1.1 }}
                                 transition={{ duration: 0.2 }}
                               >
-                                <Image
-                                  src={dish.media_urls[0] || "/placeholder.svg"}
-                                  alt={dish.name}
-                                  fill
-                                  className="object-cover"
-                                />
+                                {/* Image can be loaded from dish service if needed */}
+                                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                                  <ShoppingCart className="h-8 w-8" />
+                                </div>
                               </motion.div>
                             )}
 

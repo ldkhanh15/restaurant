@@ -512,6 +512,42 @@ export const requestPayment = async (
   }
 };
 
+export const requestCashPayment = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const currentOrder = await orderService.getOrderById(req.params.id);
+
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
+    const currentUserId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (
+      userRole === "customer" &&
+      currentOrder.user_id &&
+      currentOrder.user_id !== String(currentUserId)
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "Forbidden: You can only request payment for your own orders",
+      });
+    }
+
+    const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+    const result = await orderService.requestCashPayment(req.params.id, note);
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const handlePaymentSuccess = async (
   req: Request,
   res: Response,
