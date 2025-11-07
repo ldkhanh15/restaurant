@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +17,7 @@ import {
   CheckCircle,
   ThumbsUp,
 } from "lucide-react";
-import {
-  getDishById,
-  getDishesByCategory,
-  mockDishes,
-} from "@/mock/mockDishes";
-import { getReviewsByDishId } from "@/mock/mockReviews";
+import { dishService, type Dish } from "@/services/dishService";
 import Image from "next/image";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -42,51 +37,61 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const router = useRouter();
   const [quantity, setQuantity] = useState(1);
+  const [dish, setDish] = useState<Dish | null>(null);
+  const [similarDishes, setSimilarDishes] = useState<Dish[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const dish = getDishById(id);
+  useEffect(() => {
+    const fetchDish = async () => {
+      try {
+        setLoading(true);
+        const dishResponse = await dishService.getById(id);
+        const dishData = dishResponse.data;
+        setDish(dishData);
 
-  if (!dish) {
+        // Fetch similar dishes
+        if (dishData.category_id) {
+          const similarResponse = await dishService.getByCategory(dishData.category_id);
+          const filteredSimilarDishes = similarResponse.data.filter((d: Dish) => d.id !== id);
+          setSimilarDishes(filteredSimilarDishes.slice(0, 4));
+        }
+      } catch (err) {
+        setError('Không thể tải thông tin món ăn');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDish();
+  }, [id]);
+
+  if (loading) {
     return (
-      <motion.div
-        variants={pageVariants}
-        initial="initial"
-        animate="animate"
-        className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 flex items-center justify-center"
-      >
-        <Card className="border-2 border-accent/20 shadow-xl">
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error || !dish) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card>
           <CardContent className="p-12 text-center">
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-muted-foreground mb-4"
-            >
-              Không tìm thấy món ăn
-            </motion.p>
-            <motion.div
-              variants={buttonVariants}
-              whileHover="hover"
-              whileTap="tap"
-            >
-              <Button onClick={() => router.push("/menu")} variant="outline">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Quay lại menu
-              </Button>
-            </motion.div>
+            <p className="text-muted-foreground mb-4">{error || 'Không tìm thấy món ăn'}</p>
+            <Button onClick={() => router.push("/menu")} variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Quay lại menu
+            </Button>
           </CardContent>
         </Card>
       </motion.div>
     );
   }
 
-  const similarDishes = getDishesByCategory(dish.category_id)
-    .filter((d) => d.id !== dish.id)
-    .slice(0, 4);
-
-  const reviews = getReviewsByDishId(dish.id);
-  const averageRating =
-    reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-      : dish.rating || 0;
+  // Note: We'll skip reviews for now since it's not in the API
+  const averageRating = 0;
 
   const handleAddToCart = () => {
     // TODO: Add to cart/order

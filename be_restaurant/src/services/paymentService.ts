@@ -79,6 +79,11 @@ class PaymentService extends BaseService<Payment> {
     params.vnp_ReturnUrl = returnUrl;
     params.vnp_CreateDate = this.formatLocalDateYYYYMMDDHHmmss(new Date());
 
+  // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
+  // (see VNPay docs). Include it before signing so that the signing string
+  // excludes it but the final query contains it as required.
+  params.vnp_SecureHashType = 'HMACSHA512';
+
     if (params.vnp_IpAddr === "::1") params.vnp_IpAddr = "127.0.0.1";
 
     // ⚠️ KHÔNG encode trước khi sign
