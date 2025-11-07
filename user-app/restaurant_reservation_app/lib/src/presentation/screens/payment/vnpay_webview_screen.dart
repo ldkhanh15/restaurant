@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../data/datasources/api_config.dart';
 
 /// A lightweight WebView screen that opens a VNPay redirect URL and listens for
 /// the VNPay return URL to close and notify the caller.
@@ -30,7 +31,37 @@ class _VnPayWebViewScreenState extends State<VnPayWebViewScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          // If we see the server's return URL, close and return it to the caller
+          // The backend may redirect to a custom app scheme (e.g., restaurantapp://).
+          // Intercept non-http(s) schemes and convert them into a backend HTTPS
+          // return URL so the app can forward the params to the server for
+          // verification instead of attempting to load/launch an unsupported scheme.
+          final parsed = Uri.tryParse(req.url);
+          final appScheme = parsed?.scheme ?? '';
+          if (appScheme.isNotEmpty && appScheme != 'http' && appScheme != 'https') {
+            try {
+              final backendBase = ApiConfig.normalizedBaseUrl();
+              if (backendBase.isNotEmpty) {
+                final backendReturn = Uri.parse('$backendBase/api/app_user/payment/vnpay/return')
+                    .replace(queryParameters: parsed?.queryParameters ?? {})
+                    .toString();
+                if (Navigator.canPop(context)) Navigator.of(context).pop(backendReturn);
+                return NavigationDecision.prevent;
+              }
+            } catch (e) {
+              debugPrint('Error handling custom scheme: $e');
+              try {
+                if (Navigator.canPop(context)) Navigator.of(context).pop(req.url);
+              } catch (_) {}
+              return NavigationDecision.prevent;
+            }
+            // If no backend base configured, fallthrough to popping raw URL below
+            try {
+              if (Navigator.canPop(context)) Navigator.of(context).pop(req.url);
+            } catch (_) {}
+            return NavigationDecision.prevent;
+          }
+
+          // Fallback for older logic: if we see the server's return URL, also pop.
           if (req.url.startsWith(widget.returnUrlPrefix)) {
             Navigator.of(context).pop(req.url);
             return NavigationDecision.prevent;
@@ -73,8 +104,22 @@ class _VnPayWebViewScreenState extends State<VnPayWebViewScreen> {
             icon: const Icon(Icons.open_in_browser),
             onPressed: () async {
               final uri = Uri.tryParse(widget.initialUrl);
-              if (uri != null && await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              try {
+                if (uri != null && await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  // Fallback: try launching with parsed Uri even if canLaunchUrl returned false
+                  final fallbackUri = Uri.tryParse(widget.initialUrl);
+                  if (fallbackUri != null) await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+                }
+              } catch (_) {
+                // Final fallback: try launchUrlString and show message on failure
+                try {
+                  final fallbackUri = Uri.tryParse(widget.initialUrl);
+                  if (fallbackUri != null) await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể mở trình duyệt')));
+                }
               }
             },
           ),
@@ -130,11 +175,17 @@ class _VnPayWebViewScreenState extends State<VnPayWebViewScreen> {
                           icon: const Icon(Icons.open_in_browser),
                           label: const Text('Open in browser'),
                           onPressed: () async {
-                            final uri = Uri.tryParse(_lastFailedUrl ?? widget.initialUrl);
-                            if (uri != null && await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot open external browser')));
+                            final urlToOpen = _lastFailedUrl ?? widget.initialUrl;
+                            final uri = Uri.tryParse(urlToOpen);
+                            try {
+                              if (uri != null && await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              } else {
+                                final fallbackUri = Uri.tryParse(urlToOpen);
+                                if (fallbackUri != null) await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+                              }
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể mở trình duyệt')));
                             }
                           },
                         ),
