@@ -115,14 +115,12 @@ flutter pub get
 
 6. Chạy ứng dụng trên emulator hoặc thiết bị thật
 
-- Khởi động Android emulator bằng Android Studio (AVD Manager) hoặc bằng terminal:
 
 ```bash
 flutter emulators             # liệt kê emulators
 flutter emulators --launch <emulatorId>
 ```
 
-- Hoặc chạy trực tiếp (Flutter sẽ cho bạn chọn device nếu có nhiều thiết bị):
 
 ```bash
 flutter run
@@ -159,3 +157,14 @@ flutter devices
  - Tôi có thể bổ sung một chế độ debug hiển thị toạ độ (raw x,y → mapped left/top) nếu bạn cần kiểm tra nhanh.
 
 Nếu bạn muốn, tôi có thể thêm bước chạy nhanh (script) hoặc hướng dẫn từng bước kèm ảnh chụp màn hình cho Android Studio/AVD.
+## Mở VNPay trong ứng dụng (WebView)
+
+Ví dụ nhanh: gọi backend để tạo `redirect_url`, sau đó mở `VnpayWebviewPage` với URL đó.
+
+```dart
+// gọi backend để lấy redirect_url
+final redirectUrl = await paymentService.createVnpayRedirectUrl(orderId);
+Navigator.of(context).push(MaterialPageRoute(builder: (_) => VnpayWebviewPage(redirectUrl)));
+```
+
+Hoặc, nếu bạn muốn mở URL trong trình duyệt ngoài (Chrome/Safari), nhấn nút Open-in-browser trên thanh AppBar.
