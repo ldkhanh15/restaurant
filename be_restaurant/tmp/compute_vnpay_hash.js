@@ -1,0 +1,17 @@
+const crypto = require('crypto');
+const { URL } = require('url');
+const u = new URL(process.argv[2]);
+const params = {};
+u.searchParams.forEach((v,k)=>params[k]=v);
+const provided = params.vnp_SecureHash;
+delete params.vnp_SecureHash;
+delete params.vnp_SecureHashType;
+const keys = Object.keys(params).filter(k=>params[k]!==null&&params[k]!==undefined&&params[k]!=='').sort();
+const encode = (v) => encodeURIComponent(String(v)).replace(/%20/g,'+');
+const signData = keys.map(k=>`${k}=${encode(params[k])}`).join('&');
+const secret = process.env.VNP_HASH_SECRET || '';
+const expected = crypto.createHmac('sha512', secret).update(signData).digest('hex');
+console.log('SignData:', signData);
+console.log('Provided:', provided);
+console.log('Expected:', expected);
+console.log('Match:', expected === provided);

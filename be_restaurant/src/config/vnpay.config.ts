@@ -27,30 +27,70 @@ if (!VNPAY_CONFIG.VNP_HASH_SECRET) {
  * @returns Secure hash string
  */
 export const generateSecureHash = (params: Record<string, any>): string => {
-    // Sort parameters alphabetically
-    const sortedParams = Object.keys(params)
-        .sort()
-        .reduce((result: Record<string, any>, key) => {
-            // Exclude the secure hash itself from the string to sign
-            if (key === 'vnp_SecureHash' || key === 'vnp_SecureHashType') return result
-            if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-                result[key] = params[key]
-            }
-            return result
-        }, {})
+    // VNPay requires deterministic ordering and a specific encoding for the
+    // string used to compute HMAC SHA512. Many VNPay samples encode the
+    // parameter keys (encodeURIComponent) and sort by the encoded keys.
+    // We follow that approach here to ensure compatibility.
+    // Treat literal '+' as space (incoming query strings often use '+' for spaces)
+    const encodeValue = (v: any) => encodeURIComponent(String(v).replace(/\+/g, ' ')).replace(/%20/g, '+')
 
-    // Create query string
-    const queryString = Object.keys(sortedParams)
-        .map((key) => `${key}=${sortedParams[key]}`)
-        .join("&")
+    // Build a map of encodedKey -> originalKey and sort by encoded key
+    // VNPay requires sorting by encoded key names and using the encoded key
+    // names in the signing string. Produce signData with the encoded key
+    // names to match how query parameters are built elsewhere in the code.
+    const encodedKeys: string[] = []
+    const mapEncodedToOriginal: Record<string, string> = {}
+    for (const key of Object.keys(params)) {
+        if (key === 'vnp_SecureHash' || key === 'vnp_SecureHashType' || key === 'vnp_debug' || key === 'debug') continue
+        const v = params[key]
+        if (v === null || v === undefined || v === '') continue
+        const encKey = encodeURIComponent(key)
+        encodedKeys.push(encKey)
+        mapEncodedToOriginal[encKey] = key
+    }
+    encodedKeys.sort()
 
-    // Generate hash
-    const hash = crypto
-        .createHmac("sha512", VNPAY_CONFIG.VNP_HASH_SECRET)
-        .update(queryString)
-        .digest("hex")
+    const signPairs: string[] = []
+    // Use the encoded key names in the sign string to ensure deterministic
+    // ordering and exact byte representation expected by VNPay.
+    for (const encKey of encodedKeys) {
+        const originalKey = mapEncodedToOriginal[encKey]
+        signPairs.push(`${encKey}=${encodeValue(params[originalKey])}`)
+    }
+    const signData = signPairs.join('&')
+    if (process.env.NODE_ENV !== 'production') {
+        try {
+            console.debug('[VNPAY] SignData:', signData)
+        } catch (_) {}
+    }
 
-    return hash
+    return crypto.createHmac('sha512', VNPAY_CONFIG.VNP_HASH_SECRET).update(signData).digest('hex')
+}
+
+/**
+ * Build the VNPay signing string (signData) without hashing. Useful for
+ * returning debug information when VNPay returns checksum errors.
+ */
+export const buildSignData = (params: Record<string, any>): string => {
+    // Treat literal '+' as space before encoding to match VNPay form-encoding
+    const encodeValue = (v: any) => encodeURIComponent(String(v).replace(/\+/g, ' ')).replace(/%20/g, '+')
+    const encodedKeys: string[] = []
+    const mapEncodedToOriginal: Record<string, string> = {}
+    for (const key of Object.keys(params)) {
+        if (key === 'vnp_SecureHash' || key === 'vnp_SecureHashType' || key === 'vnp_debug' || key === 'debug') continue
+        const v = params[key]
+        if (v === null || v === undefined || v === '') continue
+        const encKey = encodeURIComponent(key)
+        encodedKeys.push(encKey)
+        mapEncodedToOriginal[encKey] = key
+    }
+    encodedKeys.sort()
+    const signPairs: string[] = []
+    for (const encKey of encodedKeys) {
+        const originalKey = mapEncodedToOriginal[encKey]
+        signPairs.push(`${encKey}=${encodeValue(params[originalKey])}`)
+    }
+    return signPairs.join('&')
 }
 
 /**
