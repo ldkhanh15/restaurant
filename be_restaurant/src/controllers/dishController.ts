@@ -40,7 +40,10 @@ export const getAllDishes = async (
     console.log("Using search functionality with recommended sorting");
 
     // --- Lấy kết quả tìm kiếm (các món đã lọc) ---
-    const { count, rows } = await dishService.search(req.query);
+    const { count, rows } = await dishService.search(
+      req.query,
+      req.user?.id ?? "c10a35d6-55e7-4fc7-95c7-5fe517f568d7"
+    );
 
     console.log("Search result count:", rows);
 

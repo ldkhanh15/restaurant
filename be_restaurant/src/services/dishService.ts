@@ -39,79 +39,200 @@ class DishService extends BaseService<Dish> {
     return await getRecommendedDishesLogic(userId);
   }
 
-  async search(params: any) {
-
+  async search(params: any, userId?: string) {
     // Get recommended dishes - assuming user_id is passed in params or default
-    const userId = params.user_id || "c10a35d6-55e7-4fc7-95c7-5fe517f568d7";
-    const recommendDishes = await this.getRecommendedDishes(userId);
 
+    if (!userId) {
+      const where: any = {};
+
+      // --- Search/Name contains (case-insensitive, MySQL-safe) ---
+      if (params.search || params.name) {
+        const searchValue = (params.search || params.name).trim().toLowerCase();
+        where[Op.and] = Sequelize.where(
+          Sequelize.fn("LOWER", Sequelize.col("Dish.name")), // fix ambiguous column
+          { [Op.like]: `%${searchValue}%` }
+        );
+      }
+
+      // --- Other filters ---
+      if (params.category_id) where.category_id = params.category_id;
+      if (params.is_best_seller !== undefined)
+        where.is_best_seller =
+          params.is_best_seller === "true" || params.is_best_seller === true;
+      if (params.seasonal !== undefined)
+        where.seasonal = params.seasonal === "true" || params.seasonal === true;
+      if (params.active !== undefined)
+        where.active = params.active === "true" || params.active === true;
+
+      // --- Price filtering (convert to number) ---
+      if (params.price_ranges) {
+        const ranges = params.price_ranges.split(",").map((r: string) => {
+          const [min, max] = r.split("-").map(Number);
+          return {
+            price: {
+              [Op.gte]: Number(min),
+              ...(max !== undefined ? { [Op.lt]: Number(max) } : {}),
+            },
+          };
+        });
+        where[Op.or] = ranges;
+      } else {
+        const minPrice = params.min_price || params.price_min;
+        const maxPrice = params.max_price || params.price_max;
+        const exactPrice = params.price_exact;
+
+        if (minPrice || maxPrice || exactPrice) {
+          where.price = {};
+          if (exactPrice) {
+            where.price = Number(exactPrice);
+          } else {
+            if (minPrice !== undefined) where.price[Op.gte] = Number(minPrice);
+            if (maxPrice !== undefined) where.price[Op.lt] = Number(maxPrice);
+          }
+        }
+      }
+
+      // --- Pagination ---
+      const page = params.page ? +params.page : 1;
+      const limit = params.limit ? +params.limit : 10;
+      const offset = (page - 1) * limit;
+
+      // --- Sorting (FE-friendly + backward compatible) ---
+      let sortBy = "created_at";
+      let sortOrder: "ASC" | "DESC" = "ASC";
+
+      if (params.sort) {
+        switch (params.sort) {
+          case "price_asc":
+            sortBy = "price";
+            sortOrder = "ASC";
+            break;
+          case "price_desc":
+            sortBy = "price";
+            sortOrder = "DESC";
+            break;
+          case "recommended":
+            sortBy = "name";
+            sortOrder = "ASC";
+            break;
+          default:
+            // backward compatible: -price, price, -created_at
+            if (params.sort.startsWith("-")) {
+              sortBy = params.sort.substring(1);
+              sortOrder = "DESC";
+            } else {
+              sortBy = params.sort;
+              sortOrder = "ASC";
+            }
+        }
+      } else if (params.sortBy) {
+        sortBy = params.sortBy;
+        sortOrder = (params.sortOrder || "ASC").toUpperCase() as "ASC" | "DESC";
+      }
+
+      // --- Query to DB ---
+      const { count, rows } = await this.model.findAndCountAll({
+        where,
+        distinct: true,
+        limit,
+        offset,
+        order:
+          sortBy === "name"
+            ? [[Sequelize.fn("LOWER", Sequelize.col("Dish.name")), sortOrder]] // sort name case-insensitive
+            : [[sortBy, sortOrder]],
+        include: [
+          { model: CategoryDish, as: "category" },
+          {
+            model: Ingredient,
+            as: "ingredients",
+            through: { attributes: ["quantity"] },
+          },
+        ],
+      });
+
+      // --- Convert price to number ---
+      const formattedRows = rows.map((r: any) => ({
+        ...r.get({ plain: true }),
+        price: Number(r.price),
+      }));
+
+      return { count, rows: formattedRows, page, limit };
+    }
+
+    const recommendDishes = await this.getRecommendedDishes(userId);
 
     // Start with the full recommended dishes array
     let filteredDishes = [...recommendDishes];
 
     // if(params)
 
-    // 🔍 Filter by search term (tìm kiếm liên quan, bỏ dấu, nhiều từ khóa)
+    // 🔍 Filter by search term (giống LIKE "%abc%" trong SQL)
     const searchTerm = params.search || params.name;
     if (searchTerm) {
       // Hàm bỏ dấu tiếng Việt
       const removeDiacritics = (str: string) =>
         str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-      const keywords = removeDiacritics(searchTerm.toLowerCase())
-        .split(/\s+/) // tách theo khoảng trắng
-        .filter((word: string) => word.trim() !== ""); // bỏ trống
-
-      filteredDishes = filteredDishes.filter(
-        (dish: any) => {
-          const dishName = removeDiacritics(dish.name.toLowerCase());
-          // Nếu tên món chứa ít nhất 1 từ khóa thì giữ lại
-          return keywords.some((keyword: string) => dishName.includes(keyword));
-        }
+      // Chuẩn hóa chuỗi tìm kiếm
+      const normalizedSearch = removeDiacritics(
+        searchTerm.toLowerCase().trim()
       );
+
+      filteredDishes = filteredDishes.filter((dish: any) => {
+        const dishName = removeDiacritics(dish.name.toLowerCase());
+        // Kiểm tra giống SQL LIKE "%search%"
+        return dishName.includes(normalizedSearch);
+      });
     }
 
     // 2. Filter by category_id
     if (params.category_id) {
-      filteredDishes = filteredDishes.filter(dish =>
-        dish.category_id && dish.category_id.toString() === params.category_id.toString()
+      filteredDishes = filteredDishes.filter(
+        (dish) =>
+          dish.category_id &&
+          dish.category_id.toString() === params.category_id.toString()
       );
     }
 
     // 3. Filter by is_best_seller
     if (params.is_best_seller !== undefined) {
-      const isBestSeller = params.is_best_seller === "true" || params.is_best_seller === true;
-      filteredDishes = filteredDishes.filter(dish =>
-        dish.is_best_seller === isBestSeller
+      const isBestSeller =
+        params.is_best_seller === "true" || params.is_best_seller === true;
+      filteredDishes = filteredDishes.filter(
+        (dish) => dish.is_best_seller === isBestSeller
       );
     }
 
     // 4. Filter by seasonal
     if (params.seasonal !== undefined) {
       const isSeasonal = params.seasonal === "true" || params.seasonal === true;
-      filteredDishes = filteredDishes.filter(dish =>
-        dish.seasonal === isSeasonal
+      filteredDishes = filteredDishes.filter(
+        (dish) => dish.seasonal === isSeasonal
       );
     }
 
     // 5. Filter by active
     if (params.active !== undefined) {
       const isActive = params.active === "true" || params.active === true;
-      filteredDishes = filteredDishes.filter(dish =>
-        dish.active === isActive
+      filteredDishes = filteredDishes.filter(
+        (dish) => dish.active === isActive
       );
     }
 
     // 6. Filter by price
     if (params.price_ranges) {
-      const ranges: { min: number; max?: number }[] = params.price_ranges.split(",").map((r: string) => {
-        const [min, max] = r.split("-").map(Number);
-        return { min, max };
-      });
-      filteredDishes = filteredDishes.filter(dish => {
+      const ranges: { min: number; max?: number }[] = params.price_ranges
+        .split(",")
+        .map((r: string) => {
+          const [min, max] = r.split("-").map(Number);
+          return { min, max };
+        });
+      filteredDishes = filteredDishes.filter((dish) => {
         const price = Number(dish.price);
-        return ranges.some(range => {
-          return price >= range.min && (range.max === undefined || price < range.max);
+        return ranges.some((range) => {
+          return (
+            price >= range.min && (range.max === undefined || price < range.max)
+          );
         });
       });
     } else {
@@ -119,8 +240,12 @@ class DishService extends BaseService<Dish> {
       const maxPrice = params.max_price || params.price_max;
       const exactPrice = params.price_exact;
 
-      if (minPrice !== undefined || maxPrice !== undefined || exactPrice !== undefined) {
-        filteredDishes = filteredDishes.filter(dish => {
+      if (
+        minPrice !== undefined ||
+        maxPrice !== undefined ||
+        exactPrice !== undefined
+      ) {
+        filteredDishes = filteredDishes.filter((dish) => {
           const price = Number(dish.price);
           if (exactPrice !== undefined) {
             return price === Number(exactPrice);
@@ -165,7 +290,6 @@ class DishService extends BaseService<Dish> {
       sortOrder = (params.sortOrder || "ASC").toUpperCase() as "ASC" | "DESC";
     }
 
-
     // Sort the filtered dishes
     filteredDishes.sort((a: any, b: any) => {
       let aVal: any, bVal: any;
@@ -206,7 +330,7 @@ class DishService extends BaseService<Dish> {
       count: totalCount,
       rows: formattedRows,
       page,
-      limit
+      limit,
     };
   }
 }
