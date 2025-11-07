@@ -90,7 +90,7 @@ export default function MenuBrowser() {
   const itemsPerPage = 9;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "price_asc" | "price_desc">("name");
+  const [sortBy, setSortBy] = useState<"recommended" | "price_asc" | "price_desc">("recommended");
 
   const [filters, setFilters] = useState<Filters>({});
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -142,8 +142,8 @@ export default function MenuBrowser() {
 
       // SORT → ĐÚNG THEO BACKEND
       switch (sortBy) {
-        case "name":
-          params.append("sort", "name"); // A-Z
+        case "recommended":
+          params.append("sort", "recommended"); // A-Z
           break;
         case "price_asc":
           params.append("sort", "price"); // Giá thấp → cao
@@ -407,7 +407,7 @@ export default function MenuBrowser() {
                       <label className="text-sm font-medium text-primary">Sắp xếp theo</label>
                       <Select
                         value={sortBy}
-                        onValueChange={(value: "name" | "price_asc" | "price_desc") => {
+                        onValueChange={(value: "recommended" | "price_asc" | "price_desc") => {
                           setSortBy(value);
                         }}
                       >
@@ -415,7 +415,7 @@ export default function MenuBrowser() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="name">Tên món (A-Z)</SelectItem>
+                          <SelectItem value="recommended">Được đề xuất</SelectItem>
                           <SelectItem value="price_asc">Giá: Thấp → Cao</SelectItem>
                           <SelectItem value="price_desc">Giá: Cao → Thấp</SelectItem>
                         </SelectContent>
