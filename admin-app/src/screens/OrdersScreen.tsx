@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -8,7 +8,8 @@ import {
   Text as RNText,
   TextInput,
   ScrollView,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { 
   Text, 
@@ -31,7 +32,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { OrderCard, StatCard, CreateOrderModal } from '@/components';
 import { useOrders } from '../hooks';
 import { useRealtimeOrders } from '../hooks/useRealtimeOrders';
-import { Order } from '../api/orderService';  // Import from orderService instead
+import orderService, { Order } from '../api/orderService';  // Import service and type from orderService
 import { spacing } from '@/theme';
 
 const OrdersScreen = () => {
@@ -44,10 +45,13 @@ const OrdersScreen = () => {
   const [paymentMenuVisible, setPaymentMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'kitchen'>('orders');
   const [createOrderModalVisible, setCreateOrderModalVisible] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [tables, setTables] = useState<any[]>([]);
+  const [loadingTables, setLoadingTables] = useState(false);
 
   const { 
     orders, 
@@ -65,35 +69,62 @@ const OrdersScreen = () => {
     onOrderStatusChanged,
   } = useRealtimeOrders();
 
+  // Load tables when modal opens
+  useEffect(() => {
+    if (createOrderModalVisible && tables.length === 0) {
+      loadTables();
+    }
+  }, [createOrderModalVisible]);
+
+  const loadTables = async () => {
+    try {
+      setLoadingTables(true);
+      const response = await orderService.getAvailableTables();
+      
+      let tablesData = response?.data || response || [];
+      
+      // Filter only available tables
+      if (Array.isArray(tablesData)) {
+        tablesData = tablesData.filter((t: any) => 
+          t.status === 'available' || t.status === 'empty'
+        );
+      } else {
+        tablesData = [];
+      }
+      
+      setTables(tablesData);
+    } catch (error: any) {
+      setSnackbarMessage('Không thể tải danh sách bàn');
+      setSnackbarVisible(true);
+      setTables([]);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
+
   // Setup real-time event listeners
   useEffect(() => {
-    console.log('📡 Setting up real-time order listeners');
-
     // Listen for new orders
     const unsubscribeCreated = onOrderCreated((order) => {
-      console.log('✅ New order created:', order.id);
       setSnackbarMessage(`Đơn hàng mới #${order.id}`);
       setSnackbarVisible(true);
-      refetch(); // Refresh order list
+      refetch();
     });
 
     // Listen for order updates
     const unsubscribeUpdated = onOrderUpdated((order) => {
-      console.log('✅ Order updated:', order.id);
-      refetch(); // Refresh order list
+      refetch();
     });
 
     // Listen for status changes
     const unsubscribeStatusChanged = onOrderStatusChanged(({ orderId, status }) => {
-      console.log('✅ Order status changed:', orderId, status);
       setSnackbarMessage(`Đơn hàng #${orderId} - ${status}`);
       setSnackbarVisible(true);
-      refetch(); // Refresh order list
+      refetch();
     });
 
     // Cleanup on unmount
     return () => {
-      console.log('🔌 Cleaning up real-time listeners');
       unsubscribeCreated();
       unsubscribeUpdated();
       unsubscribeStatusChanged();
@@ -103,9 +134,9 @@ const OrdersScreen = () => {
   const statusOptions = [
     { value: 'all', label: 'Tất cả' },
     { value: 'pending', label: 'Chờ xử lý' },
-    { value: 'preparing', label: 'Đang chuẩn bị' },
-    { value: 'ready', label: 'Sẵn sàng' },
-    { value: 'delivered', label: 'Đã giao' },
+    { value: 'dining', label: 'Đang chuẩn bị' },  // Backend: dining = preparing in UI
+    { value: 'waiting_payment', label: 'Sẵn sàng' },  // Backend: waiting_payment = ready in UI
+    { value: 'paid', label: 'Đã hoàn thành' },  // Backend: paid = completed in UI
     { value: 'cancelled', label: 'Đã hủy' },
   ];
 
@@ -117,47 +148,76 @@ const OrdersScreen = () => {
     { value: 'refunded', label: 'Đã hoàn tiền' },
   ];
 
-  // Filter orders based on active tab and search criteria (tham khảo admin-web)
-  const filteredOrders = orders?.filter((order: any) => {
-    // Search logic - tìm theo nhiều trường
-    const searchLower = searchQuery.toLowerCase().trim();
-    const matchesSearch = !searchQuery || 
-      (order.order_number || '').toLowerCase().includes(searchLower) ||
-      (order.customer_name || '').toLowerCase().includes(searchLower) ||
-      (order.customer_phone || '').includes(searchQuery.trim()) ||
-      (order.table_number || '').toString().includes(searchQuery.trim()) ||
-      (order.id || '').toString().toLowerCase().includes(searchLower);
-    
-    // Status filters
-    const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus;
-    const matchesPaymentStatus = selectedPaymentStatus === 'all' || order.payment_status === selectedPaymentStatus;
-    
-    // Tab-specific filter - Kitchen tab chỉ hiển thị pending/preparing
-    const matchesTab = activeTab === 'orders' 
-      ? true // Orders tab: show all
-      : ['pending', 'preparing'].includes(order.status); // Kitchen tab: only pending/preparing
-    
-    return matchesSearch && matchesStatus && matchesPaymentStatus && matchesTab;
-  }) || [];
+  // Filter orders based on active tab and search criteria (with useMemo for performance)
+  const filteredOrders = useMemo(() => {
+    return orders?.filter((order: any) => {
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch = !searchQuery || 
+        (order.order_number || '').toLowerCase().includes(searchLower) ||
+        (order.customer_name || '').toLowerCase().includes(searchLower) ||
+        (order.customer_phone || '').includes(searchQuery.trim()) ||
+        (order.table_number || '').toString().includes(searchQuery.trim()) ||
+        (order.id || '').toString().toLowerCase().includes(searchLower);
+      
+      const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus;
+      const matchesPaymentStatus = selectedPaymentStatus === 'all' || order.payment_status === selectedPaymentStatus;
+      
+      const matchesTab = activeTab === 'orders' 
+        ? true
+        : ['pending', 'dining'].includes(order.status);
+      
+      return matchesSearch && matchesStatus && matchesPaymentStatus && matchesTab;
+    }) || [];
+  }, [orders, searchQuery, selectedStatus, selectedPaymentStatus, activeTab]);
 
-  // Calculate stats
+  // Calculate stats - map backend status to UI
   const stats = {
     total: orders?.length || 0,
     pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
-    preparing: orders?.filter((o: any) => o.status === 'preparing').length || 0,
-    ready: orders?.filter((o: any) => o.status === 'ready').length || 0,
-    delivered: orders?.filter((o: any) => o.status === 'delivered').length || 0,
+    preparing: orders?.filter((o: any) => o.status === 'dining').length || 0,  // dining = preparing
+    ready: orders?.filter((o: any) => o.status === 'waiting_payment').length || 0,  // waiting_payment = ready
+    delivered: orders?.filter((o: any) => o.status === 'paid').length || 0,  // paid = delivered/completed
     totalRevenue: orders?.filter((o: any) => o.payment_status === 'paid').reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0) || 0,
   };
 
-  const handleOrderPress = (order: Order) => {
-    // Navigate to OrderDetailScreen instead of showing modal
-    navigation.navigate('OrderDetail', { orderId: order.id });
+  const handleOrderPress = async (order: Order) => {
+    console.log('🔍 handleOrderPress called with order:', order.id);
+    console.log('🔍 Order from list:', JSON.stringify(order, null, 2));
+    setLoadingOrderDetail(true);
+    setOrderDetailVisible(true); // Show modal immediately with loading
+    try {
+      // Fetch full order details with items before showing modal
+      const fullOrder = await orderService.getDetails(order.id);
+      console.log('✅ Fetched full order details:', JSON.stringify(fullOrder, null, 2));
+      console.log('✅ Customer name:', fullOrder.customer_name);
+      console.log('✅ Customer phone:', fullOrder.customer_phone);
+      console.log('✅ Items:', fullOrder.items);
+      console.log('✅ Order items:', fullOrder.order_items);
+      setSelectedOrder(fullOrder);
+    } catch (error) {
+      console.error('❌ Error fetching order details:', error);
+      setOrderDetailVisible(false); // Hide modal on error
+      Alert.alert('Lỗi', 'Không thể tải thông tin đơn hàng');
+    } finally {
+      setLoadingOrderDetail(false);
+    }
   };
 
   const handleStatusUpdate = async (orderId: string | number, newStatus: string) => {
     try {
-      await updateStatus(String(orderId), newStatus as any);  // Convert to string
+      console.log('🔄 handleStatusUpdate called with:', { orderId, newStatus });
+      
+      // OrderCard now sends backend status directly (dining, waiting_payment, paid)
+      // But Kitchen tab buttons still send frontend status (preparing, ready)
+      // So we still need to map those
+      const backendStatus = newStatus === 'preparing' ? 'dining' : 
+                           newStatus === 'ready' ? 'waiting_payment' :
+                           newStatus === 'completed' ? 'paid' : 
+                           newStatus;  // Already backend status from OrderCard
+      
+      console.log('🔄 Final backend status:', backendStatus);
+      
+      await updateStatus(String(orderId), backendStatus as any);
       // Refresh orders after status update
       await refetch();
     } catch (error) {
@@ -165,13 +225,13 @@ const OrdersScreen = () => {
     }
   };
 
-  const handlePaymentStatusUpdate = async (orderId: string | number, newStatus: string) => {
+  const handlePaymentStatusUpdate = useCallback(async (orderId: string | number, newStatus: string) => {
     try {
-      await updatePaymentStatus(String(orderId), newStatus as any);  // Convert to string
+      await updatePaymentStatus(String(orderId), newStatus as any);
     } catch (error) {
-      console.error('Failed to update payment status:', error);
+      // Silent fail
     }
-  };
+  }, [updatePaymentStatus]);
 
   const handleCreateOrder = async (orderData: {
     tableId?: string;
@@ -187,27 +247,31 @@ const OrdersScreen = () => {
     notes?: string;
   }) => {
     try {
-      console.log('📝 Creating order with data:', orderData);
+      // Validate table_id (REQUIRED by backend)
+      if (!orderData.tableId) {
+        throw new Error('Vui lòng chọn bàn');
+      }
       
-      // Validate input
+      // Validate customer info
       if (!orderData.customerName || !orderData.customerPhone) {
         throw new Error('Vui lòng nhập đầy đủ thông tin khách hàng');
       }
       
+      // Validate items
       if (!orderData.items || orderData.items.length === 0) {
         throw new Error('Vui lòng chọn ít nhất 1 món');
       }
       
       // Calculate totals
       const subtotal = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const tax = subtotal * 0.1; // 10% tax
+      const tax = subtotal * 0.1;
       const total = subtotal + tax;
       
       // Transform data to match API format
       const apiData: any = {
+        table_id: orderData.tableId,
         customer_name: orderData.customerName.trim(),
         customer_phone: orderData.customerPhone.trim(),
-        table_id: orderData.tableId || undefined,
         notes: orderData.notes?.trim() || undefined,
         items: orderData.items.map(item => ({
           dish_id: item.dishId,
@@ -221,18 +285,14 @@ const OrdersScreen = () => {
         payment_status: 'pending',
       };
 
-      console.log('📤 Sending API data:', apiData);
       const newOrder = await createOrder(apiData);
       
-      console.log('✅ Order created:', newOrder);
       setCreateOrderModalVisible(false);
       setSnackbarMessage(`Đã tạo đơn hàng #${newOrder.order_number || newOrder.id.substring(0, 8)}`);
       setSnackbarVisible(true);
       
-      // Refresh orders list
       await refetch();
     } catch (error: any) {
-      console.error('❌ Failed to create order:', error);
       const errorMessage = error.message || error.response?.data?.message || 'Không thể tạo đơn hàng';
       setSnackbarMessage(errorMessage);
       setSnackbarVisible(true);
@@ -242,9 +302,9 @@ const OrdersScreen = () => {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'pending': return '#f59e0b';
-      case 'preparing': return '#3b82f6';
-      case 'ready': return '#10b981';
-      case 'delivered': return '#059669';
+      case 'dining': return '#3b82f6';  // dining = preparing in UI
+      case 'waiting_payment': return '#10b981';  // waiting_payment = ready in UI
+      case 'paid': return '#059669';  // paid = delivered/completed in UI
       case 'cancelled': return '#ef4444';
       default: return theme.colors.outline;
     }
@@ -253,9 +313,9 @@ const OrdersScreen = () => {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending': return 'Chờ xử lý';
-      case 'preparing': return 'Đang chuẩn bị';
-      case 'ready': return 'Sẵn sàng';
-      case 'delivered': return 'Đã giao';
+      case 'dining': return 'Đang chuẩn bị';  // dining = preparing in UI
+      case 'waiting_payment': return 'Sẵn sàng';  // waiting_payment = ready in UI
+      case 'paid': return 'Đã hoàn thành';  // paid = completed in UI
       case 'cancelled': return 'Đã hủy';
       default: return status;
     }
@@ -282,75 +342,60 @@ const OrdersScreen = () => {
     }
   };
 
-  const renderStatsCards = () => {
-    const screenWidth = Dimensions.get('window').width;
-    const cardWidth = (screenWidth - spacing.lg * 3) / 2;
+  const statsData = [
+    {
+      title: "Tổng đơn",
+      value: stats.total.toString(),
+      change: "+12%",
+      icon: "📋",
+      color: theme.colors.primary,
+    },
+    {
+      title: "Chờ xử lý",
+      value: stats.pending.toString(),
+      change: "+5%",
+      icon: "⏳",
+      color: "#f59e0b",
+    },
+    {
+      title: "Đang chuẩn bị",
+      value: stats.preparing.toString(),
+      change: "+8%",
+      icon: "👨‍🍳",
+      color: "#3b82f6",
+    },
+    {
+      title: "Sẵn sàng",
+      value: stats.ready.toString(),
+      change: "+3%",
+      icon: "✅",
+      color: "#10b981",
+    },
+    {
+      title: "Đã giao",
+      value: stats.delivered.toString(),
+      change: "+15%",
+      icon: "🚀",
+      color: "#059669",
+    },
+    {
+      title: "Doanh thu",
+      value: `${Math.round(stats.totalRevenue).toLocaleString('vi-VN')}đ`,
+      change: "+20%",
+      icon: "💰",
+      color: theme.colors.primary,
+    },
+  ];
 
-    return (
-      <View style={styles.statsContainer}>
-        <View style={styles.statsRow}>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Tổng đơn"
-              value={stats.total.toString()}
-              change="+12%"
-              icon="📋"
-              color={theme.colors.primary}
-            />
-          </View>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Chờ xử lý"
-              value={stats.pending.toString()}
-              change="+5%"
-              icon="⏳"
-              color="#f59e0b"
-            />
-          </View>
-        </View>
-        <View style={styles.statsRow}>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Đang chuẩn bị"
-              value={stats.preparing.toString()}
-              change="+8%"
-              icon="👨‍🍳"
-              color="#3b82f6"
-            />
-          </View>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Sẵn sàng"
-              value={stats.ready.toString()}
-              change="+3%"
-              icon="✅"
-              color="#10b981"
-            />
-          </View>
-        </View>
-        <View style={styles.statsRow}>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Đã giao"
-              value={stats.delivered.toString()}
-              change="+15%"
-              icon="🚀"
-              color="#059669"
-            />
-          </View>
-          <View style={[styles.statsCard, { width: cardWidth }]}>
-            <StatCard
-              title="Doanh thu"
-              value={`${stats.totalRevenue.toLocaleString()}đ`}
-              change="+20%"
-              icon="💰"
-              color={theme.colors.primary}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  };
+  const renderStatCard = ({ item }: { item: any }) => (
+    <StatCard
+      title={item.title}
+      value={item.value}
+      icon={item.icon}
+      color={item.color}
+      change={item.change}
+    />
+  );
 
   const renderTabs = () => {
     // Calculate tab counts
@@ -444,14 +489,14 @@ const OrdersScreen = () => {
           ({ item }: { item: any }) => (
             <OrderCard
               id={item.order_number || item.id} // Hiển thị order_number thay vì UUID
-              customer_name={item.customer_name}
-              customer_phone={item.customer_phone}
+              customer_name={item.user?.name || item.customer_name || 'Khách vãng lai'}
+              customer_phone={item.user?.phone || item.customer_phone || 'Chưa có'}
               status={item.status}
               payment_status={item.payment_status}
               payment_method={item.payment_method}
               total_amount={item.total_amount}
               created_at={item.created_at}
-              table_number={item.table_number}
+              table_number={item.table?.table_number || item.table_number}
               order_items={item.order_items || item.items || []}
               onPress={() => handleOrderPress(item)}
               onStatusChange={handleStatusUpdate}
@@ -471,7 +516,7 @@ const OrdersScreen = () => {
                     Đơn #{order.order_number || order.id.substring(0, 8)}
                   </Text>
                   <Text style={[styles.kitchenCustomer, { color: theme.colors.onSurfaceVariant }]}>
-                    {order.customer_name} - {order.table_number ? `Bàn ${order.table_number}` : 'Mang về'}
+                    {order.table?.table_number || order.table_number ? `Bàn ${order.table?.table_number || order.table_number}` : 'Mang về'}
                   </Text>
                 </View>
                 <Chip 
@@ -483,42 +528,45 @@ const OrdersScreen = () => {
                 </Chip>
               </View>
               
-              {/* Order Items Preview */}
-              <View style={styles.kitchenItems}>
-                {(order.order_items || order.items || []).slice(0, 3).map((item) => (
-                  <View key={item.id} style={styles.kitchenItem}>
-                    <View style={styles.kitchenItemInfo}>
-                      <Text style={[styles.kitchenItemName, { color: theme.colors.onSurface }]}>
-                        • {item.quantity}x {item.dish_name}
-                      </Text>
-                      {item.special_instructions && (
-                        <Text style={[styles.kitchenItemDetails, { color: theme.colors.onSurfaceVariant }]}>
-                          Yêu cầu: {item.special_instructions}
+              {/* Order Items - Hiển thị đầy đủ */}
+              {(order.order_items || order.items || []).length > 0 ? (
+                <View style={styles.kitchenItems}>
+                  {(order.order_items || order.items || []).map((item) => (
+                    <View key={item.id} style={styles.kitchenItem}>
+                      <View style={styles.kitchenItemInfo}>
+                        <Text style={[styles.kitchenItemName, { color: theme.colors.onSurface }]}>
+                          • {item.quantity}x {item.dish?.name || item.dish_name || 'Món ăn'}
                         </Text>
-                      )}
+                        {item.special_instructions && (
+                          <Text style={[styles.kitchenItemDetails, { color: theme.colors.onSurfaceVariant }]}>
+                            Yêu cầu: {item.special_instructions}
+                          </Text>
+                        )}
+                      </View>
+                      <Chip 
+                        style={item.status === 'ready' ? styles.readyChip : styles.pendingChip}
+                        textStyle={{ color: item.status === 'ready' ? 'white' : '#666', fontSize: 10 }}
+                        compact
+                      >
+                        {item.status === 'pending' ? 'Chờ' : 
+                         item.status === 'preparing' ? 'Đang làm' : 
+                         item.status === 'ready' ? 'Xong' : 'Đã phục vụ'}
+                      </Chip>
                     </View>
-                    <Chip 
-                      style={item.status === 'ready' ? styles.readyChip : styles.pendingChip}
-                      textStyle={{ color: item.status === 'ready' ? 'white' : '#666', fontSize: 10 }}
-                      compact
-                    >
-                      {item.status === 'pending' ? 'Chờ' : 
-                       item.status === 'preparing' ? 'Đang làm' : 
-                       item.status === 'ready' ? 'Xong' : 'Đã phục vụ'}
-                    </Chip>
-                  </View>
-                ))}
-                {(order.order_items || order.items || []).length > 3 && (
-                  <Text style={[styles.kitchenItemName, { color: theme.colors.onSurfaceVariant, fontStyle: 'italic' }]}>
-                    • +{(order.order_items || order.items || []).length - 3} món khác
+                  ))}
+                </View>
+              ) : (
+                <View style={[styles.emptyKitchenItems, { backgroundColor: '#fef3c7' }]}>
+                  <Text style={[styles.emptyKitchenItemsText, { color: '#d97706' }]}>
+                    ⚠️ Chưa load được món ăn
                   </Text>
-                )}
-              </View>
+                </View>
+              )}
 
               {/* Notes */}
               {order.notes && (
                 <View style={styles.notesContainer}>
-                  <Text style={styles.notesLabel}>💬 {order.notes}</Text>
+                  <Text style={styles.notesLabel}>💬 Ghi chú: {order.notes}</Text>
                 </View>
               )}
 
@@ -541,7 +589,7 @@ const OrdersScreen = () => {
                       mode="contained"
                       onPress={(e) => {
                         e.stopPropagation();
-                        handleStatusUpdate(order.id, 'preparing');
+                        handleStatusUpdate(order.id, 'preparing');  // Will be mapped to 'dining'
                       }}
                       style={[styles.actionButton, { backgroundColor: '#3b82f6' }]}
                       labelStyle={{ color: 'white' }}
@@ -551,12 +599,13 @@ const OrdersScreen = () => {
                       Bắt đầu làm
                     </Button>
                   )}
-                  {order.status === 'preparing' && (
+                  {/* dining = preparing in backend */}
+                  {order.status === 'dining' && (
                     <Button
                       mode="contained"
                       onPress={(e) => {
                         e.stopPropagation();
-                        handleStatusUpdate(order.id, 'ready');
+                        handleStatusUpdate(order.id, 'ready');  // Will be mapped to 'waiting_payment'
                       }}
                       style={[styles.actionButton, { backgroundColor: '#10b981' }]}
                       labelStyle={{ color: 'white' }}
@@ -572,10 +621,26 @@ const OrdersScreen = () => {
           )
         }
         keyExtractor={(item) => item.id.toString()}
+        
+        // 🚀 PERFORMANCE OPTIMIZATION
+        windowSize={10}
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews={true}
+        updateCellsBatchingPeriod={100}
+        
         ListHeaderComponent={() => (
           <View>
             {/* Stats Cards */}
-            {renderStatsCards()}
+            <FlatList
+              data={statsData}
+              style={styles.statsGrid}
+              numColumns={2}
+              columnWrapperStyle={styles.statsRow}
+              keyExtractor={(item) => item.title}
+              renderItem={renderStatCard}
+              scrollEnabled={false}
+            />
             
             {/* Tabs */}
             {renderTabs()}
@@ -671,7 +736,11 @@ const OrdersScreen = () => {
           onDismiss={() => setOrderDetailVisible(false)}
           contentContainerStyle={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}
         >
-          {selectedOrder && (
+          {loadingOrderDetail ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text>Đang tải...</Text>
+            </View>
+          ) : selectedOrder && (
             <ScrollView style={{ maxHeight: '80%' }}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -684,18 +753,26 @@ const OrdersScreen = () => {
               </View>
 
               <View style={styles.orderDetails}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Khách hàng:</Text>
-                  <Text style={styles.detailValue}>{selectedOrder.customer_name}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Số điện thoại:</Text>
-                  <Text style={styles.detailValue}>{selectedOrder.customer_phone}</Text>
-                </View>
+                {selectedOrder.user?.name && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Khách hàng:</Text>
+                    <Text style={styles.detailValue}>{selectedOrder.user.name}</Text>
+                  </View>
+                )}
+                {(selectedOrder.user?.phone || selectedOrder.customer_phone) && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Số điện thoại:</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedOrder.user?.phone || selectedOrder.customer_phone}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Bàn:</Text>
                   <Text style={styles.detailValue}>
-                    {selectedOrder.table_number ? `Bàn ${selectedOrder.table_number}` : 'Mang về'}
+                    {selectedOrder.table?.table_number || selectedOrder.table_number ? 
+                      `Bàn ${selectedOrder.table?.table_number || selectedOrder.table_number}` : 
+                      'Mang về'}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
@@ -728,9 +805,11 @@ const OrdersScreen = () => {
               {(selectedOrder.order_items || selectedOrder.items || []).map((item) => (
                 <View key={item.id} style={styles.orderItem}>
                   <View style={styles.orderItemInfo}>
-                    <Text style={styles.orderItemName}>{item.dish_name}</Text>
+                    <Text style={styles.orderItemName}>
+                      {item.dish?.name || item.dish_name || 'Món ăn'}
+                    </Text>
                     <Text style={styles.orderItemDetails}>
-                      Số lượng: {item.quantity} × {item.price.toLocaleString('vi-VN')}đ
+                      Số lượng: {item.quantity} × {(item.price || item.unit_price || 0).toLocaleString('vi-VN')}đ
                     </Text>
                     {item.special_instructions && (
                       <Text style={styles.orderItemCustomizations}>
@@ -740,12 +819,14 @@ const OrdersScreen = () => {
                   </View>
                   <View style={styles.orderItemRight}>
                     <Text style={styles.orderItemPrice}>
-                      {(item.quantity * item.price).toLocaleString('vi-VN')}đ
+                      {(item.quantity * (item.price || item.unit_price || 0)).toLocaleString('vi-VN')}đ
                     </Text>
                     <Chip mode="outlined" compact>
                       {item.status === 'pending' ? 'Chờ' : 
-                       item.status === 'preparing' ? 'Đang làm' : 
-                       item.status === 'ready' ? 'Xong' : 'Đã phục vụ'}
+                       item.status === 'preparing' || item.status === 'dining' ? 'Đang làm' : 
+                       item.status === 'ready' || item.status === 'waiting_payment' ? 'Xong' : 
+                       item.status === 'served' || item.status === 'paid' ? 'Đã phục vụ' : 
+                       item.status}
                     </Chip>
                   </View>
                 </View>
@@ -783,7 +864,11 @@ const OrdersScreen = () => {
         visible={createOrderModalVisible}
         onDismiss={() => setCreateOrderModalVisible(false)}
         onSubmit={handleCreateOrder}
-        tables={[]} // TODO: Load tables from API
+        tables={Array.isArray(tables) ? tables.map(t => ({
+          id: t.id,
+          name: t.table_number ? `Bàn ${t.table_number}` : t.name || `Bàn ${t.id}`,
+          capacity: t.capacity || 4
+        })) : []}
       />
 
       <FAB
@@ -815,42 +900,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   // Stats styles
-  statsContainer: {
-    padding: spacing.lg,
-    paddingBottom: spacing.md,
+  statsGrid: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 0,
   },
   statsRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  statsCard: {
-    flex: 1,
-    marginHorizontal: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    gap: spacing.sm,
   },
   // Tabs styles
   tabsContainer: {
     flexDirection: 'row',
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
-    backgroundColor: '#f1f5f9', // slate-100
-    borderRadius: 8,
-    padding: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e2e8f0', // slate-200
   },
   tab: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
-    borderRadius: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -2, // Overlap with container border
   },
   activeTab: {
-    backgroundColor: 'white',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    borderBottomColor: '#3b82f6', // blue-500 primary
   },
   tabText: {
     fontSize: 14,
@@ -858,7 +935,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   activeTabText: {
-    color: '#333',
+    color: '#3b82f6', // blue-500 primary
     fontWeight: '600',
   },
   // Filters styles
@@ -930,7 +1007,7 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   kitchenCard: {
-    padding: spacing.md,
+    padding: spacing.sm,
     borderRadius: 12,
     marginBottom: spacing.md,
     shadowColor: '#000',
@@ -948,7 +1025,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   headerLeft: {
     flex: 1,
@@ -962,22 +1039,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   kitchenItems: {
-    marginBottom: spacing.sm,
+    // marginBottom removed - will use gap in parent
+  },
+  emptyKitchenItems: {
+    padding: spacing.sm,
+    borderRadius: 8,
+    // marginBottom removed - will use gap in parent
+    alignItems: 'center',
+  },
+  emptyKitchenItemsText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   kitchenItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   kitchenItemInfo: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: spacing.xs,
   },
   kitchenItemName: {
     fontSize: 14,
     fontWeight: '500',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   kitchenItemDetails: {
     fontSize: 12,
@@ -988,6 +1076,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
+    marginTop: spacing.sm,
   },
   footerLeft: {
     flex: 1,
@@ -995,7 +1084,7 @@ const styles = StyleSheet.create({
   totalPrice: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   timeText: {
     fontSize: 12,
@@ -1007,13 +1096,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9', // slate-100
   },
   notesContainer: {
-    padding: spacing.sm,
+    padding: spacing.xs,
     backgroundColor: '#fef3c7', // amber-100
     borderRadius: 8,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
   },
   notesLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#d97706', // amber-600
   },
   notesText: {

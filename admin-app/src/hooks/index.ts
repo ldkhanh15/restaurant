@@ -6,7 +6,7 @@
 export { useAuth } from './useAuthNew';
 export type { AuthState, UseAuthReturn } from './useAuthNew';
 
-// Real-time hooks
+// Real-time hooks (legacy)
 export { useSocket } from './useSocket';
 export type { UseSocketReturn } from './useSocket';
 export { useRealtimeNotifications } from './useRealtimeNotifications';
@@ -15,6 +15,11 @@ export { useRealtimeOrders } from './useRealtimeOrders';
 export type { OrderUpdate, UseRealtimeOrdersReturn } from './useRealtimeOrders';
 export { useRealtimeReservations } from './useRealtimeReservations';
 export type { ReservationUpdate, UseRealtimeReservationsReturn } from './useRealtimeReservations';
+
+// WebSocket hooks (new namespace-based)
+export { useOrderSocket } from './useOrderSocket';
+export { useReservationSocket } from './useReservationSocket';
+export { useDishSocket } from './useDishSocket';
 
 // Data hooks
 export { useDashboard } from './useDashboard';

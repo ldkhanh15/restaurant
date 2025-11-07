@@ -71,9 +71,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   value: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: spacing.xs,
+    flexWrap: 'wrap',
+    flexShrink: 1,
   },
   subtitle: {
     fontSize: 12,

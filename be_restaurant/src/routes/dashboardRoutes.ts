@@ -5,7 +5,8 @@ import {
   getDailyOrdersStats, 
   getPopularDishes, 
   getRecentOrders,
-  getHourlyRevenueStats
+  getHourlyRevenueStats,
+  getPeakHoursStats
 } from "../controllers/dashboardController"
 import { authenticate, authorize } from "../middlewares/auth"
 
@@ -21,6 +22,7 @@ router.get("/revenue", getRevenueStats)
 router.get("/orders/daily", getDailyOrdersStats)
 router.get("/orders/recent", getRecentOrders)
 router.get("/orders/hourly-revenue", getHourlyRevenueStats)
+router.get("/orders/peak-hours", getPeakHoursStats)
 router.get("/dishes/popular", getPopularDishes)
 
 export default router

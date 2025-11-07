@@ -111,6 +111,17 @@ class OrderRepository {
         { model: Table, as: "table" },
         { model: Reservation, as: "reservation" },
         { model: Voucher, as: "voucher" },
+        { 
+          model: OrderItem, 
+          as: "items",
+          include: [
+            { 
+              model: Dish, 
+              as: "dish",
+              attributes: ['id', 'name', 'media_urls', 'price']
+            }
+          ]
+        },
       ],
     });
 
@@ -410,9 +421,9 @@ class OrderRepository {
 
     // Chuyển kết quả thành dạng { pending: n, paid: n }
     const pendingOrders =
-      statusCounts.find((s) => s.status === "pending")?.count || 0;
+      (statusCounts.find((s: any) => s.status === "pending")?.count as number) || 0;
     const paidOrders =
-      statusCounts.find((s) => s.status === "paid")?.count || 0;
+      (statusCounts.find((s: any) => s.status === "paid")?.count as number) || 0;
 
     // Tính tổng doanh thu (chỉ tính các order đã thanh toán)
     const revenueResult = await Order.findOne({
@@ -424,7 +435,7 @@ class OrderRepository {
         ],
       ],
       raw: true,
-    });
+    }) as any;
 
     const totalRevenue = revenueResult?.total_revenue || 0;
 

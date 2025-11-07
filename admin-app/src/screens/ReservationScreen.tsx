@@ -31,7 +31,7 @@ import {
 import { spacing } from '@/theme';
 import { StatCard } from '@/components';
 import { useReservations, CreateReservationRequest, Reservation } from '@/hooks/useReservations';
-import { useRealtimeReservations } from '@/hooks/useRealtimeReservations';
+import { useReservationSocket } from '@/hooks';
 
 // Helper function to transform API reservation to display format
 const transformReservation = (reservation: Reservation) => {
@@ -156,12 +156,16 @@ export const ReservationScreen = () => {
     refresh: refreshReservations,
   } = useReservations();
 
-  // Real-time WebSocket integration
+  // Real-time WebSocket integration (new namespace-based)
   const {
     onReservationCreated,
     onReservationUpdated,
-    onReservationStatusChanged,
-  } = useRealtimeReservations();
+    onReservationConfirmed,
+    onReservationCancelled,
+    onTableAssigned,
+    onCustomerArrived,
+    isConnected: socketConnected,
+  } = useReservationSocket();
 
   // Snackbar state
   const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -169,34 +173,53 @@ export const ReservationScreen = () => {
 
   // Setup real-time event listeners
   useEffect(() => {
-    console.log('📡 Setting up real-time reservation listeners');
+    console.log('📡 Setting up real-time reservation listeners (namespace-based)');
 
-    const unsubscribeCreated = onReservationCreated((reservation: any) => {
+    onReservationCreated((reservation: any) => {
       console.log('✅ New reservation created:', reservation.id);
       setSnackbarMessage(`Đặt bàn mới #${reservation.id}`);
       setSnackbarVisible(true);
       refreshReservations();
     });
 
-    const unsubscribeUpdated = onReservationUpdated((reservation: any) => {
+    onReservationUpdated(({ reservation }: { reservation: any; changes?: any }) => {
       console.log('✅ Reservation updated:', reservation.id);
       refreshReservations();
     });
 
-    const unsubscribeStatusChanged = onReservationStatusChanged((data: { reservationId: string; status: string }) => {
-      console.log('✅ Reservation status changed:', data.reservationId, data.status);
-      setSnackbarMessage(`Đặt bàn #${data.reservationId} - ${data.status}`);
+    onReservationConfirmed(({ reservationId }: { reservationId: string; confirmedAt: string }) => {
+      console.log('✅ Reservation confirmed:', reservationId);
+      setSnackbarMessage(`Đặt bàn #${reservationId} đã xác nhận`);
       setSnackbarVisible(true);
       refreshReservations();
     });
 
+    onReservationCancelled(({ reservationId, reason }: { reservationId: string; reason?: string }) => {
+      console.log('❌ Reservation cancelled:', reservationId, reason);
+      setSnackbarMessage(`Đặt bàn #${reservationId} đã hủy`);
+      setSnackbarVisible(true);
+      refreshReservations();
+    });
+
+    onTableAssigned(({ reservationId, tableId, tableName }: { reservationId: string; tableId: string; tableName: string }) => {
+      console.log('🪑 Table assigned:', reservationId, tableName);
+      setSnackbarMessage(`Bàn ${tableName} đã được gán cho đặt bàn #${reservationId}`);
+      setSnackbarVisible(true);
+      refreshReservations();
+    });
+
+    onCustomerArrived(({ reservationId }: { reservationId: string; arrivedAt: string }) => {
+      console.log('👋 Customer arrived:', reservationId);
+      setSnackbarMessage(`Khách hàng đã đến - Đặt bàn #${reservationId}`);
+      setSnackbarVisible(true);
+      refreshReservations();
+    });
+
+    // Cleanup is automatic in useReservationSocket hook
     return () => {
       console.log('🔌 Cleaning up real-time reservation listeners');
-      unsubscribeCreated();
-      unsubscribeUpdated();
-      unsubscribeStatusChanged();
     };
-  }, [onReservationCreated, onReservationUpdated, onReservationStatusChanged, refreshReservations]);
+  }, [refreshReservations]);
 
   // Transform API data for UI
   const transformedReservations = useMemo(() => {
@@ -681,6 +704,14 @@ export const ReservationScreen = () => {
   return (
     <Provider>
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {/* WebSocket Connection Status */}
+        <View style={styles.socketStatus}>
+          <View style={[styles.socketIndicator, { backgroundColor: socketConnected ? '#10b981' : '#ef4444' }]} />
+          <Text style={styles.socketText}>
+            {socketConnected ? '🟢 Real-time' : '🔴 Offline'}
+          </Text>
+        </View>
+
         <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
@@ -2050,6 +2081,27 @@ const styles = StyleSheet.create({
   tableDeposit: {
     fontSize: 12,
     marginTop: 4,
+  },
+  // Socket status indicator
+  socketStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  socketIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: spacing.xs,
+  },
+  socketText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
   },
 });
 

@@ -26,82 +26,6 @@ import { spacing } from '@/theme';
 import { StatCard } from '@/components';
 import { useVouchers } from '../hooks/useVouchers';
 
-// Mock data for vouchers
-const mockVouchers = [
-  {
-    id: 1,
-    code: "WEEKEND20",
-    type: "Phần trăm",
-    status: "Đang hoạt động",
-    name: "Giảm giá cuối tuần",
-    description: "Giảm 20% cho tất cả món ăn vào cuối tuần",
-    discountValue: "20%",
-    displayValue: "20%",
-    minOrder: 200000,
-    usageLimit: 100,
-    usageCount: 67,
-    createdBy: "Admin Hoa",
-    createdAt: "15/03/2024",
-    startDate: "2024-03-15",
-    endDate: "2024-03-31",
-    applyTo: "Tất cả khách hàng"
-  },
-  {
-    id: 2,
-    code: "NEWUSER50",
-    type: "Số tiền cố định",
-    status: "Đang hoạt động",
-    name: "Chào mừng thành viên mới",
-    description: "Giảm 50,000đ cho đơn hàng đầu tiên",
-    discountValue: "50000",
-    displayValue: "50,000đ",
-    minOrder: 150000,
-    usageLimit: 500,
-    usageCount: 234,
-    createdBy: "Admin Minh",
-    createdAt: "10/03/2024",
-    startDate: "2024-03-10",
-    endDate: "2024-04-10",
-    applyTo: "Khách hàng mới"
-  },
-  {
-    id: 3,
-    code: "FREESHIP",
-    type: "Miễn phí ship",
-    status: "Tạm dừng",
-    name: "Miễn phí giao hàng",
-    description: "Miễn phí ship cho đơn hàng trên 300k",
-    discountValue: "100%",
-    displayValue: "Miễn phí",
-    minOrder: 300000,
-    usageLimit: 200,
-    usageCount: 45,
-    createdBy: "Admin Lan",
-    createdAt: "05/03/2024",
-    startDate: "2024-03-05",
-    endDate: "2024-03-25",
-    applyTo: "Khách hàng VIP"
-  },
-  {
-    id: 4,
-    code: "COMBO999",
-    type: "Mua X tặng Y",
-    status: "Hết hạn",
-    name: "Mua 2 tặng 1",
-    description: "Mua 2 combo bất kỳ tặng 1 ly nước ngọt",
-    discountValue: "1 ly nước",
-    displayValue: "Tặng 1",
-    minOrder: 0,
-    usageLimit: 50,
-    usageCount: 50,
-    createdBy: "Admin Nam",
-    createdAt: "01/02/2024",
-    startDate: "2024-02-01",
-    endDate: "2024-02-29",
-    applyTo: "Theo danh mục món ăn"
-  }
-];
-
 const voucherStatuses = ["Tất cả trạng thái", "Đang hoạt động", "Tạm dừng", "Hết hạn", "Bản nháp"];
 const voucherTypes = ["Tất cả loại", "Phần trăm", "Số tiền cố định", "Miễn phí ship", "Mua X tặng Y"];
 
@@ -117,8 +41,17 @@ export const VoucherScreen = () => {
   const [selectedType, setSelectedType] = useState('Tất cả loại');
   const [statusMenuVisible, setStatusMenuVisible] = useState(false);
   const [typeMenuVisible, setTypeMenuVisible] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [vouchers, setVouchers] = useState(mockVouchers);
+  
+  // Use API hook for vouchers
+  const { 
+    vouchers, 
+    loading: isLoading, 
+    error, 
+    refresh,
+    createVoucher: createVoucherMutation,
+    updateVoucher: updateVoucherMutation,
+    deleteVoucher: deleteVoucherMutation
+  } = useVouchers();
   
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -153,11 +86,18 @@ export const VoucherScreen = () => {
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const activeVouchers = vouchers.filter(v => v.status === 'Đang hoạt động').length;
-    const totalUsage = vouchers.reduce((sum, v) => sum + v.usageCount, 0);
-    const expiredVouchers = vouchers.filter(v => v.status === 'Hết hạn').length;
+    const activeVouchers = vouchers.filter(v => v.active).length;
+    const totalUsage = vouchers.reduce((sum, v) => sum + (v.current_uses || 0), 0);
+    const expiredVouchers = vouchers.filter(v => {
+      if (!v.expiry_date) return false;
+      return new Date(v.expiry_date) < new Date();
+    }).length;
     const avgUsageRate = vouchers.length > 0 
-      ? Math.round(vouchers.reduce((sum, v) => sum + (v.usageCount / v.usageLimit * 100), 0) / vouchers.length)
+      ? Math.round(vouchers.reduce((sum, v) => {
+          const max = v.max_uses || 1;
+          const current = v.current_uses || 0;
+          return sum + (current / max * 100);
+        }, 0) / vouchers.length)
       : 0;
 
     return [
@@ -196,17 +136,26 @@ export const VoucherScreen = () => {
   const filteredVouchers = useMemo(() => {
     return vouchers.filter(item => {
       const matchesSearch = item.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = selectedStatus === 'Tất cả trạng thái' || item.status === selectedStatus;
-      const matchesType = selectedType === 'Tất cả loại' || item.type === selectedType;
+                           (item.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+                           (item.description?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+      
+      // Map status from API (active boolean) to display status
+      const itemStatus = item.active ? 'Đang hoạt động' : 'Tạm dừng';
+      const matchesStatus = selectedStatus === 'Tất cả trạng thái' || itemStatus === selectedStatus;
+      
+      // Map type from API (discount_type) to display type
+      const itemType = item.discount_type === 'percentage' ? 'Phần trăm' : 'Số tiền cố định';
+      const matchesType = selectedType === 'Tất cả loại' || itemType === selectedType;
       
       return matchesSearch && matchesStatus && matchesType;
     });
   }, [vouchers, searchQuery, selectedStatus, selectedType]);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const onRefresh = () => {
     setIsRefreshing(true);
+    refresh();
     setTimeout(() => {
       setIsRefreshing(false);
     }, 1000);
@@ -242,16 +191,32 @@ export const VoucherScreen = () => {
     }
   };
 
-  const handlePauseVoucher = (voucherId: number) => {
-    setVouchers(prev => prev.map(voucher => 
-      voucher.id === voucherId 
-        ? { ...voucher, status: voucher.status === 'Đang hoạt động' ? 'Tạm dừng' : 'Đang hoạt động' }
-        : voucher
-    ));
+  const handlePauseVoucher = async (voucherId: string) => {
+    const voucher = vouchers.find(v => v.id === voucherId);
+    if (!voucher) return;
+    
+    await updateVoucherMutation(voucherId, {
+      active: !voucher.active
+    });
+    refresh();
   };
 
-  const handleDeleteVoucher = (voucherId: number) => {
-    setVouchers(prev => prev.filter(voucher => voucher.id !== voucherId));
+  const handleDeleteVoucher = async (voucherId: string) => {
+    Alert.alert(
+      'Xác nhận xóa',
+      'Bạn có chắc chắn muốn xóa voucher này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteVoucherMutation(voucherId);
+            refresh();
+          }
+        }
+      ]
+    );
   };
 
   // Form validation
@@ -298,35 +263,29 @@ export const VoucherScreen = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreateVoucher = () => {
+  const handleCreateVoucher = async () => {
     if (!validateForm()) {
       Alert.alert('Lỗi', 'Vui lòng kiểm tra lại thông tin đã nhập');
       return;
     }
 
-    const newVoucher = {
-      id: vouchers.length + 1,
+    const success = await createVoucherMutation({
       code: formData.voucherCode.toUpperCase(),
-      type: formData.voucherType,
-      status: formData.status,
       name: formData.voucherName,
       description: formData.description,
-      discountValue: formData.discountValue,
-      displayValue: getDisplayValue(formData.voucherType, formData.discountValue),
-      minOrder: formData.minOrder ? Number(formData.minOrder) : 0,
-      usageLimit: formData.usageLimit ? Number(formData.usageLimit) : 100,
-      usageCount: 0,
-      createdBy: "Admin User",
-      createdAt: new Date().toLocaleDateString('vi-VN'),
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      applyTo: formData.applyTo
-    };
+      discount_type: formData.voucherType === 'Phần trăm' ? 'percentage' : 'fixed',
+      value: Number(formData.discountValue),
+      min_order_value: formData.minOrder ? Number(formData.minOrder) : undefined,
+      max_uses: formData.usageLimit ? Number(formData.usageLimit) : 100,
+      active: formData.status === 'Đang hoạt động',
+      expiry_date: formData.endDate || undefined,
+    });
 
-    setVouchers(prev => [newVoucher, ...prev]);
-    resetForm();
-    setShowCreateModal(false);
-    Alert.alert('Thành công!', 'Tạo voucher thành công!');
+    if (success) {
+      resetForm();
+      setShowCreateModal(false);
+      refresh();
+    }
   };
 
   const resetForm = () => {

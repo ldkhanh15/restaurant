@@ -44,6 +44,8 @@ const DashboardScreen = () => {
     dailyOrders,
     popularDishes,
     recentOrders,
+    hourlyRevenue,
+    peakHours,
     loading,
     error,
     fetchAllData
@@ -167,12 +169,12 @@ const DashboardScreen = () => {
   };
 
   const transformHourlyData = () => {
-    // Use revenueStats as hourly data if available
-    if (!revenueStats || revenueStats.length === 0) return null;
+    // Use dailyOrders for hourly data
+    if (!dailyOrders || dailyOrders.length === 0) return null;
     return {
-      labels: revenueStats.map((item: any) => item.month || `${item.hour}h`),
+      labels: dailyOrders.map((item: any) => item.time || `${item.hour}h`),
       datasets: [{
-        data: revenueStats.map((item: any) => item.revenue),
+        data: dailyOrders.map((item: any) => item.orders || 0),
       }],
     };
   };
@@ -204,6 +206,34 @@ const DashboardScreen = () => {
       legendFontColor: theme.colors.onSurface,
       legendFontSize: 10,
     }));
+  };
+
+  const transformHourlyRevenueData = () => {
+    if (!hourlyRevenue || hourlyRevenue.length === 0) return null;
+    return {
+      labels: hourlyRevenue.map((item: any) => item.time),
+      datasets: [{
+        data: hourlyRevenue.map((item: any) => item.revenue || 0),
+      }],
+    };
+  };
+
+  const transformPeakHoursData = () => {
+    if (!peakHours || peakHours.length === 0) return null;
+    return {
+      labels: peakHours.map((item: any) => item.time),
+      datasets: [
+        {
+          data: peakHours.map((item: any) => item.reserved || 0),
+          color: (opacity = 1) => `rgba(138, 103, 255, ${opacity})`, // Purple for reserved
+        },
+        {
+          data: peakHours.map((item: any) => item.walkin || 0),
+          color: (opacity = 1) => `rgba(102, 204, 153, ${opacity})`, // Green for walk-in
+        }
+      ],
+      legend: ['Đặt bàn', 'Khách vãng lai']
+    };
   };
 
   // Chart configuration with better mobile sizing
@@ -475,57 +505,78 @@ const DashboardScreen = () => {
               </View>
             )}
 
-            {/* Hourly Revenue Bar Chart */}
-            {revenueStats && transformHourlyData() && (
+            {/* Hourly Revenue Bar Chart - NEW */}
+            {hourlyRevenue && transformHourlyRevenueData() && (
               <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
                 <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
                   Doanh thu theo giờ (triệu VNĐ)
                 </Text>
                 <BarChart
-                  data={transformHourlyData()!}
+                  data={transformHourlyRevenueData()!}
                   width={getChartWidth()}
-                  height={200}
+                  height={220}
                   chartConfig={chartConfig}
                   style={styles.chart}
                   yAxisLabel=""
                   yAxisSuffix="M"
-                />
-              </View>
-            )}
-
-            {/* Revenue Comparison Line Chart */}
-            {revenueStats && transformRevenueData() && (
-              <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
-                <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
-                  So sánh doanh thu, đơn hàng, khách hàng
-                </Text>
-                <LineChart
-                  data={transformRevenueData()!}
-                  width={getChartWidth()}
-                  height={220}
-                  chartConfig={chartConfig}
-                  bezier
-                  style={styles.chart}
+                  showValuesOnTopOfBars
                 />
               </View>
             )}
           </View>
         )}
 
-        {activeTab === 'orders' && dailyOrders && transformOrdersData() && (
-          <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
-              Đơn hàng theo ngày
-            </Text>
-            <BarChart
-              data={transformOrdersData()!}
-              width={getChartWidth()}
-              height={200}
-              chartConfig={chartConfig}
-              style={styles.chart}
-              yAxisLabel=""
-              yAxisSuffix=""
-            />
+        {activeTab === 'orders' && (
+          <View>
+            {/* Đơn hàng theo giờ */}
+            {dailyOrders && transformHourlyData() && (
+              <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
+                <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
+                  Đơn hàng theo giờ
+                </Text>
+                <BarChart
+                  data={transformHourlyData()!}
+                  width={getChartWidth()}
+                  height={220}
+                  chartConfig={chartConfig}
+                  style={styles.chart}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                  showValuesOnTopOfBars
+                />
+              </View>
+            )}
+
+            {/* Giờ cao điểm - Stacked Bar Chart */}
+            {peakHours && transformPeakHoursData() && (
+              <View style={[styles.chartContainer, { backgroundColor: theme.colors.surface }]}>
+                <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
+                  Giờ cao điểm (Đặt bàn vs Khách vãng lai)
+                </Text>
+                <BarChart
+                  data={transformPeakHoursData()!}
+                  width={getChartWidth()}
+                  height={240}
+                  chartConfig={chartConfig}
+                  style={styles.chart}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                  withHorizontalLabels={true}
+                  fromZero
+                />
+                {/* Legend */}
+                <View style={styles.legendContainer}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendBox, { backgroundColor: '#8a67ff' }]} />
+                    <Text style={[styles.legendText, { color: theme.colors.onSurface }]}>Đặt bàn</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendBox, { backgroundColor: '#66cc99' }]} />
+                    <Text style={[styles.legendText, { color: theme.colors.onSurface }]}>Khách vãng lai</Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -673,6 +724,28 @@ const styles = StyleSheet.create({
     marginVertical: spacing.xs,
     borderRadius: 12,
     alignSelf: 'center',
+  },
+  // Legend styles for stacked charts
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    gap: spacing.lg,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  legendBox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   // Section styles
   sectionContainer: {

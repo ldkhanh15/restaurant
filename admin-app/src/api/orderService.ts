@@ -7,8 +7,13 @@ export interface OrderItem {
   dish_name: string;
   quantity: number;
   price: number;
+  unit_price?: number; // Backend sometimes returns unit_price instead of price
   special_instructions?: string;
-  status: "pending" | "preparing" | "ready" | "served";
+  status: "pending" | "preparing" | "ready" | "served" | "dining" | "waiting_payment";
+  dish?: {
+    name?: string;
+    media_urls?: string | string[];
+  };
 }
 
 export interface Order {
@@ -19,8 +24,8 @@ export interface Order {
   customer_phone?: string;
   table_id?: string;
   table_number?: number;
-  status: "pending" | "preparing" | "ready" | "delivered" | "cancelled";
-  payment_status: "pending" | "paid" | "failed" | "refunded";
+  status: "pending" | "paid" | "dining" | "waiting_payment" | "cancelled";  // Backend actual statuses
+  payment_status: "pending" | "paid" | "failed";  // Backend actual payment statuses
   payment_method?: "cash" | "card" | "transfer" | "momo" | "zalopay" | "vnpay";
   total_amount: number;
   subtotal?: number;
@@ -31,6 +36,16 @@ export interface Order {
   updated_at: string;
   items?: OrderItem[];
   order_items?: OrderItem[];
+  // Backend relations
+  user?: {
+    username?: string;
+    email?: string;
+    name?: string;
+    phone?: string;
+  };
+  table?: {
+    table_number?: string;
+  };
 }
 
 export interface OrderListParams {
@@ -68,8 +83,8 @@ export const orderService = {
     const response = await api.get('/orders', { params });
     console.log('🔍 orderService.list unwrapped response:', response);
     // Interceptor đã unwrap response.data.data
-    // response giờ là { data: [...], pagination: {...} }
-    return response.data as OrderListResponse; // Fix type mismatch
+    // response có thể là array hoặc { data: [...], pagination: {...} }
+    return response as unknown as OrderListResponse;
   },
 
   /**
@@ -77,7 +92,8 @@ export const orderService = {
    */
   listByUser: async (userId: string, params?: { page?: number; limit?: number }) => {
     const response = await api.get(`/orders/user/${userId}`, { params });
-    return response.data as Order[]; // Fix type mismatch
+    // Interceptor đã unwrap
+    return response as unknown as Order[];
   },
 
   /**
@@ -85,7 +101,8 @@ export const orderService = {
    */
   listByStatus: async (status: string, params?: { page?: number; limit?: number }) => {
     const response = await api.get(`/orders/status/${status}`, { params });
-    return response.data as Order[]; // Fix type mismatch
+    // Interceptor đã unwrap
+    return response as unknown as Order[];
   },
 
   /**
@@ -93,7 +110,8 @@ export const orderService = {
    */
   getById: async (id: string): Promise<Order> => {
     const response = await api.get(`/orders/${id}`);
-    return response.data as Order; // Fix type mismatch
+    // Interceptor đã unwrap response.data.data, trả về Order trực tiếp
+    return response as unknown as Order;
   },
 
   /**
@@ -101,7 +119,8 @@ export const orderService = {
    */
   getDetails: async (id: string): Promise<Order> => {
     const response = await api.get(`/orders/${id}`);
-    return response.data as Order;
+    // Interceptor đã unwrap response.data.data, trả về Order trực tiếp
+    return response as unknown as Order;
   },
 
   /**
@@ -251,7 +270,7 @@ export const orderService = {
    * Lấy bàn trống
    */
   getAvailableTables: async () => {
-    const response = await api.get('/tables/available');
+    const response = await api.get('/tables');
     return response;
   },
 

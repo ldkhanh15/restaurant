@@ -2,8 +2,9 @@ import { useState, useCallback, useEffect } from 'react';
 import orderService, { Order, OrderListParams } from '../api/orderService';
 import { logger } from '../utils/logger';
 
-export type OrderStatus = "pending" | "preparing" | "ready" | "delivered" | "cancelled";
-export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+// Use backend actual statuses
+export type OrderStatus = "pending" | "paid" | "dining" | "waiting_payment" | "cancelled";
+export type PaymentStatus = "pending" | "paid" | "failed";
 
 export interface UseOrdersReturn {
   orders: Order[];
@@ -49,6 +50,10 @@ export const useOrders = (): UseOrdersReturn => {
       // response giờ là { data: [...], pagination: {...} }
       if (response?.data && Array.isArray(response.data)) {
         console.log('✅ Setting orders from response.data:', response.data.length, 'items');
+        console.log('📦 First order from list:', response.data[0]);
+        console.log('📦 First order items:', response.data[0]?.items || response.data[0]?.order_items);
+        console.log('📦 First order user:', response.data[0]?.user);
+        console.log('📦 First order table:', response.data[0]?.table);
         setOrders(response.data);
         setTotal(response.pagination?.total || 0);
         setPage(response.pagination?.page || 1);

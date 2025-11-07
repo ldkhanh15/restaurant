@@ -29,6 +29,7 @@ import blogPostRoutes from "./routes/blogPostRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
 import chatRoutes from "./routes/chatRoutes";
 import userBehaviorRoutes from "./routes/userBehaviorRoutes";
+import dashboardRoutes from "./routes/dashboardRoutes";
 
 // Import app_user routes
 import menuAppUserRoutes from "./routes/menu_app_userRoutes";
@@ -86,6 +87,7 @@ app.get('/payment/success', paymentAppUserController.devSuccessPage);
 
 // API Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dishes", dishRoutes);
 app.use("/api/orders", orderRoutes);

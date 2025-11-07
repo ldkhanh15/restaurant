@@ -15,6 +15,8 @@ export const useDashboard = () => {
   const [dailyOrders, setDailyOrders] = useState<DailyOrderStats[]>([]);
   const [popularDishes, setPopularDishes] = useState<PopularDish[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [hourlyRevenue, setHourlyRevenue] = useState<any[]>([]);
+  const [peakHours, setPeakHours] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,9 +47,10 @@ export const useDashboard = () => {
       
       // API doesn't accept period parameter yet
       const data = await dashboardAPI.getRevenueStats();
+      console.log('📊 Revenue Stats Data:', data);
       setRevenueStats(Array.isArray(data) ? data : []);
       
-      logger.info('Revenue stats loaded successfully');
+      logger.info(`Revenue stats loaded successfully: ${data?.length || 0} items`);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load revenue stats';
       setError(errorMessage);
@@ -65,9 +68,10 @@ export const useDashboard = () => {
       
       // API doesn't accept days parameter yet
       const data = await dashboardAPI.getDailyOrdersStats();
+      console.log('📊 Daily Orders Data:', data);
       setDailyOrders(Array.isArray(data) ? data : []);
       
-      logger.info('Daily orders loaded successfully');
+      logger.info(`Daily orders loaded successfully: ${data?.length || 0} items`);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load daily orders';
       setError(errorMessage);
@@ -85,9 +89,10 @@ export const useDashboard = () => {
       
       // API doesn't accept limit parameter yet
       const data = await dashboardAPI.getPopularDishes();
+      console.log('📊 Popular Dishes Data:', data);
       setPopularDishes(Array.isArray(data) ? data : []);
       
-      logger.info('Popular dishes loaded successfully');
+      logger.info(`Popular dishes loaded successfully: ${data?.length || 0} items`);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load popular dishes';
       setError(errorMessage);
@@ -103,8 +108,7 @@ export const useDashboard = () => {
       setError(null);
       logger.info('Fetching recent orders...');
       
-      // API doesn't accept limit parameter yet
-      const data = await dashboardAPI.getRecentOrders();
+      const data = await dashboardAPI.getRecentOrders(limit);
       setRecentOrders(Array.isArray(data) ? data : []);
       
       logger.info('Recent orders loaded successfully');
@@ -117,6 +121,46 @@ export const useDashboard = () => {
     }
   }, []);
 
+  const fetchHourlyRevenue = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      logger.info('Fetching hourly revenue...');
+      
+      const data = await dashboardAPI.getHourlyRevenueStats();
+      console.log('📊 Hourly Revenue Data:', data);
+      setHourlyRevenue(Array.isArray(data) ? data : []);
+      
+      logger.info(`Hourly revenue loaded successfully: ${data?.length || 0} items`);
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to load hourly revenue';
+      setError(errorMessage);
+      logger.error('Error fetching hourly revenue:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchPeakHours = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      logger.info('Fetching peak hours...');
+      
+      const data = await dashboardAPI.getPeakHoursStats();
+      console.log('📊 Peak Hours Data:', data);
+      setPeakHours(Array.isArray(data) ? data : []);
+      
+      logger.info(`Peak hours loaded successfully: ${data?.length || 0} items`);
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to load peak hours';
+      setError(errorMessage);
+      logger.error('Error fetching peak hours:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     await Promise.all([
       fetchDashboardStats(),
@@ -124,8 +168,10 @@ export const useDashboard = () => {
       fetchDailyOrders(),
       fetchPopularDishes(),
       fetchRecentOrders(),
+      fetchHourlyRevenue(),
+      fetchPeakHours(),
     ]);
-  }, [fetchDashboardStats, fetchRevenueStats, fetchDailyOrders, fetchPopularDishes, fetchRecentOrders]);
+  }, [fetchDashboardStats, fetchRevenueStats, fetchDailyOrders, fetchPopularDishes, fetchRecentOrders, fetchHourlyRevenue, fetchPeakHours]);
 
   // Load initial data
   useEffect(() => {
@@ -138,6 +184,8 @@ export const useDashboard = () => {
     dailyOrders,
     popularDishes,
     recentOrders,
+    hourlyRevenue,
+    peakHours,
     loading,
     error,
     fetchDashboardStats,
@@ -145,6 +193,8 @@ export const useDashboard = () => {
     fetchDailyOrders,
     fetchPopularDishes,
     fetchRecentOrders,
+    fetchHourlyRevenue,
+    fetchPeakHours,
     refresh,
     // Backward compatibility: some components expect `fetchAllData`
     fetchAllData: refresh,

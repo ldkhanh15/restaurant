@@ -20,8 +20,7 @@ import {
   Menu,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute, RouteProp, NavigationProp } from '@react-navigation/native';
 
 import { useOrders } from '../hooks';
 import { Order, OrderItem } from '../api/orderService';
@@ -34,7 +33,7 @@ type RootStackParamList = {
 };
 
 type OrderDetailRouteProp = RouteProp<RootStackParamList, 'OrderDetail'>;
-type OrderDetailNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
+type OrderDetailNavigationProp = NavigationProp<RootStackParamList>;
 
 /**
  * OrderDetailScreen - Màn hình chi tiết đơn hàng
@@ -328,7 +327,7 @@ const OrderDetailScreen = () => {
                       </Chip>
                     </View>
                     <Text style={styles.itemPrice}>
-                      {formatCurrency(item.price * item.quantity)}
+                      {formatCurrency((item.price || item.unit_price || 0) * item.quantity)}
                     </Text>
                   </View>
                   {item.special_instructions && (

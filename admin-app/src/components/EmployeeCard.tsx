@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { 
   Card, 
@@ -31,7 +31,10 @@ interface EmployeeCardProps {
   onView?: () => void;
 }
 
-export const EmployeeCard: React.FC<EmployeeCardProps> = ({
+/**
+ * ✅ OPTIMIZED: Component với memo
+ */
+const EmployeeCardComponent: React.FC<EmployeeCardProps> = ({
   employee,
   onPress,
   onEdit,
@@ -319,4 +322,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+});
+
+/**
+ * ✅ OPTIMIZED: Export với memo
+ * Chỉ re-render khi employee data thay đổi
+ */
+export const EmployeeCard = memo(EmployeeCardComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.employee.id === nextProps.employee.id &&
+    prevProps.employee.status === nextProps.employee.status &&
+    prevProps.employee.salary === nextProps.employee.salary
+  );
 });

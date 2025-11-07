@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import React, { useState, memo } from 'react';
+import { View, StyleSheet, Pressable, Image } from 'react-native';
 import { Text, useTheme, Chip, IconButton } from 'react-native-paper';
 import { spacing } from '@/theme';
 import { OrderItem } from '../api/orderService';
@@ -21,7 +21,11 @@ interface OrderCardProps {
   onPaymentStatusChange?: (orderId: string | number, newStatus: string) => void;
 }
 
-export const OrderCard: React.FC<OrderCardProps> = ({
+/**
+ * ✅ OPTIMIZED: Wrap với memo để tránh re-render không cần thiết
+ * Component chỉ re-render khi props thay đổi
+ */
+const OrderCardComponent: React.FC<OrderCardProps> = ({
   id,
   customer_name,
   customer_phone,
@@ -48,26 +52,26 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     ? id.substring(0, 8).toUpperCase() 
     : String(id);
 
-  // Status options - chỉ hiển thị các trạng thái hợp lệ để chuyển
+  // Status options - sử dụng backend status
   const getAvailableStatusOptions = (currentStatus: string) => {
     const allStatuses = [
       { value: 'pending', label: 'Chờ xử lý', icon: '⏳' },
-      { value: 'preparing', label: 'Đang chuẩn bị', icon: '👨‍🍳' },
-      { value: 'ready', label: 'Sẵn sàng', icon: '✅' },
-      { value: 'delivered', label: 'Đã giao', icon: '🚀' },
+      { value: 'dining', label: 'Đang chuẩn bị', icon: '👨‍🍳' },  // Backend: dining
+      { value: 'waiting_payment', label: 'Sẵn sàng', icon: '✅' },  // Backend: waiting_payment
+      { value: 'paid', label: 'Đã hoàn thành', icon: '🚀' },  // Backend: paid
       { value: 'cancelled', label: 'Đã hủy', icon: '❌' },
     ];
 
     // Logic: Chỉ cho phép chuyển sang trạng thái tiếp theo hoặc cancel
     switch (currentStatus) {
       case 'pending':
-        return allStatuses.filter(s => ['pending', 'preparing', 'cancelled'].includes(s.value));
-      case 'preparing':
-        return allStatuses.filter(s => ['preparing', 'ready', 'cancelled'].includes(s.value));
-      case 'ready':
-        return allStatuses.filter(s => ['ready', 'delivered', 'cancelled'].includes(s.value));
-      case 'delivered':
-        return allStatuses.filter(s => s.value === 'delivered'); // Không thể thay đổi
+        return allStatuses.filter(s => ['pending', 'dining', 'cancelled'].includes(s.value));
+      case 'dining':  // dining = preparing in UI
+        return allStatuses.filter(s => ['dining', 'waiting_payment', 'cancelled'].includes(s.value));
+      case 'waiting_payment':  // waiting_payment = ready in UI
+        return allStatuses.filter(s => ['waiting_payment', 'paid', 'cancelled'].includes(s.value));
+      case 'paid':  // paid = completed/delivered in UI
+        return allStatuses.filter(s => s.value === 'paid'); // Không thể thay đổi
       case 'cancelled':
         return allStatuses.filter(s => s.value === 'cancelled'); // Không thể thay đổi
       default:
@@ -75,12 +79,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     }
   };
 
-  // Payment status options
+  // Payment status options - sử dụng backend status
   const paymentStatusOptions = [
     { value: 'pending', label: 'Chờ thanh toán', icon: '⏳' },
     { value: 'paid', label: 'Đã thanh toán', icon: '✅' },
     { value: 'failed', label: 'Thất bại', icon: '❌' },
-    { value: 'refunded', label: 'Đã hoàn tiền', icon: '↩️' },
   ];
 
   const handleStatusChange = (newStatus: string) => {
@@ -96,8 +99,12 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   };
 
   const handleCardPress = () => {
+    console.log('🎯 OrderCard pressed, id:', id);
     if (onPress) {
+      console.log('✅ Calling onPress callback');
       onPress();
+    } else {
+      console.log('⚠️ No onPress callback provided');
     }
   };
 
@@ -105,9 +112,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return '#f59e0b';
-      case 'preparing': return '#3b82f6';
-      case 'ready': return '#10b981';
-      case 'delivered': return '#059669';
+      case 'dining': return '#3b82f6';  // Backend: dining = preparing in UI
+      case 'waiting_payment': return '#10b981';  // Backend: waiting_payment = ready in UI
+      case 'paid': return '#059669';  // Backend: paid = completed in UI
       case 'cancelled': return '#ef4444';
       default: return theme.colors.outline;
     }
@@ -116,9 +123,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending': return 'Chờ xử lý';
-      case 'preparing': return 'Đang chuẩn bị';
-      case 'ready': return 'Sẵn sàng';
-      case 'delivered': return 'Đã giao';
+      case 'dining': return 'Đang chuẩn bị';  // Backend: dining = preparing in UI
+      case 'waiting_payment': return 'Sẵn sàng';  // Backend: waiting_payment = ready in UI
+      case 'paid': return 'Đã hoàn thành';  // Backend: paid = completed in UI
       case 'cancelled': return 'Đã hủy';
       default: return status;
     }
@@ -129,7 +136,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       case 'paid': return '#10b981';
       case 'pending': return '#f59e0b';
       case 'failed': return '#ef4444';
-      case 'refunded': return '#6b7280';
       default: return theme.colors.outline;
     }
   };
@@ -139,7 +145,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       case 'paid': return 'Đã thanh toán';
       case 'pending': return 'Chờ thanh toán';
       case 'failed': return 'Thất bại';
-      case 'refunded': return 'Đã hoàn tiền';
       default: return paymentStatus;
     }
   };
@@ -172,46 +177,127 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               </Text>
             )}
           </View>
-          <View style={styles.headerRight}>
+          <View style={styles.headerRight}
+            onStartShouldSetResponder={() => true}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
             {/* Status Dropdown - Custom Modal Implementation */}
             <StatusDropdown
               value={status}
               options={getAvailableStatusOptions(status)}
               onSelect={handleStatusChange}
-              disabled={!onStatusChange || status === 'delivered' || status === 'cancelled'}
+              disabled={!onStatusChange || status === 'paid' || status === 'cancelled'}
               color={getStatusColor(status)}
               textSize={12}
-              showIcon={onStatusChange && status !== 'delivered' && status !== 'cancelled'}
+              showIcon={onStatusChange && status !== 'paid' && status !== 'cancelled'}
             />
           </View>
         </View>
 
       {/* Customer Information */}
       <View style={styles.customerInfo}>
-        <Text style={[styles.customerName, { color: theme.colors.onSurface }]}>
-          {customer_name}
-        </Text>
-        <Text style={[styles.customerPhone, { color: theme.colors.onSurfaceVariant }]}>
-          {customer_phone}
-        </Text>
-      </View>
-
-      {/* Order Items Preview */}
-      <View style={styles.orderItems}>
-        {(order_items || []).slice(0, 2).map((item, index) => (
-          <Text 
-            key={index} 
-            style={[styles.itemText, { color: theme.colors.onSurfaceVariant }]}
-          >
-            • {item.quantity}x {item.dish_name}
+        {customer_name && customer_name !== 'Khách vãng lai' && (
+          <Text style={[styles.customerName, { color: theme.colors.onSurface }]}>
+            {customer_name}
           </Text>
-        ))}
-        {(order_items || []).length > 2 && (
-          <Text style={[styles.itemText, { color: theme.colors.onSurfaceVariant }]}>
-            • +{(order_items || []).length - 2} món khác
+        )}
+        {customer_phone && customer_phone !== 'Chưa có' && (
+          <Text style={[styles.customerPhone, { color: theme.colors.onSurfaceVariant }]}>
+            {customer_phone}
           </Text>
         )}
       </View>
+
+      {/* Order Items Preview - Giống Modal */}
+      {(order_items || []).length > 0 ? (
+        <View style={styles.orderItems}>
+          {(order_items || []).map((item, index) => {
+            // State to track image load error
+            const [imageError, setImageError] = React.useState(false);
+            
+            // Clean and validate image URL
+            let imageUrl = item.dish?.media_urls?.[0];
+            
+            // Parse if it's a JSON string
+            if (typeof item.dish?.media_urls === 'string') {
+              try {
+                const parsed = JSON.parse(item.dish.media_urls);
+                imageUrl = Array.isArray(parsed) ? parsed[0] : null;
+              } catch (e) {
+                console.warn('Failed to parse media_urls:', item.dish.media_urls);
+              }
+            }
+            
+            // Clean URL: remove newlines, carriage returns, and extra spaces
+            if (imageUrl && typeof imageUrl === 'string') {
+              imageUrl = imageUrl
+                .replace(/[\r\n\t]/g, '') // Remove newlines, tabs
+                .replace(/\s+/g, '') // Remove all whitespace
+                .trim();
+            }
+            
+            // Validate URL is valid string and starts with http
+            const isValidUrl = typeof imageUrl === 'string' && imageUrl.length > 0 && imageUrl.startsWith('http');
+            
+            return (
+              <View key={index} style={[styles.orderItem, { backgroundColor: '#f8fafc' }]}>
+                {/* Dish Image with Fallback - only show if valid URL */}
+                {isValidUrl && !imageError ? (
+                  <Image 
+                    source={{ uri: imageUrl }}
+                    style={styles.dishImage}
+                    resizeMode="cover"
+                    onError={(error) => {
+                      console.warn('⚠️ Image 404 or failed:', imageUrl);
+                      setImageError(true);
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.dishImage, styles.dishImagePlaceholder]}>
+                    <Text style={styles.dishImagePlaceholderText}>🍽️</Text>
+                  </View>
+                )}
+                <View style={styles.orderItemInfo}>
+                  <Text style={[styles.orderItemName, { color: theme.colors.onSurface }]}>
+                    {item.dish?.name || item.dish_name || 'Món ăn'}
+                </Text>
+                <Text style={[styles.orderItemDetails, { color: theme.colors.onSurfaceVariant }]}>
+                  Số lượng: {item.quantity} × {((item.price || item.unit_price || 0)).toLocaleString('vi-VN')}đ
+                </Text>
+                {item.special_instructions && (
+                  <Text style={[styles.orderItemCustomizations, { color: theme.colors.onSurfaceVariant }]}>
+                    Yêu cầu: {item.special_instructions}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.orderItemRight}>
+                <Text style={[styles.orderItemPrice, { color: theme.colors.onSurface }]}>
+                  {((item.quantity || 0) * (item.price || item.unit_price || 0)).toLocaleString('vi-VN')}đ
+                </Text>
+                <Chip 
+                  mode="outlined" 
+                  compact 
+                  style={styles.itemStatusChip}
+                  textStyle={styles.itemStatusChipText}
+                >
+                  {item.status === 'pending' ? 'Chờ' : 
+                   item.status === 'preparing' ? 'Đang làm' : 
+                   item.status === 'ready' ? 'Xong' : 
+                   item.status === 'served' ? 'Đã phục vụ' : 
+                   item.status}
+                </Chip>
+              </View>
+            </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={[styles.emptyItems, { backgroundColor: '#f0f9ff' }]}>
+          <Text style={[styles.emptyItemsText, { color: '#0369a1' }]}>
+            📋 Click để xem chi tiết món ăn
+          </Text>
+        </View>
+      )}
 
         {/* Footer with Price and Payment Info */}
         <View style={styles.footer}>
@@ -219,7 +305,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             <Text style={[styles.totalPrice, { color: theme.colors.primary }]}>
               {total_amount.toLocaleString('vi-VN')}đ
             </Text>
-            <View style={styles.paymentInfo}>
+            <View style={styles.paymentInfo}
+              onStartShouldSetResponder={() => true}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
               {/* Payment Status Dropdown - Custom Modal Implementation */}
               <StatusDropdown
                 value={payment_status}
@@ -304,9 +393,94 @@ const styles = StyleSheet.create({
   orderItems: {
     marginBottom: spacing.sm,
   },
+  emptyItems: {
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.sm,
+    alignItems: 'center',
+  },
+  emptyItemsText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  itemsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  orderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
+  },
+  dishImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: spacing.sm,
+  },
+  dishImagePlaceholder: {
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dishImagePlaceholderText: {
+    fontSize: 24,
+  },
+  orderItemInfo: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  orderItemName: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  orderItemDetails: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  orderItemCustomizations: {
+    fontSize: 12,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  orderItemRight: {
+    alignItems: 'flex-end',
+    minWidth: 90,
+  },
+  orderItemPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  itemStatusChip: {
+    height: 26,
+    minWidth: 75,
+  },
+  itemStatusChipText: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginVertical: 0,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
   itemText: {
     fontSize: 14,
     lineHeight: 20,
+    flex: 1,
+  },
+  itemPrice: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: spacing.sm,
   },
   footer: {
     flexDirection: 'row',
@@ -344,4 +518,19 @@ const styles = StyleSheet.create({
     margin: 0,
     padding: 0,
   },
+});
+
+/**
+ * ✅ OPTIMIZED: Export với memo và custom comparison
+ * Chỉ re-render khi các props quan trọng thay đổi
+ */
+export const OrderCard = memo(OrderCardComponent, (prevProps, nextProps) => {
+  // Custom comparison: chỉ re-render khi những field này thay đổi
+  return (
+    prevProps.id === nextProps.id &&
+    prevProps.status === nextProps.status &&
+    prevProps.payment_status === nextProps.payment_status &&
+    prevProps.total_amount === nextProps.total_amount &&
+    prevProps.order_items.length === nextProps.order_items.length
+  );
 });

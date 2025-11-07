@@ -86,7 +86,7 @@ export const getRevenueStats = async (req: Request, res: Response, next: NextFun
         SUM(total_amount) as revenue
       FROM orders 
       WHERE YEAR(created_at) = :year 
-        AND status = 'completed'
+        AND status = 'paid'
       GROUP BY DATE_FORMAT(created_at, '%Y-%m')
       ORDER BY month
     `, {
@@ -261,6 +261,48 @@ export const getHourlyRevenueStats = async (req: Request, res: Response, next: N
       formattedData.push({
         time: `${i}h`,
         revenue: found ? parseFloat(found.revenue) / 1000000 : 0 // Convert to millions
+      })
+    }
+
+    res.json({
+      status: "success",
+      data: formattedData
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+// Thống kê giờ cao điểm (đặt bàn vs khách vãng lai)
+export const getPeakHoursStats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const date = req.query.date ? new Date(req.query.date as string) : new Date()
+    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+
+    const peakHoursData = await sequelize.query(`
+      SELECT 
+        HOUR(created_at) as hour,
+        COUNT(CASE WHEN table_id IS NOT NULL THEN 1 END) as reserved,
+        COUNT(CASE WHEN table_id IS NULL THEN 1 END) as walkin
+      FROM orders 
+      WHERE created_at >= :startOfDay 
+        AND created_at < :endOfDay
+      GROUP BY HOUR(created_at)
+      ORDER BY hour
+    `, {
+      replacements: { startOfDay, endOfDay },
+      type: QueryTypes.SELECT
+    }) as any[]
+
+    // Format cho stacked bar chart
+    const formattedData = []
+    for (let i = 6; i <= 22; i += 2) {
+      const found = peakHoursData.find(item => item.hour === i)
+      formattedData.push({
+        time: `${i}h`,
+        reserved: found ? parseInt(found.reserved) : 0,
+        walkin: found ? parseInt(found.walkin) : 0
       })
     }
 

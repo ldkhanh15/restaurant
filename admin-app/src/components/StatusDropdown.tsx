@@ -56,7 +56,13 @@ export const StatusDropdown: React.FC<StatusDropdownProps> = ({
         textStyle={{ color: 'white', fontSize: textSize, fontWeight: '600' }}
         compact
         icon={showIcon ? "chevron-down" : undefined}
-        onPress={() => !disabled && setVisible(true)}
+        onPress={(e: any) => {
+          e?.stopPropagation?.();
+          if (!disabled) {
+            console.log('🎯 StatusDropdown chip pressed, opening modal');
+            setVisible(true);
+          }
+        }}
         disabled={disabled}
       >
         {getDisplayText()}

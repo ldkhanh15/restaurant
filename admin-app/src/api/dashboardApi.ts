@@ -149,11 +149,13 @@ export class DashboardAPI {
   }
 
   // Get recent orders
-  async getRecentOrders(): Promise<RecentOrder[]> {
+  async getRecentOrders(limit: number = 10): Promise<RecentOrder[]> {
     try {
-      logger.api.request('GET /api/dashboard/orders/recent');
+      logger.api.request(`GET /api/dashboard/orders/recent?limit=${limit}`);
       
-      const response = await api.get(`${this.baseURL}/orders/recent`);
+      const response = await api.get(`${this.baseURL}/orders/recent`, {
+        params: { limit }
+      });
       
       logger.api.response('GET /api/dashboard/orders/recent', {
         status: 200,
@@ -164,6 +166,25 @@ export class DashboardAPI {
     } catch (error: any) {
       logger.api.error('GET /api/dashboard/orders/recent failed', error);
       throw new Error(error.response?.data?.message || 'Không thể tải đơn hàng gần đây');
+    }
+  }
+
+  // Get peak hours stats (đặt bàn vs khách vãng lai)
+  async getPeakHoursStats(): Promise<any[]> {
+    try {
+      logger.api.request('GET /api/dashboard/orders/peak-hours');
+      
+      const response = await api.get(`${this.baseURL}/orders/peak-hours`);
+      
+      logger.api.response('GET /api/dashboard/orders/peak-hours', {
+        status: 200,
+        count: Array.isArray(response) ? response.length : 0
+      });
+
+      return Array.isArray(response) ? response : [];
+    } catch (error: any) {
+      logger.api.error('GET /api/dashboard/orders/peak-hours failed', error);
+      throw new Error(error.response?.data?.message || 'Không thể tải giờ cao điểm');
     }
   }
 }

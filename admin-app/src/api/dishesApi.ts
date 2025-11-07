@@ -60,16 +60,16 @@ export class DishesAPI {
       
       const response = await api.get(this.baseURL, { params: filters });
       
-      // Backend returns pagination object: {items, totalItems, totalPages, currentPage}
-      // Extract items array from pagination
-      const dishes = response.data.data?.items || response.data.data || [];
+      // Backend returns: {status: "success", data: {data: [...], pagination: {...}}}
+      const dataWrapper = response.data?.data || response.data;
+      const dishes = dataWrapper?.data || dataWrapper?.items || dataWrapper || [];
       
       logger.api.response('GET /api/dishes', {
         status: response.status,
-        count: dishes.length
+        count: Array.isArray(dishes) ? dishes.length : 0
       });
 
-      return dishes;
+      return Array.isArray(dishes) ? dishes : [];
     } catch (error: any) {
       logger.api.error('GET /api/dishes failed', error);
       throw new Error(error.response?.data?.message || 'Không thể tải danh sách món ăn');
@@ -83,12 +83,15 @@ export class DishesAPI {
       
       const response = await api.get(`${this.baseURL}/${id}`);
       
+      // Handle different response formats
+      const dish = response.data?.data || response.data;
+      
       logger.api.response(`GET /api/dishes/${id}`, {
         status: response.status,
         dishId: id
       });
 
-      return response.data.data;
+      return dish;
     } catch (error: any) {
       logger.api.error(`GET /api/dishes/${id} failed`, error);
       throw new Error(error.response?.data?.message || 'Không thể tải thông tin món ăn');
@@ -105,12 +108,15 @@ export class DishesAPI {
       
       const response = await api.post(this.baseURL, dishData);
       
+      // Handle different response formats
+      const dish = response.data?.data || response.data;
+      
       logger.api.response('POST /api/dishes', {
         status: response.status,
-        dishId: response.data.data?.id
+        dishId: dish?.id
       });
 
-      return response.data.data;
+      return dish;
     } catch (error: any) {
       logger.api.error('POST /api/dishes failed', error);
       throw new Error(error.response?.data?.message || 'Không thể tạo món ăn');
@@ -124,12 +130,15 @@ export class DishesAPI {
       
       const response = await api.put(`${this.baseURL}/${id}`, dishData);
       
+      // Handle different response formats
+      const dish = response.data?.data || response.data;
+      
       logger.api.response(`PUT /api/dishes/${id}`, {
         status: response.status,
         dishId: id
       });
 
-      return response.data.data;
+      return dish;
     } catch (error: any) {
       logger.api.error(`PUT /api/dishes/${id} failed`, error);
       throw new Error(error.response?.data?.message || 'Không thể cập nhật món ăn');

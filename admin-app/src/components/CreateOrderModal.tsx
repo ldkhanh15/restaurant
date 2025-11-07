@@ -9,7 +9,6 @@ import {
 import {
   Modal,
   Portal,
-  Text,
   Button,
   TextInput,
   Searchbar,
@@ -19,6 +18,7 @@ import {
   Card,
   Surface,
   ActivityIndicator,
+  Text,
 } from 'react-native-paper';
 import { useMenuItems } from '../hooks/useMenu';
 
@@ -135,17 +135,22 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
 
   // Validate form
   const canProceedToCustomer = orderItems.length > 0;
-  const canProceedToReview = customerName.trim() !== '' && customerPhone.trim() !== '';
+  const canProceedToReview = customerName.trim() !== '' && customerPhone.trim() !== '' && selectedTable !== '';
   const canSubmit = canProceedToCustomer && canProceedToReview;
 
   // Handle submit
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    
+    if (!selectedTable) {
+      console.error('❌ Table is required');
+      return;
+    }
 
     setSubmitting(true);
     try {
       await onSubmit({
-        tableId: selectedTable || undefined,
+        tableId: selectedTable, // Ensure tableId is always set
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         items: orderItems,
@@ -214,8 +219,8 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
               >
                 <Card>
                   <Card.Content>
-                    <Text variant="titleMedium" numberOfLines={2}>{item.name}</Text>
-                    <Text variant="bodyMedium" style={styles.price}>
+                    <Text style={styles.dishName} numberOfLines={2}>{item.name}</Text>
+                    <Text style={styles.price}>
                       {item.price.toLocaleString('vi-VN')}đ
                     </Text>
                     {inCart && (
@@ -233,8 +238,8 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
 
       {orderItems.length > 0 && (
         <Surface style={styles.cartSummary}>
-          <Text variant="titleMedium">Đã chọn: {orderItems.length} món</Text>
-          <Text variant="bodyLarge" style={styles.totalText}>
+          <Text style={styles.cartSummaryText}>Đã chọn: {orderItems.length} món</Text>
+          <Text style={styles.totalText}>
             {total.toLocaleString('vi-VN')}đ
           </Text>
         </Surface>
@@ -245,6 +250,25 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
   // Step 2: Customer Info
   const renderCustomerStep = () => (
     <ScrollView style={styles.stepContent}>
+      {/* Chọn bàn - BẮT BUỘC */}
+      <Text variant="titleMedium" style={styles.sectionTitle}>Chọn bàn *</Text>
+      {tables.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScrollContainer}>
+          {tables.map(table => (
+            <Chip
+              key={table.id}
+              selected={selectedTable === table.id}
+              onPress={() => setSelectedTable(table.id)}
+              style={styles.tableChip}
+            >
+              {table.name} ({table.capacity} chỗ)
+            </Chip>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text style={styles.errorText}>Không có bàn nào khả dụng</Text>
+      )}
+      
       <Text variant="titleMedium" style={styles.sectionTitle}>Thông tin khách hàng</Text>
       
       <TextInput
@@ -263,24 +287,6 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
         keyboardType="phone-pad"
         style={styles.input}
       />
-
-      {tables.length > 0 && (
-        <>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Chọn bàn (tùy chọn)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {tables.map(table => (
-              <Chip
-                key={table.id}
-                selected={selectedTable === table.id}
-                onPress={() => setSelectedTable(table.id)}
-                style={styles.tableChip}
-              >
-                {table.name} ({table.capacity} chỗ)
-              </Chip>
-            ))}
-          </ScrollView>
-        </>
-      )}
 
       <Text variant="titleMedium" style={styles.sectionTitle}>Ghi chú đơn hàng</Text>
       <TextInput
@@ -394,7 +400,7 @@ export const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
         contentContainerStyle={styles.modal}
       >
         <View style={styles.header}>
-          <Text variant="headlineSmall">Tạo đơn hàng mới</Text>
+          <Text style={styles.headerTitle}>Tạo đơn hàng mới</Text>
           <IconButton icon="close" onPress={onDismiss} />
         </View>
 
@@ -475,6 +481,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
   stepIndicator: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -513,6 +523,13 @@ const styles = StyleSheet.create({
   categoryChip: {
     marginRight: 8,
   },
+  tableScrollContainer: {
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#ef4444',
+    marginBottom: 12,
+  },
   loader: {
     marginTop: 32,
   },
@@ -522,6 +539,10 @@ const styles = StyleSheet.create({
   dishCard: {
     flex: 1,
     margin: 4,
+  },
+  dishName: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   price: {
     color: '#3b82f6',
@@ -543,6 +564,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     elevation: 4,
+  },
+  cartSummaryText: {
+    fontWeight: '600',
+    fontSize: 14,
   },
   totalText: {
     color: '#3b82f6',

@@ -32,15 +32,16 @@ export class CategoryAPI {
       
       const response = await api.get(this.baseURL);
       
-      // Backend returns pagination object: {items, totalItems, totalPages, currentPage}
-      const categories = response.data.data?.items || response.data.data || [];
+      // Backend returns: {status: "success", data: {data: [...], pagination: {...}}}
+      const dataWrapper = response.data?.data || response.data;
+      const categories = dataWrapper?.data || dataWrapper?.items || dataWrapper || [];
       
       logger.api.response('GET /api/categories', {
         status: response.status,
-        count: categories.length
+        count: Array.isArray(categories) ? categories.length : 0
       });
 
-      return categories;
+      return Array.isArray(categories) ? categories : [];
     } catch (error: any) {
       logger.api.error('GET /api/categories failed', error);
       throw new Error(error.response?.data?.message || 'Không thể tải danh sách danh mục');
@@ -54,12 +55,15 @@ export class CategoryAPI {
       
       const response = await api.get(`${this.baseURL}/${id}`);
       
+      // Handle different response formats
+      const category = response.data?.data || response.data;
+      
       logger.api.response(`GET /api/categories/${id}`, {
         status: response.status,
         categoryId: id
       });
 
-      return response.data.data;
+      return category;
     } catch (error: any) {
       logger.api.error(`GET /api/categories/${id} failed`, error);
       throw new Error(error.response?.data?.message || 'Không thể tải thông tin danh mục');
@@ -75,12 +79,15 @@ export class CategoryAPI {
       
       const response = await api.post(this.baseURL, categoryData);
       
+      // Handle different response formats
+      const category = response.data?.data || response.data;
+      
       logger.api.response('POST /api/categories', {
         status: response.status,
-        categoryId: response.data.data?.id
+        categoryId: category?.id
       });
 
-      return response.data.data;
+      return category;
     } catch (error: any) {
       logger.api.error('POST /api/categories failed', error);
       throw new Error(error.response?.data?.message || 'Không thể tạo danh mục');
@@ -94,12 +101,15 @@ export class CategoryAPI {
       
       const response = await api.put(`${this.baseURL}/${id}`, categoryData);
       
+      // Handle different response formats
+      const category = response.data?.data || response.data;
+      
       logger.api.response(`PUT /api/categories/${id}`, {
         status: response.status,
         categoryId: id
       });
 
-      return response.data.data;
+      return category;
     } catch (error: any) {
       logger.api.error(`PUT /api/categories/${id} failed`, error);
       throw new Error(error.response?.data?.message || 'Không thể cập nhật danh mục');
@@ -129,12 +139,15 @@ export class CategoryAPI {
       
       const response = await api.put(`${this.baseURL}/${id}`, { is_active: isActive });
       
+      // Handle different response formats
+      const category = response.data?.data || response.data;
+      
       logger.api.response(`PUT /api/categories/${id}/status`, {
         status: response.status,
         isActive
       });
 
-      return response.data.data;
+      return category;
     } catch (error: any) {
       logger.api.error(`PUT /api/categories/${id}/status failed`, error);
       throw new Error(error.response?.data?.message || 'Không thể cập nhật trạng thái danh mục');
