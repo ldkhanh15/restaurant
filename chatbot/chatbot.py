@@ -58,7 +58,7 @@ def format_reservation(info):
             else str(event_info) if event_info else "Không"
         )
 
-        return (
+    return (
             f"📅 **Thời gian:** {info.get('reservation_time', 'N/A')}\n"
             f"👥 **Số người:** {info.get('num_people', 'N/A')}\n"
             f"⏰ **Thời lượng:** {info.get('duration_minutes', 120)} phút\n"
@@ -1185,7 +1185,7 @@ Handle ALL customer queries comprehensively with detailed context understanding:
                     )
                     if redirect_url:
                         resp += f"\n\n💳 **Yêu cầu thanh toán:**\n🔗 [Thanh toán ngay]({redirect_url})"
-                    else:
+            else:
                         resp += "\n\n✅ **Đã gửi yêu cầu thanh toán!**"
                 elif endpoint and method == "put":
                     order_id = endpoint.split("/")[-1]

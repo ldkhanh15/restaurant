@@ -420,7 +420,7 @@ export function ReservationManagementEnhanced({
         limit: pageSize,
       };
 
-      if (statusFilter !== "all") {
+    if (statusFilter !== "all") {
         filters.status = statusFilter;
       }
 
@@ -428,8 +428,8 @@ export function ReservationManagementEnhanced({
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         filters.start_date = today.toISOString();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
         filters.end_date = tomorrow.toISOString();
       } else if (dateFilter === "tomorrow") {
         const tomorrow = new Date();
@@ -914,18 +914,18 @@ export function ReservationManagementEnhanced({
                   <WifiOff className="h-5 w-5 text-red-600" />
                 </div>
               )}
-              <div>
+            <div>
                 <p className="text-sm font-medium text-gray-600">
                   Trạng thái kết nối
-                </p>
+              </p>
                 <p className="text-base font-bold">
-                  {isWebSocketConnected ? (
+                {isWebSocketConnected ? (
                     <span className="text-emerald-600">Đang hoạt động</span>
-                  ) : (
-                    <span className="text-red-600">Mất kết nối</span>
-                  )}
-                </p>
-              </div>
+                ) : (
+                  <span className="text-red-600">Mất kết nối</span>
+                )}
+              </p>
+            </div>
             </div>
             {isWebSocketConnected && (
               <Badge className="bg-emerald-500 text-white px-3 py-1 text-xs">

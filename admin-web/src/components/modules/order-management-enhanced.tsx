@@ -218,10 +218,18 @@ export function OrderManagementEnhanced({
     });
 
     onPaymentRequested((order) => {
+      const paymentMethod = order.payment_method || "vnpay";
+      const paymentNote = order.payment_note
+        ? `\nGhi chú: ${order.payment_note}`
+        : "";
+      const amount = order.final_amount || order.total_amount || 0;
+
       toast({
         title: "Yêu cầu thanh toán",
-        description: `Đơn hàng #${order.id.slice(0, 8)} yêu cầu thanh toán`,
-        variant: "default",
+        description: `Đơn hàng #${order.id.slice(0, 8)} yêu cầu thanh toán ${
+          paymentMethod === "cash" ? "tiền mặt" : "online"
+        }. Số tiền: ${Number(amount).toLocaleString("vi-VN")}đ${paymentNote}`,
+        variant: paymentMethod === "cash" ? "default" : "default",
       });
     });
 
