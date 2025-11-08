@@ -113,7 +113,7 @@ Reservation.init(
       defaultValue: 0,
     },
     status: {
-      type: DataTypes.ENUM("pending", "confirmed", "cancelled", "no_show"),
+      type: DataTypes.ENUM("pending", "confirmed", "cancelled", "no_show", "completed"),
       defaultValue: "pending",
     },
     timeout_minutes: {

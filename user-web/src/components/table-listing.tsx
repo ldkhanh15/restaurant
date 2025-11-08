@@ -343,8 +343,8 @@ export default function TableListing() {
               </h1>
               <p className="text-muted-foreground font-serif italic">
                 Chọn bàn phù hợp cho bữa ăn của bạn
-              </p>
-            </div>
+          </p>
+        </div>
           </div>
 
           <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
@@ -372,7 +372,7 @@ export default function TableListing() {
               </TabsList>
             </Tabs>
 
-            <div className="flex gap-2">
+          <div className="flex gap-2">
               <Button
                 variant={viewMode === "map" ? "default" : "outline"}
                 size="sm"
@@ -396,7 +396,7 @@ export default function TableListing() {
                 <List className="h-4 w-4 mr-2" /> Danh Sách
               </Button>
             </div>
-          </div>
+        </div>
 
           {viewMode === "list" && (
             <motion.div
@@ -620,7 +620,7 @@ export default function TableListing() {
                   )}
                 </>
               ) : (
-                <div className="text-center py-12">
+          <div className="text-center py-12">
                   <MapPin className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <p className="text-lg text-muted-foreground">
                     Không tìm thấy bàn phù hợp

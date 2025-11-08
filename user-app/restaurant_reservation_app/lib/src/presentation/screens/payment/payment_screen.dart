@@ -14,6 +14,8 @@ import '../../../app/app.dart';
 import 'payment_success_screen.dart';
 import '../../../data/datasources/api_config.dart';
 import '../payment/vnpay_webview_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
+// debug prints used instead of dart:developer
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final String? initialOrderId;
@@ -145,6 +147,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   void _handlePayment() async {
+    // Use print so the message appears reliably in the Flutter console.
+    print('[Payment] _handlePayment called');
     if (selectedMethod == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng chọn phương thức thanh toán')),
@@ -202,60 +206,184 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         );
         final redirect = resp['redirect_url'] as String?;
         if (redirect != null && redirect.isNotEmpty) {
-          // Build return URL prefix from backend config. The backend uses /api/payments/vnpay/return
-          final returnPrefix = ApiConfig.baseUrl.endsWith('/')
-              ? '${ApiConfig.baseUrl}api/payments/vnpay/return'
-              : '${ApiConfig.baseUrl}/api/payments/vnpay/return';
+      // Build return URL prefix from backend config. Use app_user return endpoint
+      // so the mobile client verifies against the app_user controller.
+      final returnPrefix = ApiConfig.baseUrl.endsWith('/')
+        ? '${ApiConfig.baseUrl}api/app_user/payment/vnpay/return'
+        : '${ApiConfig.baseUrl}/api/app_user/payment/vnpay/return';
 
-          // Open WebView and await the final return URL (which VNPAY will redirect to after OTP)
-          final resultUrl = await Navigator.of(context).push<String?>(
-            MaterialPageRoute(builder: (_) => VnPayWebViewScreen(initialUrl: redirect, returnUrlPrefix: returnPrefix)),
+          // Let user choose whether to open in external browser or in-app WebView
+          final choice = await showDialog<String?>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Mở trang thanh toán'),
+              content: SelectableText(redirect),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Hủy')),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop('external'),
+                  child: const Text('Mở trong trình duyệt'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop('webview'),
+                  child: const Text('Mở trong ứng dụng'),
+                ),
+              ],
+            ),
           );
 
-          // If we received a resultUrl, call backend verify endpoint to validate the VNPay return
-          if (resultUrl != null && resultUrl.isNotEmpty) {
+          if (choice == 'external') {
+            // Open external browser. Note: the app won't automatically receive VNPay return URL.
             try {
-              // Dev fallback: if VNPay returned a localhost URL (common in dev/backends),
-              // replace the host with ApiConfig.baseUrl so the app can reach the backend.
-              var normalizedResultUrl = resultUrl;
-              try {
-                final parsed = Uri.parse(resultUrl);
-                if ((parsed.host == 'localhost' || parsed.host == '127.0.0.1') && ApiConfig.baseUrl.isNotEmpty) {
-                  final base = Uri.parse(ApiConfig.baseUrl);
-                  final replaced = base.replace(path: parsed.path, queryParameters: parsed.queryParameters);
-                  normalizedResultUrl = replaced.toString();
-                }
-              } catch (_) {
-                // ignore parse errors and use original
-              }
-
-              final verifyResp = await PaymentAppUserService.verifyVnpayReturnFromUrl(normalizedResultUrl);
-              // Backend should return payment result including order id and payment_status
-              final paymentStatus = (verifyResp['payment_status'] ?? verifyResp['status'] ?? 'paid') as String;
-              final paymentMethod = (verifyResp['payment_method'] ?? 'vnpay') as String;
-              // Refresh order from backend to get canonical values
-              try {
-                final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
-                final updatedOrder = currentOrder.copyWith(
-                  status: fresh['status'] == 'paid' ? OrderStatus.paid : currentOrder.status,
-                  paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? paymentMethod),
-                  paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? paymentStatus),
-                );
-                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
-              } catch (_) {
-                // Fallback: update local status based on verifyResp
-                final updatedOrder = currentOrder.copyWith(
-                  paymentMethod: _parsePaymentMethodType(paymentMethod),
-                  paymentStatus: _parsePaymentStatus(paymentStatus),
-                  status: paymentStatus.toLowerCase() == 'paid' ? OrderStatus.paid : currentOrder.status,
-                );
-                ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+              final uri = Uri.parse(redirect);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã mở trình duyệt. Sau khi hoàn tất, quay lại ứng dụng để kiểm tra trạng thái.')));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể mở trình duyệt.')));
               }
             } catch (e) {
-              // verification failed — keep polling or notify user
-              // For now, show a snackbar and allow polling fallback
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xác thực giao dịch: $e')));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi mở URL: $e')));
             }
+            setState(() { isProcessing = false; });
+            return;
+          } else if (choice == 'webview') {
+            // Open the in-app WebView and await the VNPay redirect return URL
+            final resultUrl = await Navigator.of(context).push<String?>(
+              MaterialPageRoute(builder: (_) => VnPayWebViewScreen(initialUrl: redirect, returnUrlPrefix: returnPrefix)),
+            );
+
+            // If we received a resultUrl, handle it.
+            if (resultUrl != null && resultUrl.isNotEmpty) {
+              final resultUri = Uri.tryParse(resultUrl);
+
+              // If the result is a custom app scheme, it means the app was re-opened via deep link.
+              // We can treat this as a success signal and navigate to the success screen.
+              if (resultUri != null && resultUri.scheme == 'restaurantapp') {
+                if (resultUri.host == 'payment' && resultUri.path.contains('success')) {
+                  // Update order state to paid as a fallback
+                  final updatedOrder = currentOrder.copyWith(status: OrderStatus.paid, paymentStatus: PaymentStatus.completed);
+                  ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+
+                  // Navigate to success screen
+                  if (mounted) {
+                    appRouter.go('/payment-success', extra: updatedOrder);
+                  }
+                } else {
+                  // Handle other deep link paths if necessary, e.g., failure
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Giao dịch không thành công hoặc đã bị hủy.')),
+                    );
+                  }
+                }
+              } else {
+                // If it's a standard web URL, proceed with server-side verification.
+                try {
+                  var normalizedResultUrl = resultUrl;
+                  try {
+                    final parsed = Uri.parse(resultUrl);
+                    if ((parsed.host == 'localhost' || parsed.host == '127.0.0.1') && ApiConfig.baseUrl.isNotEmpty) {
+                      final base = Uri.parse(ApiConfig.baseUrl);
+                      final replaced = base.replace(path: parsed.path, queryParameters: parsed.queryParameters);
+                      normalizedResultUrl = replaced.toString();
+                    }
+                  } catch (_) {
+                    // ignore parse errors and use original
+                  }
+
+                  final verifyResp = await PaymentAppUserService.verifyVnpayReturnFromUrl(normalizedResultUrl);
+                  final paymentStatus = (verifyResp['payment_status'] ?? verifyResp['status'] ?? 'paid') as String;
+                  final paymentMethod = (verifyResp['payment_method'] ?? 'vnpay') as String;
+
+                  Order updatedOrder;
+                  try {
+                    final fresh = await OrderAppUserService.getOrderById(currentOrder.id.toString());
+                    updatedOrder = currentOrder.copyWith(
+                      status: fresh['status'] == 'paid' ? OrderStatus.paid : currentOrder.status,
+                      paymentMethod: _parsePaymentMethodType(fresh['payment_method'] ?? paymentMethod),
+                      paymentStatus: _parsePaymentStatus(fresh['payment_status'] ?? paymentStatus),
+                    );
+                  } catch (_) {
+                    updatedOrder = currentOrder.copyWith(
+                      paymentMethod: _parsePaymentMethodType(paymentMethod),
+                      paymentStatus: _parsePaymentStatus(paymentStatus),
+                      status: paymentStatus.toLowerCase() == 'paid' ? OrderStatus.paid : currentOrder.status,
+                    );
+                  }
+                  ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+
+                  if (paymentStatus.toLowerCase() == 'paid') {
+                    if (mounted) {
+                      final user = ref.read(userProvider);
+                      final userId = user != null ? user.id.toString() : null;
+                      final notif = AppNotification(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        userId: userId,
+                        type: NotificationType.other,
+                        content: 'Đơn hàng #${updatedOrder.id} đã được thanh toán',
+                        sentAt: DateTime.now(),
+                        status: NotificationStatus.sent,
+                      );
+                      try {
+                        ref.read(notificationsProvider.notifier).addNotification(notif);
+                      } catch (_) {}
+
+                      try {
+                        appRouter.go('/payment-success', extra: updatedOrder);
+                      } catch (_) {
+                        try {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrder)));
+                        } catch (__) {
+                          context.go('/account?tab=orders');
+                        }
+                      }
+                    }
+                  } else {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Trạng thái thanh toán: $paymentStatus')),
+                      );
+                    }
+                  }
+                } catch (e) {
+                  // Defensive fallback: if the error is due to an unsupported
+                  // URI scheme (e.g., 'restaurantapp://...') when verifying, treat
+                  // it as a success signal returned via deep link and navigate to
+                  // the success screen. This handles cases where the WebView
+                  // returns a custom scheme and verification couldn't run.
+                  final err = e.toString();
+                  if (err.contains('Unsupported scheme') || err.contains('restaurantapp')) {
+                    try {
+                      final parsedFallback = Uri.tryParse(resultUrl);
+                      final orderId = parsedFallback?.queryParameters['order_id'];
+                      final updatedOrder = currentOrder.copyWith(status: OrderStatus.paid, paymentStatus: PaymentStatus.completed);
+                      ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+                      if (mounted) {
+                        if (orderId != null) {
+                          appRouter.go('/payment-success', extra: updatedOrder);
+                        } else {
+                          appRouter.go('/payment-success', extra: updatedOrder);
+                        }
+                      }
+                      // swallow error after handling
+                      setState(() { isProcessing = false; });
+                      return;
+                    } catch (_) {
+                      // fallthrough to show snackbar when fallback fails
+                    }
+                  }
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xác thực giao dịch: $e')));
+                }
+              }
+            }
+            // Finished webview flow, stop processing and don't fall through.
+            setState(() { isProcessing = false; });
+            return;
+          } else {
+            // User cancelled dialog
+            setState(() { isProcessing = false; });
+            return;
           }
         }
       } else {
@@ -273,6 +401,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           paymentStatus: _parsePaymentStatus(updatedOrderData['payment_status'] ?? 'paid'),
         );
         ref.read(currentOrderProvider.notifier).setOrder(updatedOrder);
+
+        // Navigate to success screen for cash payment
+        if (mounted) {
+            try {
+              appRouter.go('/payment-success', extra: updatedOrder);
+            } catch (_) {
+              try {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrder)));
+              } catch (__) {
+                context.go('/account?tab=orders');
+              }
+            }
+        }
       }
     } catch (e) {
       // If API errors, fallback to local update and notify user
@@ -284,77 +425,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       isProcessing = false;
     });
 
-    // After successful payment, create a local notification and navigate to payment success screen
-    try {
-      final updatedOrder = ref.read(currentOrderProvider);
-          if (updatedOrder != null) {
-  final user = ref.read(userProvider);
-  final userId = user != null ? user.id.toString() : null;
-        final notif = AppNotification(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          userId: userId,
-          type: NotificationType.other,
-          content: 'Đơn hàng #${updatedOrder.id} đã được thanh toán',
-          sentAt: DateTime.now(),
-          status: NotificationStatus.sent,
-        );
-        try {
-          ref.read(notificationsProvider.notifier).addNotification(notif);
-        } catch (_) {}
-
-        // Try to find the booking object to navigate to order-confirmation
-        final bookings = ref.read(bookingsProvider);
-        Booking? found;
-        try {
-          final matches = bookings.where((b) => b.id == updatedOrder.bookingId || b.serverId == updatedOrder.bookingId).toList();
-          if (matches.isNotEmpty) found = matches.first;
-        } catch (_) {}
-
-        if (!mounted) return;
-        if (found != null) {
-          final updatedOrder = ref.read(currentOrderProvider);
-          if (updatedOrder != null) {
-            // Show payment success screen
-            if (mounted) {
-              try {
-                appRouter.go('/payment-success', extra: updatedOrder);
-                return;
-              } catch (_) {
-                // Fallback: push the screen directly to avoid relying on router registration
-                try {
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrder)));
-                  return;
-                } catch (__){
-                  context.go('/account?tab=orders');
-                  return;
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {}
-
-    // If payment completed, show Payment Success screen. Otherwise fall back to orders list.
-    final updatedOrderFallback = ref.read(currentOrderProvider);
-    if (updatedOrderFallback != null) {
-      // If order is paid, show payment success
-      if (updatedOrderFallback.paymentStatus == PaymentStatus.completed || updatedOrderFallback.status == OrderStatus.paid) {
-        if (mounted) {
-          try {
-            appRouter.go('/payment-success', extra: updatedOrderFallback);
-            return;
-          } catch (_) {
-            try {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PaymentSuccessScreen(order: updatedOrderFallback)));
-              return;
-            } catch (__){ }
-          }
-        }
-      }
-    }
-
-    if (mounted) context.go('/account?tab=orders');
+    // No general navigation logic here anymore
   }
 
   @override
@@ -508,6 +579,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 value: method,
                 groupValue: selectedMethod,
                 onChanged: (value) {
+                  print('[UI] Payment method selected: $value');
                   setState(() {
                     selectedMethod = value;
                   });
@@ -548,7 +620,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: isProcessing ? null : _handlePayment,
+                onPressed: isProcessing ? null : () {
+                  // Visible immediate feedback when the button is tapped.
+                  print('[UI] Payment button pressed');
+                  _handlePayment();
+                },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),

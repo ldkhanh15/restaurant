@@ -96,9 +96,10 @@ export const reservationService = {
     data: CreateReservationData
   ): Promise<{
     status: string;
-    data: Reservation & {
+    data: {
+      reservation: Reservation;
       requires_payment?: boolean;
-      payment_url?: any;
+      payment_url?: { url: string; txnRef?: string };
       deposit_amount?: number;
     };
   }> => apiClient.post("/reservations", data),

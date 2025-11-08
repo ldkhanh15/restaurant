@@ -25,6 +25,7 @@ import {
   ShoppingCart,
   Loader2,
   ArrowLeft,
+  Wallet,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -33,12 +34,22 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import DishSelectionDialog from "@/components/shared/DishSelectionDialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
+import {
   orderService,
   type Order,
   type OrderItem,
 } from "@/services/orderService";
 import { useOrderStore } from "@/store/orderStore";
-import { useAuth } from "@/lib/auth";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
 import type { SelectableDish } from "@/components/shared/DishSelectionDialog";
 
@@ -115,7 +126,7 @@ export default function OrderDetailPage({
 }) {
   const { id } = params;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
   const orderSocket = useOrderSocket();
   const {
     selectedOrder,
@@ -131,15 +142,21 @@ export default function OrderDetailPage({
 
   const [isAddingDishes, setIsAddingDishes] = useState(false);
   const [voucherCode, setVoucherCode] = useState("");
-  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const [isVoucherApplied, setIsVoucherApplied] = useState(false);
+  const [isVoucherProcessing, setIsVoucherProcessing] = useState(false);
   const [isUpdatingQuantity, setIsUpdatingQuantity] = useState<string | null>(
     null
   );
+  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<
+    "vnpay" | "cash"
+  >("vnpay");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [cashNote, setCashNote] = useState("");
 
   // Load order on mount
   useEffect(() => {
-    if (!user?.id) {
-      router.push("/login");
+    if (authLoading || !user?.id) {
       return;
     }
 
@@ -152,12 +169,10 @@ export default function OrderDetailPage({
         if (response.status === "success") {
           const orderData = response.data;
           setSelectedOrder(orderData);
-
-          // Set voucher code if voucher is applied
-          if (orderData.voucher?.code) {
-            setVoucherCode(orderData.voucher.code);
-            setIsApplyingVoucher(true);
-          }
+          const appliedVoucherCode = orderData.voucher?.code || "";
+          setVoucherCode(appliedVoucherCode);
+          setIsVoucherApplied(Boolean(appliedVoucherCode));
+          setIsVoucherProcessing(false);
         }
       } catch (err: any) {
         console.error("Failed to load order:", err);
@@ -185,6 +200,7 @@ export default function OrderDetailPage({
   }, [
     id,
     user?.id,
+    authLoading,
     router,
     setSelectedOrder,
     setLoadingDetail,
@@ -196,7 +212,12 @@ export default function OrderDetailPage({
     try {
       const response = await orderService.getOrderById(id);
       if (response.status === "success") {
-        setSelectedOrder(response.data);
+        const orderData = response.data;
+        setSelectedOrder(orderData);
+        const appliedVoucherCode = orderData.voucher?.code || "";
+        setVoucherCode(appliedVoucherCode);
+        setIsVoucherApplied(Boolean(appliedVoucherCode));
+        setIsVoucherProcessing(false);
       }
     } catch (err) {
       console.error("Failed to refresh order:", err);
@@ -272,6 +293,13 @@ export default function OrderDetailPage({
           voucher_discount_amount: order.voucher_discount_amount || 0,
           final_amount: order.final_amount || order.total_amount || 0,
         });
+        if (order.voucher?.code) {
+          setVoucherCode(order.voucher.code);
+        } else if (order.voucher_code) {
+          setVoucherCode(order.voucher_code);
+        }
+        setIsVoucherApplied(true);
+        setIsVoucherProcessing(false);
         toast({
           title: "Áp dụng voucher thành công",
           description: `Giảm ${(
@@ -291,7 +319,8 @@ export default function OrderDetailPage({
           final_amount: order.total_amount || 0,
         });
         setVoucherCode("");
-        setIsApplyingVoucher(false);
+        setIsVoucherApplied(false);
+        setIsVoucherProcessing(false);
         toast({
           title: "Đã xóa voucher",
           description: "Voucher đã được xóa khỏi đơn hàng",
@@ -535,9 +564,10 @@ export default function OrderDetailPage({
     }
 
     try {
+      setIsVoucherProcessing(true);
       const response = await orderService.applyVoucher(id, voucherCode.trim());
       if (response.status === "success") {
-        setIsApplyingVoucher(true);
+        setIsVoucherApplied(true);
         await refreshOrder();
         toast({
           title: "Áp dụng voucher thành công",
@@ -556,15 +586,18 @@ export default function OrderDetailPage({
           "Vui lòng kiểm tra lại mã voucher",
         variant: "destructive",
       });
+    } finally {
+      setIsVoucherProcessing(false);
     }
   };
 
   // Handle remove voucher
   const handleRemoveVoucher = async () => {
     try {
+      setIsVoucherProcessing(true);
       const response = await orderService.removeVoucher(id);
       if (response.status === "success") {
-        setIsApplyingVoucher(false);
+        setIsVoucherApplied(false);
         setVoucherCode("");
         await refreshOrder();
         toast({
@@ -580,28 +613,66 @@ export default function OrderDetailPage({
           err.response?.data?.message || err.message || "Không thể xóa voucher",
         variant: "destructive",
       });
+    } finally {
+      setIsVoucherProcessing(false);
     }
   };
 
-  // Handle request payment
-  const handleRequestPayment = async () => {
+  const openInvoiceDialog = () => {
+    setSelectedPaymentMethod("vnpay");
+    setCashNote("");
+    setIsInvoiceDialogOpen(true);
+  };
+
+  const handleInvoiceDialogChange = (open: boolean) => {
+    if (!open) {
+      setIsProcessingPayment(false);
+      setCashNote("");
+    }
+    setIsInvoiceDialogOpen(open);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!selectedOrder) return;
+    setIsProcessingPayment(true);
     try {
-      // Pass client=user to backend
-      const response = await orderService.requestPayment(id, "user");
-      if (response.status === "success" && response.data.redirect_url) {
-        // Redirect to payment URL
-        window.location.href = response.data.redirect_url;
+      if (selectedPaymentMethod === "vnpay") {
+        const response = await orderService.requestPayment(id, "user");
+        if (response.status === "success" && response.data.redirect_url) {
+          window.location.href = response.data.redirect_url;
+          return;
+        }
+        toast({
+          title: "Không tìm thấy liên kết thanh toán",
+          description:
+            "Không thể tạo link thanh toán VNPAY. Vui lòng thử lại hoặc chọn hình thức khác.",
+          variant: "destructive",
+        });
+      } else {
+        const payload = cashNote.trim() ? { note: cashNote.trim() } : undefined;
+        const response = await orderService.requestCashPayment(id, payload);
+        if (response.status === "success") {
+          toast({
+            title: "Đã gửi yêu cầu thanh toán tiền mặt",
+            description: "Nhân viên sẽ hỗ trợ bạn trong giây lát.",
+          });
+          setIsInvoiceDialogOpen(false);
+          setCashNote("");
+          await refreshOrder();
+        }
       }
     } catch (err: any) {
-      console.error("Failed to request payment:", err);
+      console.error("Failed to confirm payment:", err);
       toast({
         title: "Lỗi",
         description:
           err.response?.data?.message ||
           err.message ||
-          "Không thể yêu cầu thanh toán",
+          "Không thể gửi yêu cầu thanh toán",
         variant: "destructive",
       });
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -614,12 +685,10 @@ export default function OrderDetailPage({
       (sum, payment: any) => sum + (payment.amount || 0),
       0
     ) || 0;
+  const outstandingAmount = Math.max(0, finalAmount - paidAmount);
+  const canSubmitPayment = true
 
-  if (!user?.id) {
-    return null; // Will redirect
-  }
-
-  if (isLoadingDetail) {
+  if (authLoading || isLoadingDetail) {
     return (
       <div className="min-h-screen bg-background py-8">
         <div className="max-w-7xl mx-auto px-4">
@@ -726,6 +795,186 @@ export default function OrderDetailPage({
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Payment Invoice Dialog */}
+            <Dialog
+              open={isInvoiceDialogOpen}
+              onOpenChange={handleInvoiceDialogChange}
+            >
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Xác Nhận Thanh Toán</DialogTitle>
+                  <DialogDescription>
+                    Kiểm tra hóa đơn và chọn hình thức thanh toán trước khi gửi
+                    yêu cầu.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Chi tiết món ăn
+                    </h4>
+                    <div className="max-h-48 overflow-y-auto border border-accent/20 rounded-md divide-y">
+                      {orderItems.length > 0 ? (
+                        orderItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-4 px-4 py-2 text-sm"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-primary">
+                                {item.dish?.name || "Món ăn"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.quantity} x{" "}
+                                {Number(
+                                  item.dish?.price ?? item.price ?? 0
+                                ).toLocaleString("vi-VN")}
+                                đ
+                              </p>
+                            </div>
+                            <span className="font-semibold">
+                              {(
+                                Number(item.quantity) *
+                                Number(item.dish?.price ?? item.price ?? 0)
+                              ).toLocaleString("vi-VN")}
+                              đ
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="p-4 text-center text-sm text-muted-foreground">
+                          Chưa có món ăn trong đơn hàng
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tạm tính</span>
+                      <span>{subtotal.toLocaleString("vi-VN")}đ</span>
+                    </div>
+                    {voucherDiscount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Giảm giá</span>
+                        <span>-{voucherDiscount.toLocaleString("vi-VN")}đ</span>
+                      </div>
+                    )}
+                    {paidAmount > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Đã thanh toán</span>
+                        <span>{paidAmount.toLocaleString("vi-VN")}đ</span>
+                      </div>
+                    )}
+                    {/* <Separator />
+                    <div className="flex justify-between text-base font-semibold">
+                      <span>Còn phải thanh toán</span>
+                      <span className="text-primary">
+                        {outstandingAmount.toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+                    {!canSubmitPayment && (
+                      <p className="text-xs text-muted-foreground">
+                        Đơn hàng đã được thanh toán đầy đủ.
+                      </p>
+                    )} */}
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm">
+                      Chọn phương thức thanh toán
+                    </Label>
+                    <RadioGroup
+                      value={selectedPaymentMethod}
+                      onValueChange={(value) =>
+                        setSelectedPaymentMethod(value as "vnpay" | "cash")
+                      }
+                      className="grid gap-3"
+                    >
+                      <div className="flex items-center gap-3 rounded-md border border-accent/20 p-3">
+                        <RadioGroupItem value="vnpay" id="method-vnpay" />
+                        <Label
+                          htmlFor="method-vnpay"
+                          className="flex-1 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">VNPAY</span>
+                            <CreditCard className="h-4 w-4 text-primary" />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Thanh toán trực tuyến qua cổng VNPAY.
+                          </p>
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-md border border-accent/20 p-3">
+                        <RadioGroupItem value="cash" id="method-cash" />
+                        <Label
+                          htmlFor="method-cash"
+                          className="flex-1 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Tiền mặt</span>
+                            <Wallet className="h-4 w-4 text-primary" />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Nhân viên sẽ nhận thông báo để hỗ trợ thanh toán
+                            trực tiếp.
+                          </p>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {selectedPaymentMethod === "cash" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="cash-note" className="text-sm">
+                        Ghi chú cho nhân viên (tuỳ chọn)
+                      </Label>
+                      <Textarea
+                        id="cash-note"
+                        placeholder="Ví dụ: Thanh toán bằng tiền mặt, cần xuất hoá đơn VAT..."
+                        value={cashNote}
+                        onChange={(e) => setCashNote(e.target.value)}
+                        rows={3}
+                        className="border-accent/20 focus:border-accent"
+                      />
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleInvoiceDialogChange(false)}
+                    disabled={isProcessingPayment}
+                  >
+                    Huỷ
+                  </Button>
+                  <Button
+                    className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                    onClick={handleConfirmPayment}
+                    disabled={isProcessingPayment || !canSubmitPayment}
+                  >
+                    {isProcessingPayment ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang xử lý...
+                      </>
+                    ) : selectedPaymentMethod === "vnpay" ? (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Thanh toán VNPAY
+                      </>
+                    ) : (
+                      <>
+                        <Wallet className="mr-2 h-4 w-4" />
+                        Yêu cầu thanh toán tiền mặt
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             {/* Dish Selection Dialog */}
             <DishSelectionDialog
               open={isAddingDishes}
@@ -934,7 +1183,7 @@ export default function OrderDetailPage({
                 {canRequestPayment && (
                   <Button
                     className="bg-gradient-gold text-primary-foreground hover:opacity-90"
-                    onClick={handleRequestPayment}
+                    onClick={openInvoiceDialog}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Yêu Cầu Thanh Toán
@@ -989,7 +1238,7 @@ export default function OrderDetailPage({
                 {canModifyOrder && (
                   <div className="pt-4 border-t">
                     <Label className="text-sm mb-2 block">Mã Giảm Giá</Label>
-                    {!isApplyingVoucher ? (
+                    {!isVoucherApplied ? (
                       <div className="flex gap-2">
                         <Input
                           placeholder="Nhập mã..."
@@ -1001,14 +1250,19 @@ export default function OrderDetailPage({
                             }
                           }}
                           className="border-accent/20 focus:border-accent"
+                          disabled={isVoucherProcessing}
                         />
                         <Button
                           variant="outline"
                           onClick={handleApplyVoucher}
-                          disabled={!voucherCode.trim()}
+                          disabled={!voucherCode.trim() || isVoucherProcessing}
                           className="border-accent/20"
                         >
-                          <Gift className="h-4 w-4" />
+                          {isVoucherProcessing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Gift className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     ) : (
@@ -1022,8 +1276,13 @@ export default function OrderDetailPage({
                             size="sm"
                             onClick={handleRemoveVoucher}
                             className="text-red-500 hover:text-red-700 h-auto p-1"
+                            disabled={isVoucherProcessing}
                           >
-                            <XCircle className="h-4 w-4" />
+                            {isVoucherProcessing ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <XCircle className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                         <p className="text-xs text-green-600">
@@ -1048,10 +1307,7 @@ export default function OrderDetailPage({
                     <div className="flex items-center justify-between text-sm mt-1">
                       <span className="text-muted-foreground">Còn lại:</span>
                       <span className="font-semibold">
-                        {Math.max(0, finalAmount - paidAmount).toLocaleString(
-                          "vi-VN"
-                        )}
-                        đ
+                        {outstandingAmount.toLocaleString("vi-VN")}đ
                       </span>
                     </div>
                   </div>

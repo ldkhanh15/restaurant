@@ -1,0 +1,8 @@
+{
+  "name": "restaurant-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "sync-ngrok": "node ./tools/sync_ngrok.js"
+  }
+}

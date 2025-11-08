@@ -1,18 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import RegisterPage from "@/components/register-page";
 import { useAuth } from "@/lib/auth";
 
 export default function RegisterRoutePage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectParam = searchParams?.get("redirect") || "/";
+  const safeRedirect = useMemo(() => {
+    return redirectParam.startsWith("/") ? redirectParam : "/";
+  }, [redirectParam]);
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user) {
-      window.location.href = "/";
+    if (!isLoading && user) {
+      router.replace(safeRedirect);
     }
-  }, [user]);
+  }, [user, isLoading, router, safeRedirect]);
 
-  return <RegisterPage />;
+  return <RegisterPage redirectTo={safeRedirect} />;
 }

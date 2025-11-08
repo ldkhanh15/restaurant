@@ -731,7 +731,6 @@ export function BlogManagement() {
             </SelectContent>
           </Select>
         </div>
-        //#region Blog Create
         {/* blog create */}
         <Dialog
           open={isCreateDialogOpen}
@@ -1405,7 +1404,6 @@ export function BlogManagement() {
             </form>
           </DialogContent>
         </Dialog>
-        //#region Blog Edit Dialog
         {/* blog edit */}
         <Dialog
           open={isEditDialogOpen}
@@ -1815,7 +1813,6 @@ export function BlogManagement() {
                         onChange={handleImageSelect}
                         className="hidden"
                       />
-                      //#region image upload and preview area
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Upload Area */}
                         <div
@@ -2067,7 +2064,6 @@ export function BlogManagement() {
           </DialogContent>
         </Dialog>
       </div>
-      //#region Blog Posts Table
       {/* Blog Posts Table */}
       <Card>
         <CardHeader>
@@ -2240,7 +2236,6 @@ export function BlogManagement() {
           )}
         </CardContent>
       </Card>
-      //#region View Blog Dialog
       {/* view blog Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[95vh] overflow-y-auto">

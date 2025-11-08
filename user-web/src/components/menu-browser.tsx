@@ -34,7 +34,11 @@ import {
 import OrderPlacement from "./order-placement";
 import { useRouter } from "next/navigation";
 import dishService from "@/services/dishService";
+import userBehaviorService, {
+  UserBehaviorLogAttributes,
+} from "@/services/userBehaviorService";
 import categoryService from "@/services/categoryService";
+import { constructFromSymbol } from "date-fns/constants";
 
 interface DishAttributes {
   id: string;
@@ -90,7 +94,9 @@ export default function MenuBrowser() {
   const itemsPerPage = 9;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "price_asc" | "price_desc">("name");
+  const [sortBy, setSortBy] = useState<
+    "recommended" | "price_asc" | "price_desc"
+  >("recommended");
 
   const [filters, setFilters] = useState<Filters>({});
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -105,6 +111,13 @@ export default function MenuBrowser() {
   useEffect(() => {
     setCurrentPage(1);
   }, [filters, sortBy]);
+
+  const addUserBehavior = async (userBehavior: UserBehaviorLogAttributes) => {
+    //add behavior of usser when searching dish
+    if (userBehavior) {
+      await userBehaviorService.addBehavior(userBehavior);
+    }
+  };
 
   // Fetch dishes - ĐÃ SỬA HOÀN TOÀN ĐÚNG VỚI BACKEND
   const fetchDishes = useCallback(async () => {
@@ -142,8 +155,8 @@ export default function MenuBrowser() {
 
       // SORT → ĐÚNG THEO BACKEND
       switch (sortBy) {
-        case "name":
-          params.append("sort", "name"); // A-Z
+        case "recommended":
+          params.append("sort", "recommended"); // A-Z
           break;
         case "price_asc":
           params.append("sort", "price"); // Giá thấp → cao
@@ -157,6 +170,17 @@ export default function MenuBrowser() {
       params.append("limit", String(itemsPerPage));
 
       const res = await dishService.getAll(params);
+
+      //add behavior of usser when searching dish
+      if (filters.search) {
+        await addUserBehavior({
+          user_id: "c10a35d6-55e7-4fc7-95c7-5fe517f568d7",
+          item_id: "",
+          action_type: "SEARCH",
+          search_query: filters.search,
+        });
+      }
+
       if (!res?.data?.data) throw new Error("Không thể tải món ăn");
 
       const { data: rawDishes, pagination } = res.data;
@@ -171,6 +195,7 @@ export default function MenuBrowser() {
         : [];
 
       setDishes(normalizedDishes);
+      console.log("Fetched dishes:", normalizedDishes);
       setTotalItems(total);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi tải dữ liệu");
@@ -196,7 +221,7 @@ export default function MenuBrowser() {
   useEffect(() => {
     fetchCategories();
     fetchDishes();
-  }, [fetchCategories, fetchDishes]);
+  }, [fetchCategories]);
 
   // Gọi lại khi filter/search/sort/page thay đổi
   useEffect(() => {
@@ -208,7 +233,10 @@ export default function MenuBrowser() {
 
   // Search handler
   const handleSearch = () => {
-    setFilters((prev) => ({ ...prev, search: searchQuery.trim() || undefined }));
+    setFilters((prev) => ({
+      ...prev,
+      search: searchQuery.trim() || undefined,
+    }));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -234,7 +262,10 @@ export default function MenuBrowser() {
   };
 
   // Cart logic
-  const addToCart = (dishId: string, customizations: Record<string, any> = {}) => {
+  const addToCart = (
+    dishId: string,
+    customizations: Record<string, any> = {}
+  ) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.dish_id === dishId);
       if (existing) {
@@ -310,7 +341,8 @@ export default function MenuBrowser() {
                       Thực Đơn
                     </h1>
                     <p className="text-muted-foreground font-serif italic">
-                      Khám phá những món ăn tinh tế được chế biến từ nguyên liệu cao cấp
+                      Khám phá những món ăn tinh tế được chế biến từ nguyên liệu
+                      cao cấp
                     </p>
                   </div>
                 </div>
@@ -319,7 +351,9 @@ export default function MenuBrowser() {
                 <div className="mb-8 space-y-6">
                   {/* Search Bar */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-primary">Tìm kiếm món ăn</label>
+                    <label className="text-sm font-medium text-primary">
+                      Tìm kiếm món ăn
+                    </label>
                     <div className="flex gap-3">
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -343,7 +377,9 @@ export default function MenuBrowser() {
 
                   {/* Price Range Filter */}
                   <div className="space-y-3">
-                    <label className="text-sm font-medium text-primary">Khoảng giá</label>
+                    <label className="text-sm font-medium text-primary">
+                      Khoảng giá
+                    </label>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                       {[
                         { label: "Dưới 100k", min: 0, max: 100000 },
@@ -352,7 +388,8 @@ export default function MenuBrowser() {
                         { label: "Trên 500k", min: 500000, max: null },
                       ].map((range) => {
                         const isActive =
-                          filters.min_price === range.min && filters.max_price === range.max;
+                          filters.min_price === range.min &&
+                          filters.max_price === range.max;
                         return (
                           <Button
                             key={range.label}
@@ -377,7 +414,8 @@ export default function MenuBrowser() {
                       })}
                       <Button
                         variant={
-                          filters.min_price === undefined && filters.max_price === undefined
+                          filters.min_price === undefined &&
+                          filters.max_price === undefined
                             ? "default"
                             : "outline"
                         }
@@ -390,7 +428,8 @@ export default function MenuBrowser() {
                           }));
                         }}
                         className={
-                          filters.min_price === undefined && filters.max_price === undefined
+                          filters.min_price === undefined &&
+                          filters.max_price === undefined
                             ? "bg-gradient-gold text-primary-foreground"
                             : "border-accent/20"
                         }
@@ -404,10 +443,14 @@ export default function MenuBrowser() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Sắp xếp theo */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-primary">Sắp xếp theo</label>
+                      <label className="text-sm font-medium text-primary">
+                        Sắp xếp theo
+                      </label>
                       <Select
                         value={sortBy}
-                        onValueChange={(value: "name" | "price_asc" | "price_desc") => {
+                        onValueChange={(
+                          value: "recommended" | "price_asc" | "price_desc"
+                        ) => {
                           setSortBy(value);
                         }}
                       >
@@ -415,9 +458,15 @@ export default function MenuBrowser() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="name">Tên món (A-Z)</SelectItem>
-                          <SelectItem value="price_asc">Giá: Thấp → Cao</SelectItem>
-                          <SelectItem value="price_desc">Giá: Cao → Thấp</SelectItem>
+                          <SelectItem value="recommended">
+                            Được đề xuất
+                          </SelectItem>
+                          <SelectItem value="price_asc">
+                            Giá: Thấp → Cao
+                          </SelectItem>
+                          <SelectItem value="price_desc">
+                            Giá: Cao → Thấp
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -439,7 +488,8 @@ export default function MenuBrowser() {
                         onValueChange={(val: "all" | "true" | "false") => {
                           setFilters((prev) => ({
                             ...prev,
-                            is_best_seller: val === "all" ? undefined : val === "true",
+                            is_best_seller:
+                              val === "all" ? undefined : val === "true",
                           }));
                         }}
                       >
@@ -471,7 +521,8 @@ export default function MenuBrowser() {
                         onValueChange={(val: "all" | "true" | "false") => {
                           setFilters((prev) => ({
                             ...prev,
-                            seasonal: val === "all" ? undefined : val === "true",
+                            seasonal:
+                              val === "all" ? undefined : val === "true",
                           }));
                         }}
                       >
@@ -481,7 +532,9 @@ export default function MenuBrowser() {
                         <SelectContent>
                           <SelectItem value="all">Tất cả</SelectItem>
                           <SelectItem value="true">Món theo mùa</SelectItem>
-                          <SelectItem value="false">Món không theo mùa</SelectItem>
+                          <SelectItem value="false">
+                            Món không theo mùa
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -489,11 +542,20 @@ export default function MenuBrowser() {
 
                   {/* Category Pills */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-primary">Danh mục món ăn</label>
+                    <label className="text-sm font-medium text-primary">
+                      Danh mục món ăn
+                    </label>
                     <div className="flex flex-wrap gap-2">
-                      <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
                         <Button
-                          variant={filters.category_id === undefined ? "default" : "outline"}
+                          variant={
+                            filters.category_id === undefined
+                              ? "default"
+                              : "outline"
+                          }
                           size="sm"
                           onClick={() => handleCategorySelect("all")}
                           className={
@@ -523,7 +585,9 @@ export default function MenuBrowser() {
                                   : "border-accent/20 hover:border-accent"
                               }
                             >
-                              <span className="mr-2">{category.icon || ""}</span>
+                              <span className="mr-2">
+                                {category.icon || ""}
+                              </span>
                               {category.name}
                             </Button>
                           </motion.div>
@@ -551,7 +615,10 @@ export default function MenuBrowser() {
                             {formatVND(getTotalPrice())}
                           </span>
                         </div>
-                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                        <motion.div
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                        >
                           <Button
                             onClick={proceedToOrder}
                             className="bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-md"
@@ -569,7 +636,9 @@ export default function MenuBrowser() {
               {/* Dishes Grid */}
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {dishes.map((dish, index) => {
-                  const category = categories.find((c) => c.id === dish.category_id);
+                  const category = categories.find(
+                    (c) => c.id === dish.category_id
+                  );
                   const cartQuantity = getCartQuantity(dish.id);
 
                   return (
@@ -614,7 +683,8 @@ export default function MenuBrowser() {
                             {dish.name}
                           </CardTitle>
                           <CardDescription className="font-serif text-sm leading-relaxed line-clamp-2">
-                            {dish.description || "Món ăn tinh tế từ nguyên liệu cao cấp"}
+                            {dish.description ||
+                              "Món ăn tinh tế từ nguyên liệu cao cấp"}
                           </CardDescription>
                         </CardHeader>
 
@@ -623,12 +693,17 @@ export default function MenuBrowser() {
                             <span className="text-2xl font-bold text-accent">
                               {formatVND(dish.price)}
                             </span>
-                            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="border-accent/20 hover:bg-accent/10"
-                                onClick={() => router.push(`/dishes/${dish.id}`)}
+                                onClick={() =>
+                                  router.push(`/dishes/${dish.id}`)
+                                }
                               >
                                 <Eye className="w-4 h-4 mr-2" />
                                 Chi Tiết
@@ -639,12 +714,17 @@ export default function MenuBrowser() {
                           {cartQuantity > 0 ? (
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                                <motion.div
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                >
                                   <Button
                                     variant="outline"
                                     size="icon"
                                     className="h-8 w-8 border-accent/20 hover:bg-accent/10"
-                                    onClick={() => updateQuantity(dish.id, cartQuantity - 1)}
+                                    onClick={() =>
+                                      updateQuantity(dish.id, cartQuantity - 1)
+                                    }
                                   >
                                     <Minus className="h-3 w-3" />
                                   </Button>
@@ -652,12 +732,17 @@ export default function MenuBrowser() {
                                 <span className="font-semibold min-w-[2rem] text-center">
                                   {cartQuantity}
                                 </span>
-                                <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                                <motion.div
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                >
                                   <Button
                                     variant="outline"
                                     size="icon"
                                     className="h-8 w-8 border-accent/20 hover:bg-accent/10"
-                                    onClick={() => updateQuantity(dish.id, cartQuantity + 1)}
+                                    onClick={() =>
+                                      updateQuantity(dish.id, cartQuantity + 1)
+                                    }
                                   >
                                     <Plus className="h-3 w-3" />
                                   </Button>
@@ -668,7 +753,10 @@ export default function MenuBrowser() {
                               </span>
                             </div>
                           ) : (
-                            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                            <motion.div
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                            >
                               <Button
                                 className="w-full bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-md hover:shadow-lg transition-all duration-200"
                                 onClick={() => addToCart(dish.id)}

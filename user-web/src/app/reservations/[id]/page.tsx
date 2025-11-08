@@ -50,7 +50,7 @@ import { vi } from "date-fns/locale";
 import Image from "next/image";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
 import {
   reservationService,
   type Reservation,
@@ -101,7 +101,7 @@ export default function ReservationDetailPage({
 }) {
   const { id } = params;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
   const { toast } = useToast();
   const reservationSocket = useReservationSocket();
 
@@ -131,8 +131,7 @@ export default function ReservationDetailPage({
 
   // Load reservation on mount
   useEffect(() => {
-    if (!user?.id) {
-      router.push("/login");
+    if (authLoading || !user?.id) {
       return;
     }
 
@@ -180,6 +179,7 @@ export default function ReservationDetailPage({
   }, [
     id,
     user?.id,
+    authLoading,
     router,
     setSelectedReservation,
     setLoadingDetail,
@@ -475,7 +475,7 @@ export default function ReservationDetailPage({
     }
   };
 
-  if (isLoadingDetail) {
+  if (authLoading || isLoadingDetail) {
     return (
       <div className="min-h-screen bg-background py-8 flex items-center justify-center">
         <div className="text-center">
@@ -935,7 +935,7 @@ export default function ReservationDetailPage({
                       </span>
                     </div>
                   )}
-                  <Separator />
+                  {/* <Separator />
                   <div className="flex justify-between font-bold text-xl">
                     <span>Tổng:</span>
                     <span className="text-primary">
@@ -946,7 +946,7 @@ export default function ReservationDetailPage({
                       ).toLocaleString("vi-VN")}
                       đ
                     </span>
-                  </div>
+                  </div> */}
                 </div>
               </CardContent>
             </Card>

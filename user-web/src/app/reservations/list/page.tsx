@@ -30,7 +30,7 @@ import {
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
 import {
   reservationService,
   type Reservation,
@@ -85,7 +85,7 @@ const statusConfig: Record<
 
 export default function ReservationsListPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
   const { toast } = useToast();
   const reservationSocket = useReservationSocket();
 
@@ -106,8 +106,7 @@ export default function ReservationsListPage() {
 
   // Load reservations on mount
   useEffect(() => {
-    if (!user?.id) {
-      router.push("/login");
+    if (authLoading || !user?.id) {
       return;
     }
 
@@ -136,7 +135,7 @@ export default function ReservationsListPage() {
     };
 
     loadReservations();
-  }, [user?.id, router, setReservations, setLoading, setError]);
+  }, [user?.id, authLoading, setReservations, setLoading, setError]);
 
   // Update reservation in list helper
   const updateReservation = useCallback(
@@ -276,7 +275,7 @@ export default function ReservationsListPage() {
     return filtered;
   }, [reservations, searchQuery, statusFilter, dateFilter]);
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
         <div className="text-center">

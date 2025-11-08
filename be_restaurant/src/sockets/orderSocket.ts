@@ -96,13 +96,23 @@ function serializeOrder(order: any): any {
   if (!order) return null;
   const orderData =
     order && typeof order.toJSON === "function" ? order.toJSON() : order;
+  const toNumber = (value: any) => {
+    if (value === null || value === undefined) return 0;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
   return {
     id: orderData.id,
     orderId: orderData.id,
     status: orderData.status,
     payment_status: orderData.payment_status,
-    total_amount: orderData.total_amount,
-    final_amount: orderData.final_amount,
+    total_amount: toNumber(orderData.total_amount),
+    final_amount: toNumber(
+      orderData.final_amount ?? orderData.total_amount ?? orderData.total
+    ),
+    voucher_discount_amount: toNumber(orderData.voucher_discount_amount),
+    payment_method: orderData.payment_method,
+    payment_note: orderData.payment_note,
     user_id: orderData.user_id,
     customer_id: orderData.customer_id,
     table_id: orderData.table_id,

@@ -52,6 +52,10 @@ interface Order {
   table_id?: string;
   status: string;
   total: number;
+  total_amount?: number;
+  final_amount?: number;
+  payment_status?: string;
+  payment_method?: string;
   created_at: string;
   updated_at: string;
   [key: string]: any;
