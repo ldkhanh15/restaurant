@@ -127,6 +127,7 @@ export default function NotificationsPage() {
           reservation: "reservation_created",
           chat: "chat_message",
           payment: "payment_completed",
+          payment_requested: "payment_requested",
           system: "other",
         };
         return typeMap[wsType] || "other";
@@ -296,19 +297,63 @@ export default function NotificationsPage() {
   };
 
   const getTypeLabel = (type: string) => {
-    return NOTIFICATION_TYPES.find((t) => t.value === type)?.label || type;
+    // Map API notification types to display labels
+    const typeMap: Record<string, string> = {
+      order_created: "Đơn hàng",
+      order_updated: "Đơn hàng",
+      order_status_changed: "Đơn hàng",
+      reservation_created: "Đặt bàn",
+      reservation_updated: "Đặt bàn",
+      chat_message: "Chat",
+      payment_completed: "Thanh toán",
+      payment_requested: "Thanh toán",
+      support_request: "Hỗ trợ",
+      low_stock: "Hệ thống",
+      reservation_confirm: "Đặt bàn",
+      promotion: "Khuyến mãi",
+      other: "Hệ thống",
+    };
+    return typeMap[type] || type;
   };
 
   const getTypeColor = (type: string) => {
-    return (
-      NOTIFICATION_TYPES.find((t) => t.value === type)?.color ||
-      "bg-gray-100 text-gray-800"
-    );
+    // Map API notification types to colors
+    const colorMap: Record<string, string> = {
+      order_created: "bg-blue-100 text-blue-800",
+      order_updated: "bg-blue-100 text-blue-800",
+      order_status_changed: "bg-blue-100 text-blue-800",
+      reservation_created: "bg-green-100 text-green-800",
+      reservation_updated: "bg-green-100 text-green-800",
+      chat_message: "bg-purple-100 text-purple-800",
+      payment_completed: "bg-emerald-100 text-emerald-800",
+      payment_requested: "bg-orange-100 text-orange-800",
+      support_request: "bg-red-100 text-red-800",
+      low_stock: "bg-yellow-100 text-yellow-800",
+      reservation_confirm: "bg-green-100 text-green-800",
+      promotion: "bg-pink-100 text-pink-800",
+      other: "bg-gray-100 text-gray-800",
+    };
+    return colorMap[type] || "bg-gray-100 text-gray-800";
   };
 
   const getTypeIcon = (type: string) => {
-    const typeConfig = NOTIFICATION_TYPES.find((t) => t.value === type);
-    return typeConfig?.icon || Bell;
+    // Map API notification types to icons
+    const iconMap: Record<string, typeof ShoppingCart> = {
+      order_created: ShoppingCart,
+      order_updated: ShoppingCart,
+      order_status_changed: ShoppingCart,
+      reservation_created: Calendar,
+      reservation_updated: Calendar,
+      chat_message: MessageCircle,
+      payment_completed: CreditCard,
+      payment_requested: CreditCard,
+      support_request: AlertCircle,
+      low_stock: AlertCircle,
+      reservation_confirm: Calendar,
+      promotion: Bell,
+      other: Settings,
+    };
+    return iconMap[type] || Bell;
   };
 
   const formatDateTime = (dateString: string) => {

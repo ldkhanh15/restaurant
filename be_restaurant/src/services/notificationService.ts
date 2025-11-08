@@ -384,20 +384,44 @@ class NotificationService {
       },
     });
   }
-  async notifyRequestPayment(order: any) {
+
+  async notifyPaymentRequested(order: any, note?: string) {
+    const paymentMethod = order.payment_method || "cash";
+    const customerName =
+      order.user?.full_name ||
+      order.user?.username ||
+      order.user?.email ||
+      "Khách hàng";
+    const tableInfo = order.table
+      ? `Bàn ${order.table.table_number}`
+      : order.table_group
+      ? `Nhóm bàn ${order.table_group.name}`
+      : "";
+    const noteText = note ? `\nGhi chú: ${note}` : "";
+
     return await this.createNotification({
-      type: "request_payment",
+      type: "payment_requested",
       title: "Yêu cầu thanh toán",
-      content: `Khách đã yêu cầu thanh toán cho đơn hàng #${order.id}`,
+      content: `Khách hàng ${customerName} yêu cầu thanh toán ${
+        paymentMethod === "cash" ? "tiền mặt" : "online"
+      } cho đơn hàng #${order.id}${
+        tableInfo ? ` tại ${tableInfo}` : ""
+      }. Số tiền: ${Number(
+        order.final_amount ?? order.total_amount ?? 0
+      ).toLocaleString("vi-VN")}đ${noteText}`,
       data: {
         order_id: order.id,
         table_id: order.table_id,
         table_group_id: order.table_group_id,
-        amount: order.final_amount,
-        payment_method: order.payment_method,
+        customer_id: order.user_id || order.customer_id,
+        customer_name: customerName,
+        amount: Number(order.final_amount ?? order.total_amount ?? 0),
+        payment_method: paymentMethod,
+        payment_note: note,
       },
     });
   }
+
   private isValidNotificationType(type: string): boolean {
     const validTypes = [
       "low_stock",
@@ -411,6 +435,7 @@ class NotificationService {
       "chat_message",
       "support_request",
       "payment_completed",
+      "payment_requested",
       "other",
     ];
 

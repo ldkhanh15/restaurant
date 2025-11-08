@@ -395,7 +395,7 @@ export default function TableListing() {
               >
                 <List className="h-4 w-4 mr-2" /> Danh Sách
               </Button>
-            </div>
+          </div>
         </div>
 
           {viewMode === "list" && (
