@@ -20,8 +20,14 @@ export const vnpayCallback = async (
     const { isValid, isSuccess, kind, targetId } =
       paymentService.verifyVnpayReturn(params);
 
-    const adminClient = process.env.CLIENT_ADMIN_URL || "http://localhost:8081";
-    const userClient = process.env.CLIENT_USER_URL || "http://localhost:3000";
+    const adminClient =
+      process.env.CLIENT_ADMIN_URL ||
+      process.env.CLIENT_URL ||
+      "http://localhost:8081";
+    const userClient =
+      process.env.CLIENT_USER_URL ||
+      process.env.CLIENT_URL ||
+      "http://localhost:3000";
 
     // Determine client by looking at txnRef suffix (_ADM or _USR)
     const txnRefRaw = String(params.vnp_TxnRef || "");
