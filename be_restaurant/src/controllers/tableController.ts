@@ -30,47 +30,45 @@ export const getAllTables = async (req: Request, res: Response, next: NextFuncti
 
     // Check if any search parameters are present
     const hasSearchParams = [
+      'search',
       'table_number',
       'status',
       'capacity_min',
       'capacity_max',
       'capacity_exact',
+      'capacity_ranges',
       'deposit_min',
       'deposit_max',
       'deposit_exact',
+      'deposit_ranges',
       'cancel_minutes_min',
-      'cancel_minutes_max'
+      'cancel_minutes_max',
+      'sort'
     ].some(param => param in req.query)
 
+    const { page = 1, limit = 10 } = getPaginationParams(req.query);
     if (hasSearchParams) {
-      // Use search functionality if search parameters are present
-      const { count, rows, page, limit } = await tableService.search(req.query)
-      const totalPages = Math.ceil(count / limit)
+      // Use search functionality
+      const { count, rows } = await tableService.search(req.query);
 
-      return res.json({
-        status: "success",
-        data: {
-          totalItems: count,
-          totalPages,
-          currentPage: page,
-          itemsPerPage: limit,
-          items: rows,
-        },
-      })
+      // Build pagination result
+      const result = buildPaginationResult(rows, count, +page, +limit);
+
+      return res.json({ status: "success", data: result });
+    } else {
+      // Regular pagination
+      const { sortBy = "created_at", sortOrder = 'ASC' } = getPaginationParams(req.query);
+      const offset = (+page - 1) * +limit;
+
+      const { count, rows } = await tableService.findAll({
+        limit: +limit,
+        offset,
+        order: [[sortBy, sortOrder]],
+      });
+
+      const result = buildPaginationResult(rows, count, +page, +limit);
+      return res.json({ status: "success", data: result });
     }
-
-    // Use regular pagination if no search parameters
-    const { page = 1, limit = 10, sortBy = "created_at", sortOrder = "DESC" } = getPaginationParams(req.query)
-    const offset = (page - 1) * limit
-
-    const { rows, count } = await tableService.findAll({
-      limit,
-      offset,
-      order: [[sortBy, sortOrder]],
-    })
-
-    const result = buildPaginationResult(rows, count, page, limit)
-    res.json({ status: "success", data: result })
   } catch (error) {
     next(error)
   }

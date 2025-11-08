@@ -485,6 +485,7 @@ export interface Notification {
     | "chat_message"
     | "support_request"
     | "payment_completed"
+    | "payment_requested"
     | "other";
   content: string;
   title?: string;

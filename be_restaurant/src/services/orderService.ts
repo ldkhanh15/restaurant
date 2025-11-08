@@ -694,7 +694,17 @@ class OrderService {
       amount: Number(order.final_amount ?? order.total_amount ?? 0),
       method: "cash",
     });
-    await notificationService.notifyRequestPayment(order);
+
+    // Send notification to admin about cash payment request
+    try {
+      const detailedOrder = await orderRepository.findById(orderId);
+      if (detailedOrder) {
+        await notificationService.notifyPaymentRequested(detailedOrder, note);
+      }
+    } catch (error) {
+      console.error("Failed to send payment request notification:", error);
+    }
+
     try {
       const payload =
         typeof (updatedOrder as any).toJSON === "function"

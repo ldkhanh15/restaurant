@@ -101,7 +101,7 @@ export default function EventSelectionStep() {
         setIsLoading(true);
         setError(null);
         const response = await eventService.getActive();
-        const eventsData = Array.isArray(response.data) ? response.data : [];
+        const eventsData = Array.isArray(response.data.data) ? response.data.data : [];
         setEvents(eventsData);
       } catch (err: any) {
         console.error("Failed to load events:", err);

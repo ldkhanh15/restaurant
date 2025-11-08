@@ -291,7 +291,8 @@ class ReservationService {
         reservation.id,
         requiredDeposit,
         undefined,
-        clientIp
+        clientIp,
+        "user" // client: "user" for user-web
       );
       await paymentService.createPendingPayment({
         reservation_id: reservation.id,
