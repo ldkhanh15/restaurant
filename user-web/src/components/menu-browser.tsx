@@ -125,49 +125,50 @@ export default function MenuBrowser() {
     setError(null);
 
     try {
-      const params = new URLSearchParams();
+      // Tạo object params thông thường thay vì URLSearchParams
+      const params: Record<string, string> = {};
 
       // SEARCH → backend dùng "name"
       if (filters.search?.trim()) {
-        params.append("name", filters.search.trim());
+        params.name = filters.search.trim();
       }
 
       // CATEGORY
       if (filters.category_id) {
-        params.append("category_id", filters.category_id);
+        params.category_id = filters.category_id;
       }
 
       // BEST SELLER & SEASONAL
       if (filters.is_best_seller !== undefined) {
-        params.append("is_best_seller", String(filters.is_best_seller));
+        params.is_best_seller = String(filters.is_best_seller);
       }
       if (filters.seasonal !== undefined) {
-        params.append("seasonal", String(filters.seasonal));
+        params.seasonal = String(filters.seasonal);
       }
 
       // PRICE → dùng price_min / price_max
       if (filters.min_price !== undefined) {
-        params.append("price_min", String(filters.min_price));
+        params.price_min = String(filters.min_price);
       }
       if (filters.max_price !== undefined && filters.max_price !== null) {
-        params.append("price_max", String(filters.max_price));
+        params.price_max = String(filters.max_price);
       }
 
       // SORT → ĐÚNG THEO BACKEND
       switch (sortBy) {
         case "recommended":
-          params.append("sort", "recommended"); // A-Z
+          params.sort = "recommended"; // A-Z
           break;
         case "price_asc":
-          params.append("sort", "price"); // Giá thấp → cao
+          params.sort = "price"; // Giá thấp → cao
           break;
         case "price_desc":
-          params.append("sort", "-price"); // Giá cao → thấp
+          params.sort = "-price"; // Giá cao → thấp
           break;
       }
 
-      params.append("page", String(currentPage));
-      params.append("limit", String(itemsPerPage));
+      params.page = String(currentPage);
+      params.limit = String(itemsPerPage);
 
       const res = await dishService.getAll(params);
 
@@ -181,7 +182,7 @@ export default function MenuBrowser() {
         });
       }
 
-      if (!res?.data?.data) throw new Error("Không thể tải món ăn");
+      if (!res) throw new Error("Không thể tải món ăn");
 
       const { data: rawDishes, pagination } = res.data;
       const total = pagination?.total ?? 0;
