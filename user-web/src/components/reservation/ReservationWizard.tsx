@@ -127,17 +127,35 @@ export default function ReservationWizard() {
       const createdReservation = result.reservation;
       const requiresPayment = Boolean(result.requires_payment);
       const paymentInfo = result.payment_url;
+      const depositAmount = result.deposit_amount;
 
-      if (typeof result.deposit_amount === "number") {
-        updateDraft({ deposit_amount: result.deposit_amount });
-      }
-
+      // If payment is required, redirect to VNPAY payment URL
       if (requiresPayment && paymentInfo?.url) {
+        // Show toast with deposit amount before redirecting
+        if (typeof depositAmount === "number" && depositAmount > 0) {
+          toast({
+            title: "Chuyển đến trang thanh toán",
+            description: `Số tiền đặt cọc: ${depositAmount.toLocaleString(
+              "vi-VN"
+            )}đ. Bạn sẽ được chuyển đến cổng thanh toán VNPAY.`,
+          });
+        } else {
+          toast({
+            title: "Chuyển đến trang thanh toán",
+            description: "Bạn sẽ được chuyển đến cổng thanh toán VNPAY.",
+          });
+        }
+
+        // Clear draft and redirect to VNPAY
         resetDraft();
-        window.location.href = paymentInfo.url;
+        // Use setTimeout to ensure toast is shown before redirect
+        setTimeout(() => {
+          window.location.href = paymentInfo.url;
+        }, 500);
         return;
       }
-
+      
+      // No payment required (VIP user or no deposit needed)
       setReservationId(createdReservation.id);
       resetDraft();
       setCurrentStep(7);

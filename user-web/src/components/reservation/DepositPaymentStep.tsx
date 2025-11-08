@@ -23,6 +23,9 @@ import {
   CheckCircle,
   Sparkles,
   Users,
+  User,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { useReservationStore } from "@/store/reservationStore";
 import { toast } from "@/hooks/use-toast";
@@ -79,8 +82,9 @@ export default function DepositPaymentStep({
   const discount = draft.voucher_discount || 0;
   const total = subtotal - discount;
 
-  // Deposit: 20% of total, minimum 200k (VIP skip)
-  const depositAmount = isVIP ? 0 : Math.max(total * 0.2, 200000);
+  // Deposit: Will be calculated by backend, show estimated amount here
+  // Backend calculates: eventFee + preOrderDishesTotal * 0.3 + table.deposit
+  const estimatedDeposit = isVIP ? 0 : Math.max(total * 0.2, 200000);
 
   const reservationDateLabel = draft.date
     ? new Intl.DateTimeFormat("vi-VN", {
@@ -117,16 +121,9 @@ export default function DepositPaymentStep({
   };
 
   const handlePrimaryAction = () => {
-    updateDraft({ deposit_amount: depositAmount });
-
-    if (!isVIP && !draft.payment_method) {
-      toast({
-        title: "Chưa chọn phương thức thanh toán",
-        description: "Vui lòng chọn một phương thức để tiếp tục",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Note: Deposit amount will be calculated by backend
+    // We don't need to validate payment method here as backend will handle it
+    // Backend will return payment URL if deposit is required
 
     onSubmit();
   };
@@ -163,6 +160,72 @@ export default function DepositPaymentStep({
           </motion.div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Customer Information */}
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-3"
+          >
+            <motion.h3
+              variants={itemVariants}
+              className="font-semibold text-lg flex items-center gap-2"
+            >
+              <User className="h-5 w-5 text-accent" />
+              Thông tin khách hàng
+            </motion.h3>
+            <motion.div
+              variants={itemVariants}
+              className="p-4 border rounded-lg bg-muted/30 space-y-3"
+            >
+              <div className="flex items-center gap-3">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Họ và tên</p>
+                  <p className="font-medium text-primary">
+                    {draft.customer_name || "Chưa nhập"}
+                  </p>
+                </div>
+              </div>
+              <Separator />
+              <div className="flex items-center gap-3">
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Số điện thoại</p>
+                  <p className="font-medium text-primary">
+                    {draft.customer_phone || "Chưa nhập"}
+                  </p>
+                </div>
+              </div>
+              <Separator />
+              <div className="flex items-center gap-3">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="font-medium text-primary">
+                    {draft.customer_email || "Chưa nhập"}
+                  </p>
+                </div>
+              </div>
+              {draft.special_requests && (
+                <>
+                  <Separator />
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground mb-1">
+                        Yêu cầu đặc biệt
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {draft.special_requests}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+
+          {/* Reservation Details */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
@@ -374,62 +437,18 @@ export default function DepositPaymentStep({
                     variants={itemVariants}
                     className="p-4 bg-muted/30 border border-dashed border-accent/30 rounded-lg text-sm text-muted-foreground"
                   >
-                    Khoản đặt cọc sẽ được tính tự động ở bước thanh toán. Bạn
-                    chỉ cần chọn phương thức phù hợp để tiếp tục.
-                  </motion.div>
-
-                  {/* Payment Method */}
-                  <motion.div variants={itemVariants} className="space-y-3">
-                    <Label className="font-medium">
-                      Phương Thức Thanh Toán
-                    </Label>
-                    <RadioGroup
-                      value={draft.payment_method || ""}
-                      onValueChange={(value) =>
-                        updateDraft({ payment_method: value })
-                      }
-                    >
-                      {paymentMethods.map((method, index) => {
-                        const IconComponent = method.icon;
-                        return (
-                          <motion.div
-                            key={method.id}
-                            variants={cardVariants}
-                            initial="hidden"
-                            animate="visible"
-                            whileHover="hover"
-                            whileTap="tap"
-                            custom={index}
-                          >
-                            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-all duration-200 hover:border-accent/50">
-                              <RadioGroupItem
-                                value={method.id}
-                                id={method.id}
-                              />
-                              <Label
-                                htmlFor={method.id}
-                                className="flex items-center gap-2 flex-1 cursor-pointer"
-                              >
-                                <motion.div
-                                  whileHover={{ rotate: 360 }}
-                                  transition={{ duration: 0.5 }}
-                                >
-                                  <IconComponent className="h-4 w-4 text-accent" />
-                                </motion.div>
-                                <div>
-                                  <span className="font-medium">
-                                    {method.name}
-                                  </span>
-                                  <p className="text-xs text-muted-foreground">
-                                    {method.description}
-                                  </p>
-                                </div>
-                              </Label>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </RadioGroup>
+                    <p className="mb-2">
+                      Khoản đặt cọc sẽ được tính tự động bởi hệ thống dựa trên:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>Phí sự kiện (nếu có)</li>
+                      <li>30% giá trị món đặt trước</li>
+                      <li>Phí đặt cọc bàn</li>
+                    </ul>
+                    <p className="mt-2 font-medium text-primary">
+                      Sau khi xác nhận, bạn sẽ được chuyển đến cổng thanh toán
+                      VNPAY để thanh toán đặt cọc.
+                    </p>
                   </motion.div>
                 </motion.div>
               </motion.div>
