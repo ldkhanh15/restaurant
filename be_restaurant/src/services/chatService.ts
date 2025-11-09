@@ -145,7 +145,7 @@ export const sendMessage = async (
           user_id: userId || sessionUserId || "anonymous",
           token: token, // Pass token for authenticated API calls
         },
-        { timeout: 10000 }
+        { timeout: parseInt(process.env.CHATBOT_TIMEOUT || "10000") }
       );
       const botText: string = resp.data?.response || "";
       if (botText && botText.trim()) {

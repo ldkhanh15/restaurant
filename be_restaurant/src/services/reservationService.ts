@@ -220,7 +220,9 @@ class ReservationService {
       ...data,
       status: "pending",
       duration_minutes: data.duration_minutes || 90,
-      timeout_minutes: 15,
+      timeout_minutes: parseInt(
+        process.env.RESERVATION_TIMEOUT_MINUTES || "15"
+      ),
       confirmation_sent: false,
       event_fee: eventFee,
       deposit_amount: Math.floor(requiredDeposit),

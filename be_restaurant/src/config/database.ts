@@ -1,8 +1,8 @@
-import { Sequelize } from "sequelize"
-import dotenv from "dotenv"
-import logger from "./logger"
+import { Sequelize } from "sequelize";
+import dotenv from "dotenv";
+import logger from "./logger";
 
-dotenv.config()
+dotenv.config();
 
 const sequelize = new Sequelize(
   process.env.DB_NAME || "restaurant_db",
@@ -14,39 +14,42 @@ const sequelize = new Sequelize(
     dialect: "mysql",
     logging: (msg) => {
       // Print raw SQL to console during development or when DEBUG_SQL is enabled
-      if (process.env.DEBUG_SQL === "true" || process.env.NODE_ENV !== "production") {
+      if (
+        process.env.DEBUG_SQL === "true" ||
+        process.env.NODE_ENV !== "production"
+      ) {
         // Some messages may be objects; stringify safely
         try {
-          if (typeof msg === "string") console.log('[SQL]', msg)
-          else console.log('[SQL]', JSON.stringify(msg))
+          if (typeof msg === "string") console.log("[SQL]", msg);
+          else console.log("[SQL]", JSON.stringify(msg));
         } catch (e) {
-          console.log('[SQL]', msg)
+          console.log("[SQL]", msg);
         }
       } else {
-        logger.debug(msg)
+        logger.debug(msg);
       }
     },
     pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000,
+      max: parseInt(process.env.DB_POOL_MAX || "5"),
+      min: parseInt(process.env.DB_POOL_MIN || "0"),
+      acquire: parseInt(process.env.DB_POOL_ACQUIRE || "30000"),
+      idle: parseInt(process.env.DB_POOL_IDLE || "10000"),
     },
     define: {
       timestamps: true,
       underscored: false,
     },
-  },
-)
+  }
+);
 
 export const testConnection = async (): Promise<void> => {
   try {
-    await sequelize.authenticate()
-    logger.info("Database connection established successfully.")
+    await sequelize.authenticate();
+    logger.info("Database connection established successfully.");
   } catch (error) {
-    logger.error("Unable to connect to the database:", error)
-    throw error
+    logger.error("Unable to connect to the database:", error);
+    throw error;
   }
-}
+};
 
-export default sequelize
+export default sequelize;

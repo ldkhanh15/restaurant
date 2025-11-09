@@ -336,7 +336,7 @@ export default function registerChatSocket(io: Server) {
                     user_id: userId || sessionUser || "anonymous",
                     token: token, // Pass token for authenticated API calls
                   },
-                  { timeout: 10000 }
+                  { timeout: parseInt(process.env.CHATBOT_TIMEOUT || "10000") }
                 );
 
                 const botText: string = resp.data?.response || "";
