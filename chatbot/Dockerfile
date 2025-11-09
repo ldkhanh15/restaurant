@@ -1,55 +1,41 @@
-# Chatbot - Python FastAPI
-FROM python:3.11-slim AS builder
+# ============================================
+# Dockerfile for Chatbot Service (Python FastAPI)
+# ============================================
 
+FROM python:3.10-slim
+
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     gcc \
-    g++ \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements if exists, otherwise create one
-COPY requirements.txt* ./
+# Copy requirements first for better caching
+COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    if [ -f requirements.txt ]; then \
-        pip install --no-cache-dir -r requirements.txt; \
-    else \
-        pip install --no-cache-dir \
-            fastapi==0.115.0 \
-            uvicorn[standard]==0.30.0 \
-            requests==2.31.0 \
-            google-generativeai==0.8.0 \
-            Pillow==10.4.0 \
-            python-magic==0.4.27 \
-            pydantic==2.9.0; \
-    fi
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Production stage
-FROM python:3.11-slim
+# Copy only required application files
+COPY api_server.py .
+COPY api_helpers.py .
+COPY chatbot.py .
 
-WORKDIR /app
-
-# Copy installed packages
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
-COPY . .
-
-# Create logs directory
-RUN mkdir -p logs && \
-    touch logs/chatbot.log
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV BE_URL=http://backend:8000/api
 
 # Expose port
 EXPOSE 7860
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:7860/api/health').raise_for_status()" || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:7860/api/health', timeout=5)" || exit 1
 
-# Run FastAPI server
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run api_server.py directly
+CMD ["python", "api_server.py"]
 

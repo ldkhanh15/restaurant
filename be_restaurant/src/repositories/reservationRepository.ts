@@ -137,7 +137,7 @@ class ReservationRepository {
       ],
     });
 
-    return reservation as ReservationWithDetails;
+    return reservation as unknown as ReservationWithDetails;
   }
 
   async create(data: any): Promise<Reservation> {

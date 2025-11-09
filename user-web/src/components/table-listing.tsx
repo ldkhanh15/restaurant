@@ -67,27 +67,30 @@ export default function TableListing() {
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
   const filteredTables = useMemo(() => {
+    if (!mockTables || !Array.isArray(mockTables)) {
+      return [];
+    }
     let filtered = mockTables.filter((table) => {
       // Filter by floor
-      if (table.floor_id !== selectedFloor) return false;
+      if (table?.floor_id !== selectedFloor) return false;
 
       // Filter by capacity
       if (capacityFilter !== "all") {
         const minCapacity = parseInt(capacityFilter);
-        if (table.capacity < minCapacity) return false;
+        if ((table?.capacity ?? 0) < minCapacity) return false;
       }
 
       // Filter by status
       if (statusFilter !== "all") {
-        if (table.status !== statusFilter) return false;
+        if (table?.status !== statusFilter) return false;
       }
 
       // Filter by search query
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         if (
-          !table.name.toLowerCase().includes(query) &&
-          !table.floor_name.toLowerCase().includes(query)
+          !table?.name?.toLowerCase()?.includes(query) &&
+          !table?.floor_name?.toLowerCase()?.includes(query)
         ) {
           return false;
         }
@@ -129,8 +132,8 @@ export default function TableListing() {
               </h1>
               <p className="text-muted-foreground font-serif italic">
                 Chọn bàn phù hợp cho bữa ăn của bạn
-          </p>
-        </div>
+              </p>
+            </div>
           </div>
 
           {/* View Mode Toggle */}
@@ -153,7 +156,7 @@ export default function TableListing() {
               </TabsList>
             </Tabs>
 
-          <div className="flex gap-2">
+            <div className="flex gap-2">
               <Button
                 variant={viewMode === "map" ? "default" : "outline"}
                 size="sm"
@@ -178,8 +181,8 @@ export default function TableListing() {
                 <List className="h-4 w-4 mr-2" />
                 Danh Sách
               </Button>
+            </div>
           </div>
-        </div>
 
           {/* Filters - Only show in List View */}
           {viewMode === "list" && (
@@ -293,8 +296,8 @@ export default function TableListing() {
                                       <Star className="h-3 w-3 mr-1 fill-current" />
                                       VIP
                                     </Badge>
-                  )}
-                </div>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                                   <div className="flex items-center gap-1">
                                     <Users className="h-4 w-4" />
@@ -305,8 +308,8 @@ export default function TableListing() {
                                     <span>{table.floor_name}</span>
                                   </div>
                                 </div>
-                  </div>
-                </div>
+                              </div>
+                            </div>
 
                             {/* Status Badge */}
                             <Badge
@@ -337,14 +340,14 @@ export default function TableListing() {
                               </div>
                             )}
 
-                  <Button
-                    variant="outline"
+                            <Button
+                              variant="outline"
                               className="w-full mt-4 border-accent/20 hover:bg-accent/10"
-                    size="sm"
-                  >
+                              size="sm"
+                            >
                               <Eye className="h-4 w-4 mr-2" />
                               Xem Chi Tiết
-                  </Button>
+                            </Button>
                           </CardContent>
                         </Card>
                       </motion.div>
@@ -352,7 +355,7 @@ export default function TableListing() {
                   })}
                 </div>
               ) : (
-          <div className="text-center py-12">
+                <div className="text-center py-12">
                   <MapPin className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <p className="text-muted-foreground text-lg">
                     Không tìm thấy bàn phù hợp
@@ -360,8 +363,8 @@ export default function TableListing() {
                   <p className="text-sm text-muted-foreground mt-2">
                     Thử thay đổi bộ lọc hoặc chọn tầng khác
                   </p>
-          </div>
-        )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

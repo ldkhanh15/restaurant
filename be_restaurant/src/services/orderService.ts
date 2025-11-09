@@ -322,42 +322,44 @@ class OrderService {
     await this.recalculateOrderTotals(orderId);
 
     const updatedOrder = await orderRepository.findById(orderId);
-    await notificationService.notifyOrderUpdated(updatedOrder!);
-    try {
-      orderEvents.orderUpdated(getIO(), updatedOrder!);
+    if (updatedOrder) {
+      await notificationService.notifyOrderUpdated(updatedOrder);
+      try {
+        orderEvents.orderUpdated(getIO(), updatedOrder);
 
-      // Emit orderItemCreated or orderItemQuantityChanged event
-      const itemWithDish = await OrderItem.findByPk(item.id, {
-        include: [
-          {
-            model: Dish,
-            as: "dish",
-            attributes: ["id", "name", "price", "media_urls", "description"],
-          },
-        ],
-      });
+        // Emit orderItemCreated or orderItemQuantityChanged event
+        const itemWithDish = await OrderItem.findByPk(item.id, {
+          include: [
+            {
+              model: Dish,
+              as: "dish",
+              attributes: ["id", "name", "price", "media_urls", "description"],
+            },
+          ],
+        });
 
-      if (itemWithDish && updatedOrder) {
-        if (wasNewItem) {
-          // New item created
-          orderEvents.orderItemCreated(
-            getIO(),
-            orderId,
-            itemWithDish.toJSON(),
-            updatedOrder
-          );
-        } else {
-          // Existing item quantity updated
-          orderEvents.orderItemQuantityChanged(
-            getIO(),
-            orderId,
-            itemWithDish.toJSON(),
-            updatedOrder
-          );
+        if (itemWithDish && updatedOrder) {
+          if (wasNewItem) {
+            // New item created
+            orderEvents.orderItemCreated(
+              getIO(),
+              orderId,
+              itemWithDish.toJSON(),
+              updatedOrder
+            );
+          } else {
+            // Existing item quantity updated
+            orderEvents.orderItemQuantityChanged(
+              getIO(),
+              orderId,
+              itemWithDish.toJSON(),
+              updatedOrder
+            );
+          }
         }
+      } catch (error) {
+        console.error("Failed to emit order updated event:", error);
       }
-    } catch (error) {
-      console.error("Failed to emit order updated event:", error);
     }
 
     return updatedOrder;
@@ -375,32 +377,40 @@ class OrderService {
     if (order) {
       await this.recalculateOrderTotals(order.id);
       const updatedOrder = await orderRepository.findById(order.id);
-      await notificationService.notifyOrderUpdated(updatedOrder!);
+      if (updatedOrder) {
+        await notificationService.notifyOrderUpdated(updatedOrder);
 
-      // Emit orderItemQuantityChanged event
-      try {
-        const itemWithDish = await OrderItem.findByPk(itemId, {
-          include: [
-            {
-              model: Dish,
-              as: "dish",
-              attributes: ["id", "name", "price", "media_urls", "description"],
-            },
-          ],
-        });
-        if (itemWithDish && updatedOrder) {
-          orderEvents.orderItemQuantityChanged(
-            getIO(),
-            order.id,
-            itemWithDish.toJSON(),
-            updatedOrder
+        // Emit orderItemQuantityChanged event
+        try {
+          const itemWithDish = await OrderItem.findByPk(itemId, {
+            include: [
+              {
+                model: Dish,
+                as: "dish",
+                attributes: [
+                  "id",
+                  "name",
+                  "price",
+                  "media_urls",
+                  "description",
+                ],
+              },
+            ],
+          });
+          if (itemWithDish && updatedOrder) {
+            orderEvents.orderItemQuantityChanged(
+              getIO(),
+              order.id,
+              itemWithDish.toJSON(),
+              updatedOrder
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Failed to emit order item quantity changed event:",
+            error
           );
         }
-      } catch (error) {
-        console.error(
-          "Failed to emit order item quantity changed event:",
-          error
-        );
       }
     }
 
@@ -466,14 +476,16 @@ class OrderService {
     await this.recalculateOrderTotals(orderId);
 
     const updatedOrder = await orderRepository.findById(orderId);
-    await notificationService.notifyOrderUpdated(updatedOrder!);
-    try {
-      orderEvents.orderUpdated(getIO(), updatedOrder!);
+    if (updatedOrder) {
+      await notificationService.notifyOrderUpdated(updatedOrder);
+      try {
+        orderEvents.orderUpdated(getIO(), updatedOrder);
 
-      // Emit orderItemDeleted event
-      orderEvents.orderItemDeleted(getIO(), orderId, itemId, updatedOrder!);
-    } catch (error) {
-      console.error("Failed to emit order updated event:", error);
+        // Emit orderItemDeleted event
+        orderEvents.orderItemDeleted(getIO(), orderId, itemId, updatedOrder);
+      } catch (error) {
+        console.error("Failed to emit order updated event:", error);
+      }
     }
 
     return updatedOrder;
@@ -645,11 +657,10 @@ class OrderService {
       payment_method: "vnpay",
     });
 
-    const clientIp = "127.0.0.1"; // You should get this from request
     const paymentUrl = paymentService.generateVnpayOrderUrl(
       order,
       bankCode,
-      clientIp,
+      "",
       client
     );
     await paymentService.createPendingPayment({
@@ -741,10 +752,16 @@ class OrderService {
         { where: { id: order.table_id } }
       );
     }
-    await User.update(
-      { points: Sequelize.literal(`points + ${order.total_amount / 1000}`) },
-      { where: { id: order.user_id } }
-    );
+    if (order.user_id) {
+      await User.update(
+        {
+          points: Sequelize.literal(
+            `points + ${(order.total_amount ?? 0) / 1000}`
+          ),
+        },
+        { where: { id: order.user_id } }
+      );
+    }
     // Send notification and WebSocket event
     await notificationService.notifyPaymentCompleted(updatedOrder);
     try {

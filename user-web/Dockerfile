@@ -1,54 +1,80 @@
-# User Web - Next.js
+# ============================================
+# Multi-stage Dockerfile for User Web (Next.js + Nginx)
+# ============================================
+
+# Stage 1: Dependencies - Install dependencies
 FROM node:20-alpine AS deps
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY pnpm-lock.yaml* ./
 
-# Install dependencies
+# Install dependencies using npm
 RUN npm ci
 
+# Stage 2: Builder - Build Next.js application
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependencies
+# Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code (excluding files in .dockerignore)
 COPY . .
 
-# Set Next.js to output standalone
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NEXT_OUTPUT=standalone
+# Set build-time environment variables from build args
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
-# Build Next.js app
-# Note: Update next.config.mjs to include: output: 'standalone'
-RUN npm run build
+# Build Next.js application
+# Use set -e to fail on any error, not just the last command
+RUN set -e && \
+    echo "Building with NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" && \
+    npm run build && \
+    echo "Build completed successfully" && \
+    ls -la .next/ && \
+    if [ ! -d ".next/standalone" ]; then \
+    echo "ERROR: .next/standalone directory not found!" && \
+    echo "Build output:" && \
+    ls -la .next/ && \
+    exit 1; \
+    fi
 
-# Production stage
+# Stage 3: Runner - Production (Next.js Standalone Only)
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
 
-# Copy built application
-COPY --from=builder /app/public ./public
+# Copy built Next.js standalone application
+# Next.js standalone output structure:
+# - .next/standalone/ contains the server
+# - .next/static/ contains static assets
+# - public/ contains public files
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Switch to non-root user
 USER nextjs
 
-EXPOSE 3001
+# Expose port
+EXPOSE 3000
 
-ENV PORT=3001
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# Health check (accept 200 or 307 redirect)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/', (r) => process.exit([200, 307].includes(r.statusCode) ? 0 : 1))"
+
+# Start Next.js standalone server
 CMD ["node", "server.js"]
 

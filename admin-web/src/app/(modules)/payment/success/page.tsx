@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, ArrowRight, FileText, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function PaymentSuccessPage() {
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
+function PaymentSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order_id");
@@ -26,6 +29,7 @@ export default function PaymentSuccessPage() {
     }, 1000);
 
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, reservationId]);
 
   const handleRedirect = () => {
@@ -68,7 +72,7 @@ export default function PaymentSuccessPage() {
                   Mã đơn hàng
                 </p>
                 <p className="text-base font-semibold text-gray-900">
-                  #{orderId.slice(0, 8)}
+                  #{orderId?.slice(0, 8) ?? "N/A"}
                 </p>
               </div>
             </div>
@@ -84,7 +88,7 @@ export default function PaymentSuccessPage() {
                   Mã đặt bàn
                 </p>
                 <p className="text-base font-semibold text-gray-900">
-                  #{reservationId.slice(0, 8)}
+                  #{reservationId?.slice(0, 8) ?? "N/A"}
                 </p>
               </div>
             </div>
@@ -113,5 +117,13 @@ export default function PaymentSuccessPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }

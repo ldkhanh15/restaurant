@@ -111,8 +111,8 @@ export const getAllSessions = async (
     const result = await listAllSessions(page, limit, {
       customer_name: customer_name as string,
       status: status as string,
-      sort_by: sort_by as string,
-      sort_order: sort_order as string,
+      sort_by: (sort_by as "start_time" | "last_message") || undefined,
+      sort_order: (sort_order as "ASC" | "DESC") || undefined,
     });
     const paginatedResult = buildPaginationResult(
       result.rows,

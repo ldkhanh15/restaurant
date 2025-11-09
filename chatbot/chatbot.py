@@ -1,7 +1,7 @@
 # Chatbot HIWELL Restaurant - Enhanced with Vision, Recommendations, and Improved Memory
 # pip install gradio google-generativeai Pillow requests uuid python-magic
 
-import gradio as gr
+# import gradio as gr  # Commented out - not needed for API mode
 import datetime
 import json
 import google.generativeai as genai
@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configure Gemini API (securely)
-genai.configure(api_key="AIzaSyDNHlqLN8GbMgYaSiyBJR052cfe5ESMKjU")
+genai.configure(api_key="AIzaSyAWi8xkNyr-FsC6L6SzAZwpnAGDh3IIVaE")
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 BE_URL = os.getenv("BE_URL", "http://localhost:8000/api")  # Configurable backend URL
@@ -59,14 +59,14 @@ def format_reservation(info):
         )
 
     return (
-            f"📅 **Thời gian:** {info.get('reservation_time', 'N/A')}\n"
-            f"👥 **Số người:** {info.get('num_people', 'N/A')}\n"
-            f"⏰ **Thời lượng:** {info.get('duration_minutes', 120)} phút\n"
-            f"🍽️ **Bàn:** {table_name}\n"
-            f"🎉 **Sự kiện:** {event_name}\n"
-            f"📝 **Ghi chú:** {info.get('preferences', {}).get('notes', 'Không có') if isinstance(info.get('preferences'), dict) else 'Không có'}\n"
-            f"📊 **Trạng thái:** {info.get('status', 'N/A')}"
-        )
+        f"📅 **Thời gian:** {info.get('reservation_time', 'N/A')}\n"
+        f"👥 **Số người:** {info.get('num_people', 'N/A')}\n"
+        f"⏰ **Thời lượng:** {info.get('duration_minutes', 120)} phút\n"
+        f"🍽️ **Bàn:** {table_name}\n"
+        f"🎉 **Sự kiện:** {event_name}\n"
+        f"📝 **Ghi chú:** {info.get('preferences', {}).get('notes', 'Không có') if isinstance(info.get('preferences'), dict) else 'Không có'}\n"
+        f"📊 **Trạng thái:** {info.get('status', 'N/A')}"
+    )
     return str(info)
 
 
@@ -1185,7 +1185,7 @@ Handle ALL customer queries comprehensively with detailed context understanding:
                     )
                     if redirect_url:
                         resp += f"\n\n💳 **Yêu cầu thanh toán:**\n🔗 [Thanh toán ngay]({redirect_url})"
-            else:
+                    else:
                         resp += "\n\n✅ **Đã gửi yêu cầu thanh toán!**"
                 elif endpoint and method == "put":
                     order_id = endpoint.split("/")[-1]
@@ -1261,6 +1261,7 @@ def get_conversation_history(session_id):
 
 # Gradio UI
 def create_ui():
+    import gradio as gr  # Lazy import - only when UI is needed
     with gr.Blocks(title=f"{RESTAURANT_NAME} Chatbot") as demo:
         gr.Markdown(f"# Chatbot {RESTAURANT_NAME} - Đặt Bàn, Tư Vấn & Gợi Ý")
         gr.Markdown(

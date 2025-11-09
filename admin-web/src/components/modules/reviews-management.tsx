@@ -5,7 +5,7 @@ import { Review } from "../../type/Review";
 import { Complaint } from "../../type/Complaint";
 import reviewApi from "../../services/reviewService";
 import complaintApi from "../../services/complaintService";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 export function ReviewsManagement() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -255,19 +255,23 @@ export function ReviewsManagement() {
                 </div>
               )}
 
-                <div className="flex justify-end md:items-end">
+              <div className="flex justify-end md:items-end">
                 <button
                   type="button"
                   className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
                   onClick={() => {
-                  if (window.confirm("Are you sure you want to delete this review?")) {
-                    handleDeleteReview(review.id);
-                  }
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete this review?"
+                      )
+                    ) {
+                      handleDeleteReview(review.id);
+                    }
                   }}
                 >
                   Delete
                 </button>
-                </div>
+              </div>
             </div>
           ))}
         </div>

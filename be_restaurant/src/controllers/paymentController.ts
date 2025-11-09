@@ -434,10 +434,7 @@ export const getDashboardOverview = async (
       topCustomers,
       topDishes,
     ] = await Promise.all([
-      statisticsService.getRevenueStats(
-        start_date ? new Date(start_date as string) : undefined,
-        end_date ? new Date(end_date as string) : undefined
-      ),
+      statisticsService.getRevenueStats(),
       statisticsService.getOrderStats(
         start_date ? new Date(start_date as string) : undefined,
         end_date ? new Date(end_date as string) : undefined
