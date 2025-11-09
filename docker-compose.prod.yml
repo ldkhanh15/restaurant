@@ -10,7 +10,7 @@ services:
   # MySQL Database Service
   # ============================================
   mysql:
-    image: mysql:8.0
+    image: yobasystems/alpine-mariadb:10.11.8-8
     container_name: restaurant_mysql
     restart: unless-stopped
     environment:
@@ -25,23 +25,12 @@ services:
     networks:
       - app-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-p${MYSQL_ROOT_PASSWORD:-rootpassword}",
-        ]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     command:
-      - --default-authentication-plugin=mysql_native_password
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --innodb-buffer-pool-size=128M
@@ -49,8 +38,6 @@ services:
       - --max-connections=50
       - --table-open-cache=200
       - --thread-cache-size=8
-      - --query-cache-size=0
-      - --query-cache-type=0
       - --tmp-table-size=16M
       - --max-heap-table-size=16M
       - --sort-buffer-size=2M
@@ -128,8 +115,10 @@ services:
       DB_USER: ${MYSQL_USER:-restaurant_user}
       DB_PASSWORD: ${MYSQL_PASSWORD:-restaurant_password}
       CHATBOT_URL: http://chatbot:7860/api
-      CLIENT_ADMIN_URL: ${CLIENT_ADMIN_URL:-http://localhost:3001}
-      CLIENT_USER_URL: ${CLIENT_USER_URL:-http://localhost:3000}
+      CLIENT_ADMIN_URL: ${CLIENT_ADMIN_URL:-http://98.91.23.236:3001}
+      CLIENT_USER_URL: ${CLIENT_USER_URL:-http://98.91.23.236:3000}
+      VNP_RETURN_URL_ORDER: ${VNP_RETURN_URL_ORDER:-http://98.91.23.236:8000/api/payments/vnpay/return}
+      VNP_RETURN_URL_RESERVATION: ${VNP_RETURN_URL_RESERVATION:-http://98.91.23.236:8000/api/payments/vnpay/return}
     volumes:
       - ./be_restaurant/uploads:/app/uploads
       - ./be_restaurant/logs:/app/logs
@@ -169,7 +158,7 @@ services:
       context: ./admin-web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://98.91.23.236:8000}
     container_name: restaurant_admin_web
     restart: unless-stopped
     ports:
@@ -198,7 +187,7 @@ services:
       context: ./user-web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://98.91.23.236:8000}
     container_name: restaurant_user_web
     restart: unless-stopped
     ports:

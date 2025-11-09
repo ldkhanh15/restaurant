@@ -80,8 +80,11 @@ echo -e "${CYAN}========================================${NC}\n"
 
 $COMPOSE_CMD ps
 
-# Get public IP if on EC2, otherwise use localhost
+# Get public IP if on EC2, otherwise use configured server IP
 PUBLIC_IP=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+SERVER_IP="${SERVER_IP:-98.91.23.236}"
+PROTOCOL="${PROTOCOL:-http}"
+
 if [ -n "$PUBLIC_IP" ]; then
   # On EC2 - show both local and public URLs
   echo -e "\n${CYAN}========================================${NC}"
@@ -92,20 +95,20 @@ if [ -n "$PUBLIC_IP" ]; then
   echo -e "${GREEN}   User Web:     http://localhost:3000${NC}"
   echo -e "${GREEN}   Admin Web:    http://localhost:3001${NC}"
   echo -e "\n${YELLOW}🌐 Public Access (from Internet):${NC}"
-  echo -e "${GREEN}   Backend API:  http://$PUBLIC_IP:8000${NC}"
-  echo -e "${GREEN}   User Web:     http://$PUBLIC_IP:3000${NC}"
-  echo -e "${GREEN}   Admin Web:    http://$PUBLIC_IP:3001${NC}"
+  echo -e "${GREEN}   Backend API:  $PROTOCOL://$SERVER_IP:8000${NC}"
+  echo -e "${GREEN}   User Web:     $PROTOCOL://$SERVER_IP:3000${NC}"
+  echo -e "${GREEN}   Admin Web:    $PROTOCOL://$SERVER_IP:3001${NC}"
 else
-  # Local machine - show localhost URLs
+  # Local machine or configured server - show server IP URLs
   echo -e "\n${CYAN}========================================${NC}"
   echo -e "${CYAN}Access URLs${NC}"
   echo -e "${CYAN}========================================${NC}"
-  echo -e "${GREEN}Backend API:  http://localhost:8000${NC}"
-  echo -e "${GREEN}User Web:     http://localhost:3000${NC}"
-  echo -e "${GREEN}Admin Web:    http://localhost:3001${NC}"
+  echo -e "${GREEN}Backend API:  $PROTOCOL://$SERVER_IP:8000${NC}"
+  echo -e "${GREEN}User Web:     $PROTOCOL://$SERVER_IP:3000${NC}"
+  echo -e "${GREEN}Admin Web:    $PROTOCOL://$SERVER_IP:3001${NC}"
 fi
 
-echo -e "\n${GRAY}Health Check: http://localhost:8000/health${NC}"
+echo -e "\n${GRAY}Health Check: $PROTOCOL://$SERVER_IP:8000/health${NC}"
 echo -e "\n${CYAN}========================================${NC}"
 echo -e "${GREEN}System Started Successfully! 🚀${NC}"
 echo -e "${CYAN}========================================${NC}\n"

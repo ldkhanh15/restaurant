@@ -129,8 +129,16 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}📊 Final Service Status:${NC}"
 $COMPOSE_CMD ps
 
+# Get server IP (use configured IP or detect from EC2 metadata)
+SERVER_IP="${SERVER_IP:-98.91.23.236}"
+if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "auto" ]; then
+  SERVER_IP=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || curl -s ifconfig.me || echo "localhost")
+fi
+
+PROTOCOL="${PROTOCOL:-http}"
 echo -e "${GREEN}🌐 Access URLs:${NC}"
-echo -e "   Backend:  http://$(curl -s ifconfig.me):8000"
-echo -e "   User Web: http://$(curl -s ifconfig.me):3000"
-echo -e "   Admin Web: http://$(curl -s ifconfig.me):3001"
+echo -e "   Backend:  $PROTOCOL://$SERVER_IP:8000"
+echo -e "   User Web: $PROTOCOL://$SERVER_IP:3000"
+echo -e "   Admin Web: $PROTOCOL://$SERVER_IP:3001"
+echo -e "   Health Check: $PROTOCOL://$SERVER_IP:8000/health"
 
