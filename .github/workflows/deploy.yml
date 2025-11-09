@@ -1,0 +1,137 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Add EC2 to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH || '/home/ubuntu/restaurant' }}
+        run: |
+          # Create deployment script
+          cat > /tmp/deploy_remote.sh << 'DEPLOYSCRIPT'
+          #!/bin/bash
+          set -e
+          
+          DEPLOY_PATH="${DEPLOY_PATH:-/home/ubuntu/restaurant}"
+          
+          # Navigate to deployment directory
+          cd "$DEPLOY_PATH" || exit 1
+          
+          # Pull latest code
+          echo "📥 Pulling latest code..."
+          git fetch origin
+          CURRENT_BRANCH=$(git branch --show-current || echo "main")
+          git reset --hard "origin/$CURRENT_BRANCH"
+          
+          # Create .env file if not exists
+          if [ ! -f .env ]; then
+            echo "📝 Creating .env file from example..."
+            cp env.example .env || true
+          fi
+          
+          # Create backend .env if not exists
+          if [ ! -f be_restaurant/.env ]; then
+            echo "📝 Creating backend .env file..."
+            cp be_restaurant/env.example be_restaurant/.env || true
+          fi
+          
+          # Use docker compose (v2) if available, otherwise docker-compose (v1)
+          COMPOSE_CMD="docker-compose"
+          if docker compose version &> /dev/null; then
+            COMPOSE_CMD="docker compose"
+          fi
+          
+          # Stop existing containers
+          echo "🛑 Stopping existing containers..."
+          $COMPOSE_CMD down || true
+          
+          # Remove old images to save space (t3.micro has limited storage)
+          echo "🧹 Cleaning up old Docker images..."
+          docker image prune -af --filter "until=24h" || true
+          
+          # Build and start services
+          echo "🔨 Building and starting services..."
+          $COMPOSE_CMD build --no-cache
+          
+          echo "🚀 Starting services..."
+          $COMPOSE_CMD up -d
+          
+          # Wait for services to be healthy
+          echo "⏳ Waiting for services to be healthy..."
+          sleep 30
+          
+          # Check service status
+          echo "📊 Service status:"
+          $COMPOSE_CMD ps
+          
+          # Health check
+          echo "🏥 Running health checks..."
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✅ Backend is healthy!"
+              exit 0
+            fi
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "⏳ Waiting for backend... ($RETRY_COUNT/$MAX_RETRIES)"
+            sleep 10
+          done
+          
+          echo "❌ Backend health check failed!"
+          $COMPOSE_CMD logs backend --tail 50
+          exit 1
+          DEPLOYSCRIPT
+          
+          # Copy script to EC2 and execute
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            /tmp/deploy_remote.sh ${EC2_USER}@${EC2_HOST}:/tmp/deploy_remote.sh
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${EC2_USER}@${EC2_HOST} \
+            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${EC2_DEPLOY_PATH}' /tmp/deploy_remote.sh"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
+
