@@ -1,50 +1,27 @@
-import apiClient from "@/lib/apiClient";
+import apiClient from "../lib/apiClient"
 
-export interface Dish {
-  id: string;
-  name: string;
-  price: number;
-  description?: string;
-  media_urls: string[];
-  category_id?: string;
-  is_best_seller?: boolean;
-  seasonal?: boolean;
-  active?: boolean;
-}
-
-export interface DishListResponse {
-  totalItems: number;
-  totalPages: number;
-  currentPage: number;
-  itemsPerPage: number;
-  items: Dish[];
+export type Dish = {
+    ingredients: any[]
+    category: any
+    id: string
+    name: string
+    description: string
+    price: number
+    category_id: string
+    media_urls: string[]
+    is_best_seller: boolean
+    seasonal: boolean
+    active: boolean
+    created_at: string
+    updated_at: string
+    deleted_at: string | null
 }
 
 export const dishService = {
-  getAll: (params?: {
-    page?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: "ASC" | "DESC";
-  }): Promise<{ status: string; data: DishListResponse }> =>
-    apiClient.get(`/dishes`, { params }),
+    getAll: (params: any) => apiClient.get<any>('/dishes', { params }),
+    getById: (id: string) => apiClient.get<any>(`/dishes/${id}`),
+    search: (query: string) => apiClient.get<any>(`/dishes/search?q=${query}`),
+    getByCategory: (categoryId: string) => apiClient.get<any>(`/dishes/category/${categoryId}`),
+}
 
-  search: (params?: {
-    page?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: "ASC" | "DESC";
-    name?: string;
-    category_id?: string;
-    is_best_seller?: boolean;
-    seasonal?: boolean;
-    active?: boolean;
-    price_min?: number;
-    price_max?: number;
-    price_exact?: number;
-  }): Promise<{ status: string; data: DishListResponse }> =>
-    apiClient.get(`/dishes/search`, { params }),
-
-  getById: (id: string): Promise<{ status: string; data: Dish }> =>
-    apiClient.get(`/dishes/${id}`),
-};
+export default dishService

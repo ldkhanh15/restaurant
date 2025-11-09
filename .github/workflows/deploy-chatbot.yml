@@ -87,6 +87,14 @@ jobs:
           service-id: ${{ secrets.RENDER_CHATBOT_SERVICE_ID }}
           api-key: ${{ secrets.RENDER_API_KEY }}
 
+      - name: Update Render Environment Variables
+        run: |
+          echo "⚠️ Note: Environment variables should be set manually in Render Dashboard"
+          echo "Required variables:"
+          echo "- BE_URL (Backend API URL)"
+          echo "- GEMINI_API_KEY"
+        continue-on-error: true
+
       - name: Wait for deployment
         run: |
           echo "⏳ Waiting for Render deployment to complete..."
@@ -96,7 +104,7 @@ jobs:
       - name: Deployment status
         run: |
           echo "🚀 Chatbot deployed to Render!"
-          echo "🔗 Service URL: https://${{ secrets.RENDER_CHATBOT_SERVICE_ID }}.onrender.com"
+          echo "🔗 Service URL: ${{ secrets.CHATBOT_URL }}"
 
   # Deploy to EC2
   deploy-ec2:
@@ -118,6 +126,14 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
+      - name: Create environment file for EC2
+        run: |
+          cat > chatbot/.env << EOF
+          BE_URL=${{ secrets.BACKEND_API_URL }}/api
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          PYTHONUNBUFFERED=1
+          EOF
+
       - name: Copy docker-compose and environment files
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -125,7 +141,7 @@ jobs:
           username: ${{ secrets.EC2_SERVER_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT || 22 }}
-          source: "docker-compose.yml,chatbot/"
+          source: "docker-compose.yml,chatbot/.env,chatbot/Dockerfile"
           target: "/opt/restaurant/"
 
       - name: Deploy on EC2 via SSH

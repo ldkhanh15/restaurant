@@ -1,5 +1,4 @@
 "use client"
-
 import { useState, useRef, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,7 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "react-toastify"
 import { tableService } from "@/services/tableService"
 import { CreateReservationDialog } from "./modalCreateReservation"
-import cloneDeep from "lodash/cloneDeep";
+import cloneDeep from "lodash/cloneDeep"
+
+type AreaShape = "circle" | "square" | "rhombus" | "parallelogram" | "rectangle" | "polygon"
 
 interface TableAttributes {
   id: string
@@ -25,144 +26,139 @@ interface TableAttributes {
   panorama_urls?: any
   amenities?: any
   description?: string
-  created_at?: Date
-  updated_at?: Date
-  deleted_at?: Date | null
-}
-
-interface RestaurantAreaAttributes {
-  id: string
-  name: string
-  area_size: number
-  shape_type: "square" | "rectangle" | "circle" | "polygon"
-  status: "active" | "maintenance" | "clean"
-  created_at?: Date
-  updated_at?: Date
+  created_at?: Date | string
+  updated_at?: Date | string
   deleted_at?: Date | null
 }
 
 interface TableMapManagementProps {
   tables: TableAttributes[]
-  setTables: React.Dispatch<React.SetStateAction<any>>
-  area: RestaurantAreaAttributes | null
+  setTables: React.Dispatch<React.SetStateAction<TableAttributes[]>>
+  areaShape?: AreaShape | null
 }
 
-export function TableMapManagement({ tables, setTables }: TableMapManagementProps) {
+export function TableMapManagement({ tables, setTables, areaShape }: TableMapManagementProps) {
   const [draggedTable, setDraggedTable] = useState<TableAttributes | null>(null)
   const [isLayoutMode, setIsLayoutMode] = useState(false)
-  const [tableStyles, setTableStyles] = useState<{
-    [key: string]: { shape: "rectangle" | "circle" | "square"; rotation: number }
-  }>({})
+  const [tableStyles, setTableStyles] = useState<{ [key: string]: { rotation: number } }>({})
   const [selectedFloor, setSelectedFloor] = useState<string>("unassigned")
-  const [cachedCoordinates, setCachedCoordinates] = useState<{
-    [key: string]: { x: number; y: number }
-  }>({})
-  const [initialCoordinates, setInitialCoordinates] = useState<{
-    [key: string]: { x: number; y: number }
-  }>({})
+  const [cachedCoordinates, setCachedCoordinates] = useState<{ [key: string]: { x: number; y: number } }>({})
   const [oldDataTable, setOldDataTable] = useState<TableAttributes[]>([])
   const [isCreateReservationOpen, setIsCreateReservationOpen] = useState(false)
   const [selectedTableForReservation, setSelectedTableForReservation] = useState<TableAttributes | null>(null)
   const floorPlanRef = useRef<HTMLDivElement>(null)
   const [hasInitOldData, setHasInitOldData] = useState(false)
+  const [containerRect, setContainerRect] = useState<DOMRect | null>(null)
 
-  // Lấy danh sách tầng có trong dữ liệu
+  // === Cập nhật rect khi resize, floor hoặc shape thay đổi ===
+  useEffect(() => {
+    const updateRect = () => {
+      if (floorPlanRef.current) {
+        setContainerRect(floorPlanRef.current.getBoundingClientRect())
+      }
+    }
+    updateRect()
+    window.addEventListener("resize", updateRect)
+    return () => window.removeEventListener("resize", updateRect)
+  }, [selectedFloor, areaShape])
+
+  // === Lọc tầng & bàn ===
   const floors = Array.from(
     new Set(
       tables
-        .filter((table) => !table.deleted_at)
-        .map((table) => table.location?.floor)
-        .filter((floor): floor is number => floor != null)
+        .filter(t => !t.deleted_at)
+        .map(t => t.location?.floor)
+        .filter((f): f is number => f != null)
     )
   ).sort((a, b) => a - b)
 
-  // Lọc bàn theo tầng đã chọn và loại bỏ bàn đã xóa
-  const filteredTables = tables.filter((table) => {
+  const filteredTables = tables.filter(table => {
     if (table.deleted_at) return false
     if (selectedFloor === "unassigned") return table.location?.floor == null
     return table.location?.floor === Number(selectedFloor)
   })
 
-
+  // === Khởi tạo dữ liệu cũ ===
   useEffect(() => {
     if (!hasInitOldData && tables.length > 0) {
-      const initialCoords: { [key: string]: { x: number; y: number } } = {}
-      const oldTablesCopy = cloneDeep(tables)
-
-      tables.forEach((table) => {
-        if (!table.deleted_at) {
-          initialCoords[table.id] = {
-            x: table.location?.coordinates?.x ?? 0,
-            y: table.location?.coordinates?.y ?? 0,
-          }
-        }
-      })
-
-      setInitialCoordinates(initialCoords)
-      setOldDataTable(oldTablesCopy)
+      setOldDataTable(cloneDeep(tables))
       setHasInitOldData(true)
     }
   }, [tables, hasInitOldData])
 
-
-  // Kiểm tra xem tọa độ có bị trùng không
+  // === Kiểm tra chồng lấn (dùng tọa độ thực, không display) ===
   const isOverlapping = (tableId: string, newX: number, newY: number) => {
-    return filteredTables.some((table) => {
-      if (table.id === tableId) return false
-      const tableX = table.location?.coordinates?.x ?? 0
-      const tableY = table.location?.coordinates?.y ?? 0
-      return Math.abs(tableX - newX) < 80 && Math.abs(tableY - newY) < 80
+    return filteredTables.some(t => {
+      if (t.id === tableId) return false
+      const tx = t.location?.coordinates?.x ?? 0
+      const ty = t.location?.coordinates?.y ?? 0
+      return Math.abs(tx - newX) < 80 && Math.abs(ty - newY) < 80
     })
   }
 
+  // === Tính vị trí hiển thị ===
+  const getDisplayPosition = (table: TableAttributes) => {
+    const rawX = table.location?.coordinates?.x ?? 0
+    const rawY = table.location?.coordinates?.y ?? 0
+    const x = cachedCoordinates[table.id]?.x ?? rawX
+    const y = cachedCoordinates[table.id]?.y ?? rawY
+
+    if (!containerRect || !floorPlanRef.current) {
+      return { x, y, isOutOfBounds: false }
+    }
+
+    const rect = floorPlanRef.current.getBoundingClientRect()
+    const padding = 60
+    const tableSize = 80
+    const minX = padding
+    const maxX = rect.width - padding - tableSize
+    const minY = padding
+    const maxY = rect.height - padding - tableSize
+
+    const isOut = x < minX || x > maxX || y < minY || y > maxY
+
+    if (isOut) {
+      const centerX = (rect.width - tableSize) / 2
+      const centerY = (rect.height - tableSize) / 2
+      return { x: centerX, y: centerY, isOutOfBounds: true }
+    }
+
+    return { x, y, isOutOfBounds: false }
+  }
+
+  // === Drag & Drop ===
   const handleTableLayoutDragStart = (e: React.DragEvent, table: TableAttributes) => {
     if (!isLayoutMode) return
     setDraggedTable(table)
     e.dataTransfer.effectAllowed = "move"
   }
 
-  const handleTableLayoutDragEnd = () => {
-    setDraggedTable(null)
-  }
+  const handleTableLayoutDragEnd = () => setDraggedTable(null)
 
   const handleFloorPlanDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    if (draggedTable && floorPlanRef.current) {
-      const rect = floorPlanRef.current.getBoundingClientRect()
-      let x = e.clientX - rect.left - 40
-      let y = e.clientY - rect.top - 40
+    if (!draggedTable || !floorPlanRef.current) return
 
-      // Đảm bảo tọa độ không âm
-      x = Math.max(0, x)
-      y = Math.max(0, y)
+    const rect = floorPlanRef.current.getBoundingClientRect()
+    let x = e.clientX - rect.left - 40
+    let y = e.clientY - rect.top - 40
 
-      // Kiểm tra trùng lặp tọa độ
-      if (isOverlapping(draggedTable.id, x, y)) {
-        toast.error("Vị trí này đã có bàn khác, vui lòng chọn vị trí khác")
-        return
-      }
+    x = Math.max(30, Math.min(x, rect.width - 110))
+    y = Math.max(30, Math.min(y, rect.height - 110))
 
-      // Cập nhật cache tọa độ
-      setCachedCoordinates((prev) => ({
-        ...prev,
-        [draggedTable.id]: { x, y },
-      }))
-
-      // Cập nhật tọa độ tạm thời
-      setTables((prevTables:any) =>
-        prevTables.map((t:any) =>
-          t.id === draggedTable.id
-            ? {
-                ...t,
-                location: {
-                  ...t.location,
-                  coordinates: { x: x === 0 || y === 0 ? 0 : x, y: x === 0 || y === 0 ? 0 : y },
-                },
-              }
-            : t
-        )
-      )
+    if (isOverlapping(draggedTable.id, x, y)) {
+      toast.error("Vị trí đã có bàn!")
+      return
     }
+
+    setCachedCoordinates(prev => ({ ...prev, [draggedTable.id]: { x, y } }))
+    setTables(prev =>
+      prev.map(t =>
+        t.id === draggedTable.id
+          ? { ...t, location: { ...t.location, coordinates: { x, y } } }
+          : t
+      )
+    )
   }
 
   const handleFloorPlanDragOver = (e: React.DragEvent) => {
@@ -170,34 +166,31 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
     e.dataTransfer.dropEffect = "move"
   }
 
+  // === Xoay bàn ===
   const rotateTable = (tableId: string) => {
-    setTableStyles((prev) => ({
+    setTableStyles(prev => ({
       ...prev,
       [tableId]: {
-        ...prev[tableId],
         rotation: ((prev[tableId]?.rotation || 0) + 45) % 360,
-        shape: prev[tableId]?.shape || "rectangle",
       },
     }))
   }
 
+  // === Cập nhật API ===
   const handleUpdateTable = async (id: string, data: Partial<TableAttributes>) => {
     try {
-      const response = await tableService.update(id, data)
-      if (response) {
-        setTables((prev:any) =>
-          prev.map((table:any) =>
-            table.id === id ? { ...table, ...data, updated_at: new Date() } : table
-          )
+      const res = await tableService.update(id, data)
+      if (res) {
+        setTables(prev =>
+          prev.map(t => (t.id === id ? { ...t, ...data, updated_at: new Date() } : t))
         )
-      } else {
-        throw new Error("Cập nhật bàn thất bại")
       }
-    } catch (err) {
-      throw new Error("Lỗi khi cập nhật bàn")
+    } catch {
+      throw new Error("Cập nhật thất bại")
     }
   }
 
+  // === Lưu layout ===
   const saveLayout = async () => {
     try {
       for (const table of filteredTables) {
@@ -205,109 +198,100 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
           await handleUpdateTable(table.id, {
             location: {
               ...table.location,
-              coordinates: {
-                x: cachedCoordinates[table.id].x === 0 || cachedCoordinates[table.id].y === 0 ? 0 : cachedCoordinates[table.id].x,
-                y: cachedCoordinates[table.id].x === 0 || cachedCoordinates[table.id].y === 0 ? 0 : cachedCoordinates[table.id].y,
-              },
+              coordinates: cachedCoordinates[table.id],
             },
           })
         }
       }
-      // Cập nhật initialCoordinates và oldDataTable sau khi lưu thành công
-      setInitialCoordinates((prev) => ({
-        ...prev,
-        ...cachedCoordinates,
-      }))
-      setOldDataTable(tables) // Cập nhật oldDataTable với dữ liệu mới
-      toast.success("Đã lưu bố trí bàn thành công")
-      setIsLayoutMode(false) // Thoát chế độ sắp xếp sau khi lưu
-    } catch (error) {
-      toast.error("Lỗi khi lưu bố trí bàn")
+      setOldDataTable(cloneDeep(tables))
+      toast.success("Lưu thành công!")
+      setIsLayoutMode(false)
+      setCachedCoordinates({})
+    } catch {
+      toast.error("Lỗi lưu!")
     }
   }
 
+  // === Reset layout ===
   const resetLayout = () => {
-    setTableStyles((prev) => {
-      const newStyles = { ...prev }
-      filteredTables.forEach((table) => {
-        delete newStyles[table.id]
-      })
-      return newStyles
-    })
-
-    setCachedCoordinates((prev) => {
-      const newCache = { ...prev }
-      filteredTables.forEach((table) => {
-        delete newCache[table.id]
-      })
-      return newCache
-    })
-
-    // Khôi phục vị trí bàn từ oldDataTable theo tầng đã chọn
-    setTables((prevTables:any) =>
-      prevTables.map((t:any) => {
-        if (filteredTables.some((ft) => ft.id === t.id)) {
-          console.log(oldDataTable)
-          const oldTable = oldDataTable.find((ot) => ot.id === t.id)
-          if (oldTable) {
-            return {
-              ...t,
-              location: {
-                ...t.location,
-                coordinates: {
-                  x: oldTable.location?.coordinates?.x ?? 0,
-                  y: oldTable.location?.coordinates?.y ?? 0,
-                },
+    setTableStyles({})
+    setCachedCoordinates({})
+    setTables(prev =>
+      prev.map(t => {
+        const old = oldDataTable.find(ot => ot.id === t.id)
+        if (old && filteredTables.some(ft => ft.id === t.id)) {
+          return {
+            ...t,
+            location: {
+              ...t.location,
+              coordinates: {
+                x: old.location?.coordinates?.x ?? 0,
+                y: old.location?.coordinates?.y ?? 0,
               },
-            }
+            },
           }
         }
         return t
       })
     )
-    setIsLayoutMode(false) // Thoát chế độ sắp xếp sau khi đặt lại
-    toast.success("Đã đặt lại bố trí bàn")
+    setIsLayoutMode(false)
+    toast.success("Đã đặt lại!")
   }
 
+  // === Đặt bàn ===
   const handleCreateReservation = (data: any) => {
-    console.log("Tạo đặt chỗ mới:", data)
+    console.log("Đặt bàn:", data)
     setIsCreateReservationOpen(false)
     setSelectedTableForReservation(null)
-    toast.success("Đã gửi thông tin đặt bàn!")
+    toast.success("Đã gửi đặt bàn!")
   }
+
+  // === Shape styles (RHOMBUS ĐÃ FIX) ===
+  const shapeStyles: Record<AreaShape, { container: string; inner: string; clip?: string }> = {
+    circle: { container: "rounded-full", inner: "", clip: undefined },
+    square: { container: "aspect-square", inner: "", clip: undefined },
+    rhombus: {
+      container: "aspect-square rotate-[-30deg] skew-x-[25deg] overflow-hidden",
+      inner: "rotate-[15deg] skew-x-[-15deg] scale-100",
+      clip: undefined,
+    },
+    parallelogram: { container: "skew-x-20", inner: "skew-x-[-20deg]", clip: undefined },
+    rectangle: { container: "", inner: "", clip: undefined },
+    polygon: {
+      container: "",
+      inner: "",
+      clip: "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+    },
+  }
+
+  const shapeKey = (areaShape || "rectangle") as AreaShape
+  const { container, inner, clip } = shapeStyles[shapeKey]
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h3 className="text-lg font-medium">Bố trí sàn nhà hàng</h3>
           <p className="text-sm text-muted-foreground">
-            {selectedFloor === "unassigned"
-              ? "Bàn chưa gán tầng"
-              : `Tầng ${selectedFloor}`}{" "}
-            - Kéo thả để sắp xếp lại vị trí bàn. Nhấp để xoay bàn. <br/> <strong>Có thể đặt bàn với những bàn có trạng thái "Còn trống".</strong>
+            {selectedFloor === "unassigned" ? "Bàn chưa gán tầng" : `Tầng ${selectedFloor}`} - Kéo để di chuyển, nhấp để xoay
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Select value={selectedFloor} onValueChange={setSelectedFloor}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-44">
               <SelectValue placeholder="Chọn tầng" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="unassigned">Chưa gán tầng</SelectItem>
-              {floors.map((floor) => (
-                <SelectItem key={floor} value={String(floor)}>
-                  Tầng {floor}
-                </SelectItem>
+              {floors.map(f => (
+                <SelectItem key={f} value={String(f)}>Tầng {f}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant={isLayoutMode ? "default" : "outline"}
-            onClick={() => setIsLayoutMode(!isLayoutMode)}
-          >
+          <Button variant={isLayoutMode ? "default" : "outline"} onClick={() => setIsLayoutMode(!isLayoutMode)}>
             <Move className="h-4 w-4 mr-2" />
-            {isLayoutMode ? "Thoát chế độ sắp xếp" : "Chế độ sắp xếp"}
+            {isLayoutMode ? "Thoát" : "Sắp xếp"}
           </Button>
           <Button variant="outline" onClick={resetLayout}>
             <RotateCcw className="h-4 w-4 mr-2" />
@@ -320,129 +304,144 @@ export function TableMapManagement({ tables, setTables }: TableMapManagementProp
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-6">
-          <div
-            ref={floorPlanRef}
-            className="relative bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg"
-            style={{ height: "600px", width: "100%" }}
-            onDrop={handleFloorPlanDrop}
-            onDragOver={handleFloorPlanDragOver}
-          >
-            {/* Lưới nền */}
-            <div className="absolute inset-0 opacity-20">
-              <svg width="100%" height="100%">
-                <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ccc" strokeWidth="1" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-              </svg>
+      {/* MAP CARD */}
+      <Card className="overflow-hidden relative">
+        <CardContent className="p-4 sm:p-8">
+          <div className="flex justify-center">
+            <div
+              key={areaShape}
+              ref={floorPlanRef}
+              className={`
+                relative bg-gray-50 border-2 border-dashed border-gray-300
+                shadow-xl overflow-hidden
+                ${container}
+                transition-all duration-500
+              `}
+              style={{
+                ...(areaShape !== "rhombus" && { width: "100%" }),
+                maxWidth: areaShape === "parallelogram" ? "1200px" : "1400px",
+                minHeight: "800px",
+                clipPath: clip,
+              }}
+              onDrop={handleFloorPlanDrop}
+              onDragOver={handleFloorPlanDragOver}
+            >
+              {/* GRID - KHỚP 100% VỚI BẢN ĐỒ */}
+              <div className="absolute inset-0 opacity-15 pointer-events-none z-0">
+                <svg width="100%" height="100%" className="w-full h-full">
+                  <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#999" strokeWidth="1" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#grid)" />
+                </svg>
+              </div>
+
+              {/* NỘI DUNG BÀN - CÓ PADDING */}
+              <div className={`absolute inset-6 ${inner} z-10`}>
+                {/* Tables */}
+                {filteredTables.map(table => {
+                  const { x, y, isOutOfBounds } = getDisplayPosition(table)
+                  const rotation = tableStyles[table.id]?.rotation ?? 0
+
+                  return (
+                    <div
+                      key={table.id}
+                      style={{
+                        position: "absolute",
+                        left: `${x}px`,
+                        top: `${y}px`,
+                        transform: `rotate(${rotation}deg)`,
+                        transformOrigin: "center",
+                        cursor: isLayoutMode ? "move" : table.status === "available" ? "pointer" : "default",
+                        zIndex: draggedTable?.id === table.id ? 1000 : 10,
+                        opacity: isOutOfBounds ? 0.7 : 1,
+                        outline: isOutOfBounds ? "2px dashed #f59e0b" : "none",
+                      }}
+                      draggable={isLayoutMode}
+                      onDragStart={e => handleTableLayoutDragStart(e, table)}
+                      onDragEnd={handleTableLayoutDragEnd}
+                      onClick={() => {
+                        if (isLayoutMode) rotateTable(table.id)
+                        else if (table.status === "available") {
+                          setSelectedTableForReservation(table)
+                          setIsCreateReservationOpen(true)
+                        }
+                      }}
+                      className={`
+                        w-20 h-20 bg-white border-2 rounded-lg shadow-md
+                        flex items-center justify-center text-xs font-semibold
+                        transition-all select-none
+                        ${table.status === "available" ? "border-green-500 bg-green-50 text-green-800" :
+                          table.status === "occupied" ? "border-red-500 bg-red-50 text-red-800" :
+                          table.status === "reserved" ? "border-blue-500 bg-blue-50 text-blue-800" :
+                          "border-gray-400 bg-gray-50 text-gray-700"}
+                        ${isLayoutMode ? "hover:shadow-xl hover:scale-110" : ""}
+                        ${draggedTable?.id === table.id ? "opacity-40 scale-90" : ""}
+                      `}
+                    >
+                      <div className={`text-center ${inner}`}>
+                        <div className="font-bold">{table.table_number}</div>
+                        <div>{table.capacity}p</div>
+                        {isOutOfBounds && <div className="text-[10px] text-orange-600">Ngoài vùng</div>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
+          </div>
 
-            {/* Render bàn */}
-            {filteredTables.map((table) => {
-              const x = table.location?.coordinates?.x ?? 0
-              const y = table.location?.coordinates?.y ?? 0
-              const rotation = tableStyles[table.id]?.rotation ?? 0
-              const shape = tableStyles[table.id]?.shape ?? "rectangle"
-
-              const tableStyle = {
-                position: "absolute" as const,
-                left: `${x}px`,
-                top: `${y}px`,
-                transform: `rotate(${rotation}deg)`,
-                cursor: isLayoutMode ? "move" : table.status === "available" ? "pointer" : "default",
-                zIndex: draggedTable?.id === table.id ? 1000 : 1,
-              }
-
-              return (
-                <div
-                  key={table.id}
-                  style={tableStyle}
-                  draggable={isLayoutMode}
-                  onDragStart={(e) => handleTableLayoutDragStart(e, table)}
-                  onDragEnd={handleTableLayoutDragEnd}
-                  onClick={() => {
-                    if (isLayoutMode) {
-                      rotateTable(table.id)
-                    } else if (table.status === "available") {
-                      setSelectedTableForReservation(table)
-                      setIsCreateReservationOpen(true)
-                    }
-                  }}
-                  className={`
-                    w-20 h-20 border-2 rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-all
-                    ${
-                      table.status === "available"
-                        ? "bg-green-100 border-green-500 text-green-800"
-                        : table.status === "occupied"
-                        ? "bg-red-100 border-red-500 text-red-800"
-                        : table.status === "reserved"
-                        ? "bg-blue-100 border-blue-500 text-blue-800"
-                        : "bg-gray-100 border-gray-500 text-gray-800"
-                    }
-                    ${shape === "circle" ? "rounded-full" : shape === "square" ? "rounded-lg" : "rounded-md"}
-                    ${isLayoutMode ? "hover:shadow-lg hover:scale-105" : table.status === "available" ? "hover:bg-green-200 cursor-pointer" : ""}
-                    ${draggedTable?.id === table.id ? "opacity-50" : ""}
-                  `}
-                >
-                  <div className="text-center">
-                    <div className="font-bold">{table.table_number}</div>
-                    <div className="text-xs">{table.capacity}p</div>
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Chú thích trạng thái bàn */}
-            <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-sm border">
-              <h4 className="font-medium text-sm mb-2">Chú thích</h4>
+          {/* Legend */}
+          <div className="absolute bottom-6 left-6 z-30 pointer-events-none">
+            <div className="bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl border pointer-events-auto">
+              <h4 className="font-bold text-sm mb-2">Chú thích</h4>
               <div className="space-y-1 text-xs">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-100 border border-green-500 rounded"></div>
+                  <div className="w-3 h-3 bg-green-50 border border-green-500 rounded"></div>
                   <span>Trống</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-100 border border-blue-500 rounded"></div>
+                  <div className="w-3 h-3 bg-blue-50 border border-blue-500 rounded"></div>
                   <span>Đã đặt</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-100 border border-red-500 rounded"></div>
+                  <div className="w-3 h-3 bg-red-50 border border-red-500 rounded"></div>
                   <span>Có khách</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-gray-100 border border-gray-500 rounded"></div>
-                  <span>Đang dọn dẹp</span>
+                  <div className="w-3 h-3 bg-gray-50 border border-gray-400 rounded"></div>
+                  <span>Đang dọn</span>
                 </div>
               </div>
             </div>
-
-            {/* Hướng dẫn thao tác */}
-            {isLayoutMode && (
-              <div className="absolute top-4 right-4 bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">Hướng dẫn:</p>
-                  <p>• Kéo bàn để di chuyển</p>
-                  <p>• Nhấp để xoay bàn</p>
-                  <p>• Nhấn Lưu để xác nhận vị trí</p>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Guide */}
+          {isLayoutMode && (
+            <div className="absolute top-6 right-6 z-30 pointer-events-none">
+              <div className="bg-blue-100/95 backdrop-blur text-blue-900 p-4 rounded-xl shadow-xl border pointer-events-auto">
+                <p className="font-bold text-sm mb-1">Hướng dẫn</p>
+                <p className="text-xs">• Kéo để di chuyển</p>
+                <p className="text-xs">• Nhấp để xoay</p>
+                <p className="text-xs">• Lưu để xác nhận</p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Create Reservation Dialog */}
       <CreateReservationDialog
         isOpen={isCreateReservationOpen}
-        onOpenChange={(open) => {
+        onOpenChange={open => {
           setIsCreateReservationOpen(open)
           if (!open) setSelectedTableForReservation(null)
         }}
-        onCreateReservation={(data) => handleCreateReservation({ ...data, table_id: selectedTableForReservation?.id })}
+        onCreateReservation={data =>
+          handleCreateReservation({ ...data, table_id: selectedTableForReservation?.id })
+        }
       />
     </div>
   )
-}  
+}

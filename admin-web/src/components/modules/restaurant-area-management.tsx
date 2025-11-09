@@ -37,8 +37,13 @@ interface RestaurantAreaAttributes {
   deleted_at?: Date | null
 }
 
-export function RestaurantAreaManagement() {
-  const [area, setArea] = useState<RestaurantAreaAttributes | null>(null)
+interface RestaurantAreaManagementProps {
+  area?: RestaurantAreaAttributes | null
+  onAreaChange?: (area: RestaurantAreaAttributes | null) => void
+}
+
+export function RestaurantAreaManagement({ area: propArea, onAreaChange }: RestaurantAreaManagementProps) {
+  const [area, setArea] = useState<RestaurantAreaAttributes | null>(propArea ?? null)
   const [selectedArea, setSelectedArea] = useState<RestaurantAreaAttributes | null>(null)
   const [isCreateAreaDialogOpen, setIsCreateAreaDialogOpen] = useState(false)
   const [isViewAreaDialogOpen, setIsViewAreaDialogOpen] = useState(false)
@@ -63,22 +68,34 @@ export function RestaurantAreaManagement() {
       if (response) {
         const data = response as any
         setArea(data || null)
+        onAreaChange?.(data || null)
       } else {
         toast.error("Lấy thông tin khu vực thất bại")
       }
     } catch (err) {
       toast.error("Lỗi khi tải thông tin khu vực")
       setArea(null)
+      onAreaChange?.(null)
     }
   }
 
+  // If parent passed area prop, keep local state in sync. Otherwise, fetch on mount.
   useEffect(() => {
-    getArea()
-  }, [])
+    if (propArea !== undefined) {
+      setArea(propArea)
+    } else {
+      getArea()
+    }
+    // only run on mount or when propArea changes
+  }, [propArea])
 
   const handleCreateArea = async (
     data: Omit<RestaurantAreaAttributes, "id" | "created_at" | "updated_at" | "deleted_at">
   ) => {
+    if(data.name.trim() === "" || data.area_size <= 0 || !data.shape_type || !data.status) {
+      toast.error("Vui lòng điền đầy đủ thông tin khu vực!")
+      return
+    } 
     const newArea: RestaurantAreaAttributes = {
       id: uuidv4(),
       ...data,
@@ -91,6 +108,7 @@ export function RestaurantAreaManagement() {
       const response = await masterService.create(newArea)
       if (response && response.status === 201) {
         setArea(newArea)
+        onAreaChange?.(newArea)
         setIsCreateAreaDialogOpen(false)
         toast.success("Đã thêm khu vực thành công")
       } else {
@@ -105,7 +123,11 @@ export function RestaurantAreaManagement() {
     try {
       const response = await masterService.update(id, data)
       if (response) {
-        setArea((prev) => (prev ? { ...prev, ...data, updated_at: new Date() } : null))
+        setArea((prev) => {
+          const updated = prev ? { ...prev, ...data, updated_at: new Date() } : null
+          onAreaChange?.(updated)
+          return updated
+        })
         setIsEditAreaDialogOpen(false)
         toast.success("Đã cập nhật khu vực thành công")
       } else {
@@ -220,7 +242,7 @@ export function RestaurantAreaManagement() {
                   <SelectContent>
                     <SelectItem value="square">Vuông</SelectItem>
                     <SelectItem value="rectangle">Chữ nhật</SelectItem>
-                    <SelectItem value="circle">Tròn</SelectItem>
+                    <SelectItem value="circle">Bầu dục</SelectItem>
                     <SelectItem value="polygon">Đa giác</SelectItem>
                     <SelectItem value="rhombus">Hình thoi</SelectItem>
                     <SelectItem value="parallelogram">Bình hành</SelectItem>
@@ -322,7 +344,7 @@ export function RestaurantAreaManagement() {
                     <SelectContent>
                     <SelectItem value="square">Vuông</SelectItem>
                     <SelectItem value="rectangle">Chữ nhật</SelectItem>
-                    <SelectItem value="circle">Tròn</SelectItem>
+                    <SelectItem value="circle">Bầu dục</SelectItem>
                     <SelectItem value="polygon">Đa giác</SelectItem>
                     <SelectItem value="rhombus">Hình thoi</SelectItem>
                     <SelectItem value="parallelogram">Bình hành</SelectItem>

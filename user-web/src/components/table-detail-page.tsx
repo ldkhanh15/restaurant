@@ -1,156 +1,318 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "@/lib/router"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Star, Users, MapPin, Wifi, Music, Calendar, Clock, Phone } from "lucide-react"
-
-// Mock data - in real app this would come from props or API
-const tableData = {
-  id: "table-1",
-  number: "T01",
-  capacity: 2,
-  location: "Tầng 1 - Khu vực cửa sổ",
-  features: ["Wifi miễn phí", "Ổ cắm điện", "View sân vườn"],
-  status: "available",
-  price_per_hour: 50000,
-  images: ["/elegant-restaurant-interior.png"],
-  description:
-    "Bàn 2 người ấm cúng bên cửa sổ với view sân vườn tuyệt đẹp. Không gian riêng tư, lý tưởng cho các buổi hẹn hò hoặc cuộc họp công việc quan trọng.",
-  amenities: ["wifi", "power", "garden_view"],
-  reviews: [
-    {
-      id: "r1",
-      customer: "Nguyễn Thị Lan",
-      rating: 5,
-      comment: "Bàn rất đẹp, view tuyệt vời! Dịch vụ chu đáo, không gian yên tĩnh.",
-      date: "2024-01-10",
-    },
-    {
-      id: "r2",
-      customer: "Trần Văn Nam",
-      rating: 4,
-      comment: "Không gian thoải mái, phù hợp hẹn hò. Giá cả hợp lý.",
-      date: "2024-01-08",
-    },
-    {
-      id: "r3",
-      customer: "Lê Thị Hoa",
-      rating: 5,
-      comment: "Bàn đẹp, view sân vườn thật sự tuyệt vời. Sẽ quay lại lần sau.",
-      date: "2024-01-05",
-    },
-  ],
-  availability: [
-    { time: "09:00", available: true },
-    { time: "10:00", available: true },
-    { time: "11:00", available: false },
-    { time: "12:00", available: false },
-    { time: "13:00", available: true },
-    { time: "14:00", available: true },
-    { time: "15:00", available: true },
-    { time: "16:00", available: false },
-    { time: "17:00", available: true },
-    { time: "18:00", available: true },
-    { time: "19:00", available: false },
-    { time: "20:00", available: false },
-  ],
-}
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "available":
-      return "bg-green-500/20 text-green-400 border-green-500/30"
-    case "occupied":
-      return "bg-red-500/20 text-red-400 border-red-500/30"
-    case "reserved":
-      return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-    default:
-      return "bg-gray-500/20 text-gray-400 border-gray-500/30"
-  }
-}
-
-const getStatusText = (status: string) => {
-  switch (status) {
-    case "available":
-      return "Có sẵn"
-    case "occupied":
-      return "Đang sử dụng"
-    case "reserved":
-      return "Đã đặt"
-    default:
-      return "Không xác định"
-  }
-}
-
-const getAmenityIcon = (amenity: string) => {
-  switch (amenity) {
-    case "wifi":
-    case "premium_wifi":
-      return <Wifi className="w-5 h-5" />
-    case "power":
-      return <div className="w-5 h-5 text-center text-lg">⚡</div>
-    case "garden_view":
-      return <div className="w-5 h-5 text-center text-lg">🌿</div>
-    case "music":
-      return <Music className="w-5 h-5" />
-    case "bar_access":
-      return <div className="w-5 h-5 text-center text-lg">🍸</div>
-    case "private_room":
-      return <div className="w-5 h-5 text-center text-lg">🚪</div>
-    case "karaoke":
-      return <div className="w-5 h-5 text-center text-lg">🎤</div>
-    case "minibar":
-      return <div className="w-5 h-5 text-center text-lg">🍾</div>
-    case "round_table":
-      return <div className="w-5 h-5 text-center text-lg">⭕</div>
-    case "stage_access":
-      return <div className="w-5 h-5 text-center text-lg">🎭</div>
-    case "sound_system":
-      return <div className="w-5 h-5 text-center text-lg">🔊</div>
-    default:
-      return <div className="w-5 h-5 text-center text-lg">✨</div>
-  }
-}
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowLeft,
+  Users,
+  MapPin,
+  Wifi,
+  Zap,
+  Trees,
+  Music,
+  GlassWater,
+  Lock,
+  Mic2,
+  Circle,
+  Tag,
+  Volume2,
+  Tv,
+  Car,
+  Coffee,
+  Utensils,
+  Clock,
+  Calendar,
+  Phone,
+  DollarSign,
+  XCircle,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
+import { TableAttributes, tableService } from "../services/tableService";
 
 export default function TableDetailPage() {
-  const { navigate } = useRouter()
-  const [selectedTime, setSelectedTime] = useState<string>("")
+  const params = useParams();
+  const router = useRouter();
+  const [table, setTable] = useState<TableAttributes | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string>("");
 
-  const averageRating = tableData.reviews.reduce((sum, r) => sum + r.rating, 0) / tableData.reviews.length
+  // Slider state
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const tableId = params.id as string;
+
+  /* --------------------------------------------------------------
+   *  Fetch & normalise table data
+   * ------------------------------------------------------------ */
+  useEffect(() => {
+    if (!tableId) return;
+
+    const fetchTable = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await tableService.getById(tableId);
+
+        if (!response?.data) throw new Error("Không tìm thấy bàn");
+
+        const fetched = response.data;
+
+        const normalizedTable: TableAttributes = {
+          ...(fetched || {}),
+
+          // ---- panorama_urls -------------------------------------------------
+          panorama_urls: Array.isArray(fetched?.panorama_urls)
+            ? fetched.panorama_urls
+            : fetched?.panorama_urls
+            ? [fetched.panorama_urls]
+            : ["/placeholder.svg"],
+
+          // ---- amenities (object JSON) ---------------------------------------
+          amenities:
+            fetched?.amenities &&
+            typeof fetched.amenities === "object" &&
+            !Array.isArray(fetched.amenities)
+              ? fetched.amenities
+              : {},
+        };
+
+        setTable(normalizedTable);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Lỗi tải dữ liệu");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTable();
+  }, [tableId]);
+
+  /* --------------------------------------------------------------
+   *  Helpers
+   * ------------------------------------------------------------ */
+  const formatVND = (amount: number | string) => {
+    const n = Number(amount);
+    return isNaN(n) ? "0đ" : n.toLocaleString("vi-VN") + "đ";
+  };
+
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case "available":
+        return {
+          color: "bg-green-500/20 text-green-600 border-green-500/30",
+          text: "Có sẵn",
+          icon: <CheckCircle className="w-4 h-4" />,
+        };
+      case "occupied":
+        return {
+          color: "bg-red-500/20 text-red-600 border-red-500/30",
+          text: "Đang sử dụng",
+          icon: <XCircle className="w-4 h-4" />,
+        };
+      case "reserved":
+        return {
+          color: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+          text: "Đã đặt",
+          icon: <Calendar className="w-4 h-4" />,
+        };
+      case "cleaning":
+        return {
+          color: "bg-blue-500/20 text-blue-600 border-blue-500/30",
+          text: "Đang dọn",
+          icon: <AlertCircle className="w-4 h-4" />,
+        };
+      default:
+        return {
+          color: "bg-gray-500/20 text-gray-600 border-gray-500/30",
+          text: "Không xác định",
+          icon: null,
+        };
+    }
+  };
+
+  // amenity label
+  const getAmenityLabel = (key: string, value: any): string => {
+    const labels: Record<string, string> = {
+      wifi: "WiFi",
+      power: "Ổ cắm",
+      garden_view: "View vườn",
+      music: "Nhạc nền",
+      bar: "Quầy bar",
+      minibar: "Minibar",
+      private: "Riêng tư",
+      karaoke: "Karaoke",
+      round: "Bàn tròn",
+      stage: "Sân khấu",
+      sound: "Hệ thống âm thanh",
+      projector: "Máy chiếu",
+      parking: "Bãi đỗ xe",
+      coffee: "Máy pha cà phê",
+      kitchen: "Bếp",
+    };
+
+    const base = labels[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+    return typeof value === "boolean"
+      ? `${base}: ${value ? "Có" : "Không có"}`
+      : `${base}: ${value}`;
+  };
+
+  // ICON TỰ ĐỘNG – KHÔNG HARDCODE
+  const getAmenityIcon = (key: string): JSX.Element => {
+    const iconMap: Record<string, JSX.Element> = {
+      wifi: <Wifi className="w-5 h-5" />,
+      power: <Zap className="w-5 h-5" />,
+      garden_view: <Trees className="w-5 h-5" />,
+      music: <Music className="w-5 h-5" />,
+      bar: <GlassWater className="w-5 h-5" />,
+      minibar: <GlassWater className="w-5 h-5" />,
+      private: <Lock className="w-5 h-5" />,
+      karaoke: <Mic2 className="w-5 h-5" />,
+      round: <Circle className="w-5 h-5" />,
+      stage: <Tag className="w-5 h-5" />,
+      sound: <Volume2 className="w-5 h-5" />,
+      projector: <Tv className="w-5 h-5" />,
+      parking: <Car className="w-5 h-5" />,
+      coffee: <Coffee className="w-5 h-5" />,
+      kitchen: <Utensils className="w-5 h-5" />,
+    };
+
+    if (iconMap[key]) return iconMap[key];
+
+    const firstLetter = key.charAt(0).toUpperCase();
+    const displayName = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+    return (
+      <div
+        className="w-5 h-5 flex items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"
+        title={displayName}
+      >
+        {firstLetter}
+      </div>
+    );
+  };
+
+  // fake time slots
+  const timeSlots = [
+    "09:00", "10:00", "11:00", "12:00", "13:00",
+    "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"
+  ].map((time) => ({
+    time,
+    available: Math.random() > 0.3,
+  }));
+
+  const images = table?.panorama_urls || ["/placeholder.svg"];
+  const totalImages = images.length;
+
+  useEffect(() => {
+    if (totalImages <= 1 || isPaused) return;
+
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev === totalImages - 1 ? 0 : prev + 1));
+    }, 3000); // 3 giây
+
+    return () => clearInterval(interval);
+  }, [currentImageIndex, totalImages, isPaused]);
+
+  /* --------------------------------------------------------------
+   *  Render loading / error
+   * ------------------------------------------------------------ */
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (error || !table) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-red-600">Lỗi</CardTitle>
+            <CardDescription>{error || "Không tìm thấy bàn"}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push("/tables")} className="w-full">
+              Quay lại danh sách bàn
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const status = getStatusConfig(table.status);
+
+  // Format location: Tầng X – Khu Y
+  const locationText = table.location?.floor && table.location?.area
+    ? `Tầng ${table.location.floor} – ${table.location.area}`
+    : table.location?.floor
+    ? `Tầng ${table.location.floor}`
+    : table.location?.area
+    ? table.location.area
+    : "Không xác định vị trí";
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="sm" onClick={() => navigate("tables")}>
+        {/* Header: Nút "Quay lại" ở góc trên trái */}
+        <div className="mb-6">
+          <Button variant="ghost" size="sm" onClick={() => router.back()} className="text-sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Tables
+            Quay lại
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Table {tableData.number}</h1>
-            <p className="text-muted-foreground">{tableData.location}</p>
-          </div>
+        </div>
+
+        {/* Tên bàn + vị trí nằm ngang, dưới nút quay lại */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Bàn {table.table_number}</h1>
+          <p className="text-muted-foreground flex items-center gap-1">
+            <MapPin className="w-4 h-4" />
+            {locationText}
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Image Gallery */}
-            <div className="relative">
-              <img
-                src={tableData.images[0] || "/placeholder.svg"}
-                alt={`Table ${tableData.number}`}
-                className="w-full h-96 object-cover rounded-2xl"
-              />
+            {/* Image Slider - TỰ ĐỘNG 3s (không nút, không dot) */}
+            <div
+              className="relative rounded-2xl overflow-hidden shadow-lg bg-muted"
+              onMouseEnter={() => setIsPaused(true)}
+              onMouseLeave={() => setIsPaused(false)}
+            >
+              <div className="relative aspect-video">
+                <img
+                  key={currentImageIndex}
+                  src={images[currentImageIndex]}
+                  alt={`Bàn ${table.table_number} - ảnh ${currentImageIndex + 1}`}
+                  className="w-full h-full object-cover transition-opacity duration-500"
+                />
+              </div>
+
+              {/* Badge trạng thái & sức chứa */}
               <div className="absolute top-6 left-6 flex gap-3">
-                <Badge className={getStatusColor(tableData.status)}>{getStatusText(tableData.status)}</Badge>
+                <Badge className={status.color}>
+                  {status.icon}
+                  <span className="ml-1">{status.text}</span>
+                </Badge>
                 <Badge variant="secondary" className="bg-background/80 text-foreground">
                   <Users className="w-4 h-4 mr-2" />
-                  {tableData.capacity} guests
+                  {table.capacity} khách
                 </Badge>
               </div>
             </div>
@@ -158,59 +320,58 @@ export default function TableDetailPage() {
             {/* Description */}
             <Card>
               <CardHeader>
-                <CardTitle>About This Table</CardTitle>
+                <CardTitle>Về bàn này</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground leading-relaxed mb-6">{tableData.description}</p>
+                <p className="text-muted-foreground leading-relaxed mb-6">
+                  {table.description ?? "Bàn ăn thoải mái, phù hợp cho mọi dịp."}
+                </p>
 
                 {/* Amenities */}
-                <div>
-                  <h4 className="font-semibold mb-4">Amenities & Features</h4>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {tableData.features.map((feature, index) => (
-                      <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                        {getAmenityIcon(tableData.amenities[index])}
-                        <span className="font-medium">{feature}</span>
-                      </div>
-                    ))}
+                {Object.keys(table.amenities).length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-4">Tiện ích</h4>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {Object.entries(table.amenities).map(([key, value]) => (
+                        <div
+                          key={key}
+                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                            value === true
+                              ? "bg-green-50 border-green-300 text-green-700"
+                              : value === false
+                              ? "bg-red-50 border-red-300 text-red-700"
+                              : "bg-muted/30 border-border"
+                          }`}
+                        >
+                          {getAmenityIcon(key)}
+                          <span className="font-medium">{getAmenityLabel(key, value)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Reviews */}
+            {/* Policy */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  Customer Reviews
-                  <div className="flex items-center gap-2">
-                    <Star className="w-5 h-5 text-yellow-500 fill-current" />
-                    <span className="font-bold">{averageRating.toFixed(1)}</span>
-                    <span className="text-muted-foreground">({tableData.reviews.length} reviews)</span>
-                  </div>
-                </CardTitle>
+                <CardTitle>Chính sách đặt bàn</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {tableData.reviews.map((review) => (
-                    <div key={review.id} className="border border-border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold">{review.customer}</span>
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-4 h-4 ${i < review.rating ? "text-yellow-500 fill-current" : "text-muted-foreground"}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-muted-foreground mb-2">{review.comment}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(review.date).toLocaleDateString("vi-VN")}
-                      </p>
-                    </div>
-                  ))}
+              <CardContent className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-primary" />
+                    Tiền đặt cọc
+                  </span>
+                  <span className="font-semibold">{formatVND(table.deposit)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Hủy miễn phí
+                  </span>
+                  <span className="font-semibold">Trước {table.cancel_minutes} phút</span>
                 </div>
               </CardContent>
             </Card>
@@ -221,26 +382,25 @@ export default function TableDetailPage() {
             <Card className="sticky top-8">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Reserve Table
-                  <span className="text-2xl font-bold text-primary">
-                    {tableData.price_per_hour.toLocaleString("vi-VN")}đ/hour
-                  </span>
+                  Đặt bàn
+                  <span className="text-sm font-normal text-muted-foreground">1 giờ</span>
                 </CardTitle>
-                <CardDescription>Select your preferred time slot</CardDescription>
+                <CardDescription>Chọn khung giờ phù hợp</CardDescription>
               </CardHeader>
+
               <CardContent className="space-y-6">
                 {/* Time Selection */}
                 <div>
-                  <h4 className="font-semibold mb-3">Available Times Today</h4>
+                  <h4 className="font-semibold mb-3">Khung giờ hôm nay</h4>
                   <div className="grid grid-cols-3 gap-2">
-                    {tableData.availability.map((slot) => (
+                    {timeSlots.map((slot) => (
                       <Button
                         key={slot.time}
                         variant={selectedTime === slot.time ? "default" : "outline"}
                         size="sm"
                         disabled={!slot.available}
                         onClick={() => setSelectedTime(slot.time)}
-                        className="text-sm"
+                        className="text-xs"
                       >
                         {slot.time}
                       </Button>
@@ -252,16 +412,16 @@ export default function TableDetailPage() {
                 {selectedTime && (
                   <div className="p-4 bg-muted/30 rounded-lg space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>Table {tableData.number}</span>
-                      <span>{tableData.capacity} guests</span>
+                      <span>Bàn {table.table_number}</span>
+                      <span>{table.capacity} khách</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span>Time</span>
+                      <span>Thời gian</span>
                       <span>{selectedTime}</span>
                     </div>
                     <div className="flex justify-between font-semibold pt-2 border-t border-border">
-                      <span>Total</span>
-                      <span>{tableData.price_per_hour.toLocaleString("vi-VN")}đ</span>
+                      <span>Đặt cọc</span>
+                      <span>{formatVND(table.deposit)}</span>
                     </div>
                   </div>
                 )}
@@ -269,17 +429,16 @@ export default function TableDetailPage() {
                 {/* Action Buttons */}
                 <div className="space-y-3">
                   <Button
-                    className="w-full"
+                    className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white"
                     size="lg"
-                    disabled={!selectedTime || tableData.status !== "available"}
-                    onClick={() => navigate("reservations")}
+                    disabled={!selectedTime || table.status !== "available"}
                   >
                     <Calendar className="w-4 h-4 mr-2" />
-                    {tableData.status === "available" ? "Reserve Now" : "Not Available"}
+                    {table.status === "available" ? "Đặt ngay" : "Không khả dụng"}
                   </Button>
-                  <Button variant="outline" className="w-full bg-transparent" size="lg">
+                  <Button variant="outline" className="w-full" size="lg">
                     <Phone className="w-4 h-4 mr-2" />
-                    Contact Restaurant
+                    Gọi nhà hàng
                   </Button>
                 </div>
 
@@ -287,11 +446,11 @@ export default function TableDetailPage() {
                 <div className="pt-4 border-t border-border space-y-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    <span>Free cancellation up to 2 hours before</span>
+                    <span>Hủy miễn phí trước {table.cancel_minutes} phút</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    <span>{tableData.location}</span>
+                    <span>{locationText}</span>
                   </div>
                 </div>
               </CardContent>
@@ -300,5 +459,5 @@ export default function TableDetailPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

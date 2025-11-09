@@ -1,66 +1,27 @@
-import apiClient from "@/lib/apiClient";
+"use client"
 
-export interface Table {
+import { get } from "http"
+import apiClient from "../lib/apiClient"
+
+export interface TableAttributes {
   id: string;
   table_number: string;
   capacity: number;
   deposit: number;
   cancel_minutes: number;
-  location?: {
-    area?: string;
-    floor?: number;
-    coordinates?: {
-      x: number;
-      y: number;
-    };
-  };
+  location?: any;
   status: "available" | "occupied" | "cleaning" | "reserved";
   panorama_urls?: string[];
-  amenities?: string[];
+  amenities?: any;
   description?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
 }
 
-export interface TableListResponse {
-  totalItems: number;
-  totalPages: number;
-  currentPage: number;
-  itemsPerPage: number;
-  items: Table[];
-}
 
 export const tableService = {
-  getAll: (params?: {
-    all?: boolean;
-    page?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: "ASC" | "DESC";
-  }): Promise<{
-    status: string;
-    data: Table[] | TableListResponse;
-    count?: number;
-  }> => apiClient.get(`/tables`, { params }),
-
-  getById: (id: string): Promise<{ status: string; data: Table }> =>
-    apiClient.get(`/tables/${id}`),
-
-  search: (params?: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    capacity?: number;
-    search?: string;
-  }): Promise<{ status: string; data: TableListResponse }> =>
-    apiClient.get(`/tables/search`, { params }),
-
-  getByStatus: (
-    status: string,
-    params?: {
-      page?: number;
-      limit?: number;
-    }
-  ): Promise<{ status: string; data: TableListResponse }> =>
-    apiClient.get(`/tables/status/${status}`, { params }),
-};
+  getAllNoPagination: () => apiClient.get<any>('/tables?all=true'),
+  getById: (id: string) => apiClient.get<{ data: TableAttributes }>(`/tables/${id}`),
+  getArea:() => apiClient.get<any>('/master/restaurant/'),
+}
