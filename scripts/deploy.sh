@@ -80,9 +80,11 @@ $COMPOSE_CMD down || true
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
 docker image prune -af --filter "until=24h" || true
 
-# Build services
-echo -e "${YELLOW}🔨 Building Docker images...${NC}"
-$COMPOSE_CMD build --no-cache
+# Build services with BuildKit for cache optimization
+echo -e "${YELLOW}🔨 Building Docker images (with BuildKit cache)...${NC}"
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+$COMPOSE_CMD build
 
 # Start services
 echo -e "${YELLOW}🚀 Starting services...${NC}"

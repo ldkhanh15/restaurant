@@ -84,9 +84,11 @@ jobs:
           echo "🧹 Cleaning up old Docker images..."
           docker image prune -af --filter "until=24h" || true
           
-          # Build and start services
-          echo "🔨 Building and starting services..."
-          $COMPOSE_CMD build --no-cache
+          # Build and start services with BuildKit
+          echo "🔨 Building and starting services (with BuildKit cache)..."
+          export DOCKER_BUILDKIT=1
+          export COMPOSE_DOCKER_CLI_BUILD=1
+          $COMPOSE_CMD build
           
           echo "🚀 Starting services..."
           $COMPOSE_CMD up -d

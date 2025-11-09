@@ -7,12 +7,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Set Node.js memory limit for build (reduce from default)
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
 # Copy package files
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install dependencies with cache mount (BuildKit feature)
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production=false --prefer-offline --no-audit
 
 # Copy source code
 COPY src ./src
@@ -35,8 +39,9 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production && \
+# Install only production dependencies with cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production --prefer-offline --no-audit && \
     npm cache clean --force
 
 # Copy built files from builder stage
@@ -57,6 +62,9 @@ USER nodejs
 
 # Expose port
 EXPOSE 8000
+
+# Set Node.js memory limit for production (256MB heap for backend)
+ENV NODE_OPTIONS="--max-old-space-size=256"
 
 # Health check - increased start_period for database sync
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \

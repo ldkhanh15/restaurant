@@ -1,24 +1,43 @@
 # ============================================
-# Dockerfile for Chatbot Service (Python FastAPI)
+# Multi-stage Dockerfile for Chatbot Service (Python FastAPI)
+# Optimized for minimal memory usage
 # ============================================
 
-FROM python:3.10-slim
+# Stage 1: Builder - Install dependencies
+FROM python:3.10-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install only build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
-    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user --no-cache-dir -r requirements.txt
+
+# Stage 2: Runner - Production image
+FROM python:3.10-slim AS runner
+
+WORKDIR /app
+
+# Install only runtime dependencies (no gcc needed)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy installed packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Make sure scripts in .local are usable
+ENV PATH=/root/.local/bin:$PATH
 
 # Copy only required application files
 COPY api_server.py .
@@ -28,6 +47,9 @@ COPY chatbot.py .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV BE_URL=http://backend:8000/api
+# Limit Python memory (optional, helps with large requests)
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONHASHSEED=random
 
 # Expose port
 EXPOSE 7860

@@ -46,7 +46,32 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-file-size=32M
+      - --max-connections=50
+      - --table-open-cache=200
+      - --thread-cache-size=8
+      - --query-cache-size=0
+      - --query-cache-type=0
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+      - --sort-buffer-size=2M
+      - --read-buffer-size=1M
+      - --read-rnd-buffer-size=1M
+      - --join-buffer-size=2M
+      - --key-buffer-size=8M
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
 
   # ============================================
   # Chatbot Service (Python FastAPI)
@@ -55,6 +80,8 @@ services:
     build:
       context: ./chatbot
       dockerfile: Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_chatbot
     restart: unless-stopped
     # No ports exposed - only accessible within Docker network
@@ -82,6 +109,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.3"
+        reservations:
+          memory: 128M
+          cpus: "0.1"
 
   # ============================================
   # Backend API Service (be_restaurant)
@@ -90,6 +125,8 @@ services:
     build:
       context: ./be_restaurant
       dockerfile: Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_backend
     restart: unless-stopped
     ports:
@@ -130,7 +167,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
 
   # ============================================
   # Admin Web Frontend Service
@@ -143,6 +188,7 @@ services:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
         NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_admin_web
     restart: unless-stopped
     ports:
@@ -156,6 +202,14 @@ services:
       backend:
         condition: service_healthy
     # Health check defined in Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.2"
+        reservations:
+          memory: 64M
+          cpus: "0.1"
 
   # ============================================
   # User Web Frontend Service
@@ -168,6 +222,7 @@ services:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
         NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_user_web
     restart: unless-stopped
     ports:
@@ -181,6 +236,14 @@ services:
       backend:
         condition: service_healthy
     # Health check defined in Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.2"
+        reservations:
+          memory: 64M
+          cpus: "0.1"
 
 # ============================================
 # Networks

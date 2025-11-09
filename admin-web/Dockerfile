@@ -7,16 +7,24 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
+# Set Node.js memory limit for dependency installation
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies using npm
-RUN npm ci
+# Install dependencies with cache mount (BuildKit feature)
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit
 
 # Stage 2: Builder - Build Next.js application
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Set Node.js memory limit for build (512MB for Next.js build)
+ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -28,9 +36,9 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
-# Build Next.js application
-# Use set -e to fail on any error, not just the last command
-RUN set -e && \
+# Build Next.js application with cache mount for .next cache
+RUN --mount=type=cache,target=/app/.next/cache \
+    set -e && \
     echo "Building with NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" && \
     npm run build && \
     echo "Build completed successfully" && \
@@ -70,6 +78,8 @@ EXPOSE 3001
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOSTNAME="0.0.0.0"
+# Limit Node.js memory for production (96MB heap for frontend)
+ENV NODE_OPTIONS="--max-old-space-size=96"
 
 # Health check (accept 200 or 307 redirect)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

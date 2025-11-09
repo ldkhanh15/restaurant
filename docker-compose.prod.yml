@@ -40,13 +40,32 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-file-size=32M
+      - --max-connections=50
+      - --table-open-cache=200
+      - --thread-cache-size=8
+      - --query-cache-size=0
+      - --query-cache-type=0
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+      - --sort-buffer-size=2M
+      - --read-buffer-size=1M
+      - --read-rnd-buffer-size=1M
+      - --join-buffer-size=2M
+      - --key-buffer-size=8M
     deploy:
       resources:
         limits:
           memory: 256M
+          cpus: "0.5"
         reservations:
           memory: 128M
+          cpus: "0.25"
 
   # ============================================
   # Chatbot Service
@@ -84,8 +103,10 @@ services:
       resources:
         limits:
           memory: 256M
+          cpus: "0.3"
         reservations:
           memory: 128M
+          cpus: "0.1"
 
   # ============================================
   # Backend API Service
@@ -135,8 +156,10 @@ services:
       resources:
         limits:
           memory: 384M
+          cpus: "0.5"
         reservations:
           memory: 256M
+          cpus: "0.25"
 
   # ============================================
   # Admin Web Frontend Service
@@ -162,8 +185,10 @@ services:
       resources:
         limits:
           memory: 128M
+          cpus: "0.2"
         reservations:
           memory: 64M
+          cpus: "0.1"
 
   # ============================================
   # User Web Frontend Service
@@ -189,8 +214,10 @@ services:
       resources:
         limits:
           memory: 128M
+          cpus: "0.2"
         reservations:
           memory: 64M
+          cpus: "0.1"
 
 # ============================================
 # Networks
