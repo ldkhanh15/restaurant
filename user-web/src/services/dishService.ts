@@ -1,6 +1,8 @@
 import apiClient from "../lib/apiClient"
 
 export type Dish = {
+    ingredients: any[]
+    category: any
     id: string
     name: string
     description: string
@@ -16,10 +18,10 @@ export type Dish = {
 }
 
 export const dishService = {
-    getAll: (params: any) => apiClient.get('/dishes', { params }),
-    getById: (id: string) => apiClient.get(`/dishes/${id}`),
-    search: (query: string) => apiClient.get(`/dishes/search?q=${query}`),
-    getByCategory: (categoryId: string) => apiClient.get(`/dishes/category/${categoryId}`),
+    getAll: (params: any) => apiClient.get<any>('/dishes', { params }),
+    getById: (id: string) => apiClient.get<any>(`/dishes/${id}`),
+    search: (query: string) => apiClient.get<any>(`/dishes/search?q=${query}`),
+    getByCategory: (categoryId: string) => apiClient.get<any>(`/dishes/category/${categoryId}`),
 }
 
 export default dishService

@@ -11,7 +11,7 @@ export type Category = {
 }
 
 export const categoryService = {
-    getAll: () => apiClient.get('/categories'),
+    getAll: () => apiClient.get<any>('/categories'),
     getById: (id: string) => apiClient.get(`/categories/${id}`),
 }
 

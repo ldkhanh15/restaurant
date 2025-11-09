@@ -123,9 +123,7 @@ export const getDishById = async (
   next: NextFunction
 ) => {
   try {
-    const dish = await Dish.findByPk(req.params.id, {
-      include: [{ model: CategoryDish, as: "category" }],
-    });
+    const dish = await dishService.getById(req.params.id);
 
     if (!dish) {
       throw new AppError("Dish not found", 404);

@@ -333,6 +333,20 @@ class DishService extends BaseService<Dish> {
       limit,
     };
   }
+
+  async getById(id: string) {
+    const data = await this.model.findByPk(id, {
+      include: [
+        { model: CategoryDish, as: "category" },
+        {
+          model: Ingredient,
+          as: "ingredients",
+          through: { attributes: ["quantity"] },
+        },
+      ],
+    });
+    return data;
+  }
 }
 
 export default new DishService();
