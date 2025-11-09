@@ -310,7 +310,7 @@ class OrderRepository {
     if (!order) {
       throw new AppError("Order not found", 404);
     }
-    
+
     const finalAmount = Math.max(0, order.total_amount - discountAmount);
 
     await order.update({
@@ -410,9 +410,10 @@ class OrderRepository {
 
     // Chuyển kết quả thành dạng { pending: n, paid: n }
     const pendingOrders =
-      statusCounts.find((s) => s.status === "pending")?.count || 0;
+      (statusCounts as any).find((s: any) => s.status === "pending")?.count ||
+      0;
     const paidOrders =
-      statusCounts.find((s) => s.status === "paid")?.count || 0;
+      (statusCounts as any).find((s: any) => s.status === "paid")?.count || 0;
 
     // Tính tổng doanh thu (chỉ tính các order đã thanh toán)
     const revenueResult = await Order.findOne({
@@ -426,7 +427,7 @@ class OrderRepository {
       raw: true,
     });
 
-    const totalRevenue = revenueResult?.total_revenue || 0;
+    const totalRevenue = (revenueResult as any)?.total_revenue || 0;
 
     // Trả về object tổng hợp
     return {
@@ -706,9 +707,9 @@ class OrderRepository {
     ]);
 
     return {
-      revenue: orderStats[0]?.revenue || 0,
-      order_count: orderStats[0]?.order_count || 0,
-      reservation_count: reservationStats[0]?.reservation_count || 0,
+      revenue: (orderStats[0] as any)?.revenue || 0,
+      order_count: (orderStats[0] as any)?.order_count || 0,
+      reservation_count: (reservationStats[0] as any)?.reservation_count || 0,
     };
   }
 }

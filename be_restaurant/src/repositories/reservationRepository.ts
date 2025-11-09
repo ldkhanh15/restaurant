@@ -137,7 +137,7 @@ class ReservationRepository {
       ],
     });
 
-    return reservation as ReservationWithDetails;
+    return reservation as unknown as ReservationWithDetails;
   }
 
   async create(data: any): Promise<Reservation> {
@@ -198,7 +198,7 @@ class ReservationRepository {
 
     // Update order status to dining
     await order.update({ status: "dining" });
-
+    await reservation.update({ status: "completed" });
     // Update table/table group status
     if (reservation.table_id) {
       const table = await Table.findByPk(reservation.table_id);

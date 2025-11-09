@@ -27,7 +27,11 @@ import {
   EyeOff,
 } from "lucide-react";
 
-export default function RegisterPage() {
+interface RegisterPageProps {
+  redirectTo?: string;
+}
+
+export default function RegisterPage({ redirectTo = "/" }: RegisterPageProps) {
   const { register, isLoading } = useAuth();
   const { navigate } = useRouter();
   const [formData, setFormData] = useState({
@@ -90,8 +94,8 @@ export default function RegisterPage() {
       });
 
       if (success) {
-        // Redirect to home page
-        window.location.href = "/";
+        const target = redirectTo.startsWith("/") ? redirectTo : "/";
+        window.location.href = target;
       } else {
         setError("Đăng ký thất bại. Vui lòng thử lại.");
       }

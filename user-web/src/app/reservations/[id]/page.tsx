@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +14,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import DishSelectionDialog from "@/components/shared/DishSelectionDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,84 +29,68 @@ import {
   Clock,
   Users,
   MapPin,
-  Phone,
-  Mail,
   Edit,
   X,
   CheckCircle,
   ShoppingCart,
   Receipt,
-  QrCode,
   Plus,
   Minus,
   CreditCard,
   Save,
   XCircle,
-  Star,
+  Loader2,
+  ArrowLeft,
+  AlertCircle,
+  Trash2,
+  Gift,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import Image from "next/image";
-import { getReservationById } from "@/mock/mockReservations";
-import { mockDishes } from "@/mock/mockDishes";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
+import {
+  reservationService,
+  type Reservation,
+} from "@/services/reservationService";
+import { useReservationListStore } from "@/store/reservationListStore";
+import { useReservationSocket } from "@/hooks/useReservationSocket";
+import type { SelectableDish } from "@/components/shared/DishSelectionDialog";
 
-// Mock reservation with extended data
-const getMockReservation = (id: string) => {
-  const base = {
-    id,
-    date: "2024-02-15",
-    time: "19:00",
-    num_people: 4,
-    table_id: "T-6",
-    table_name: "Bàn VIP 1",
-    floor: "Tầng 1",
-    status: "confirmed" as const,
-    customer_name: "Nguyễn Văn An",
-    customer_phone: "0901234567",
-    customer_email: "an.nguyen@email.com",
-    special_requests: "Gần cửa sổ, khu vực yên tĩnh",
-    event_type: "birthday",
-    deposit_paid: 500000,
-    total_cost: 2500000,
-    created_at: "2024-01-20T10:00:00Z",
-    modified_at: "2024-01-21T14:30:00Z",
-    checked_in: false,
-    pre_orders: [
-      {
-        id: "PO-1",
-        dish_id: "dish-1",
-        dish_name: "Cá Hồi Nướng",
-        quantity: 2,
-        price: 350000,
-        status: "pending" as const,
-      },
-      {
-        id: "PO-2",
-        dish_id: "dish-3",
-        dish_name: "Salad Caesar",
-        quantity: 2,
-        price: 120000,
-        status: "pending" as const,
-      },
-    ],
-  };
-  return base;
-};
-
-const statusConfig = {
+const statusConfig: Record<
+  string,
+  {
+    label: string;
+    color: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  pending: {
+    label: "Chờ Xác Nhận",
+    color: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+    icon: Clock,
+  },
   confirmed: {
     label: "Đã Xác Nhận",
-    color: "bg-green-500",
+    color: "bg-green-500/20 text-green-600 border-green-500/30",
     icon: CheckCircle,
   },
-  pending: { label: "Chờ Xác Nhận", color: "bg-yellow-500", icon: Clock },
-  cancelled: { label: "Đã Hủy", color: "bg-red-500", icon: X },
-  checked_in: {
-    label: "Đã Check-in",
-    color: "bg-blue-500",
+  completed: {
+    label: "Hoàn Thành",
+    color: "bg-blue-500/20 text-blue-600 border-blue-500/30",
     icon: CheckCircle,
+  },
+  cancelled: {
+    label: "Đã Hủy",
+    color: "bg-red-500/20 text-red-600 border-red-500/30",
+    icon: X,
+  },
+  no_show: {
+    label: "Không Đến",
+    color: "bg-gray-500/20 text-gray-600 border-gray-500/30",
+    icon: AlertCircle,
   },
 };
 
@@ -110,92 +101,417 @@ export default function ReservationDetailPage({
 }) {
   const { id } = params;
   const router = useRouter();
-  const reservation = getMockReservation(id);
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
+  const { toast } = useToast();
+  const reservationSocket = useReservationSocket();
+
+  const {
+    selectedReservation,
+    isLoadingDetail,
+    detailError,
+    setSelectedReservation,
+    setLoadingDetail,
+    setDetailError,
+    updateSelectedReservation,
+  } = useReservationListStore();
+
   const [isEditing, setIsEditing] = useState(false);
   const [isAddingDishes, setIsAddingDishes] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+
   const [editData, setEditData] = useState({
-    date: reservation.date,
-    time: reservation.time,
-    num_people: reservation.num_people,
-    special_requests: reservation.special_requests,
+    reservation_time: "",
+    num_people: 2,
+    preferences: "",
   });
-  const [preOrders, setPreOrders] = useState(reservation.pre_orders || []);
 
-  const status =
-    statusConfig[reservation.status as keyof typeof statusConfig] ||
-    statusConfig.pending;
-  const StatusIcon = status.icon;
-
-  const handleSaveEdit = () => {
-    // Mock save
-    toast({
-      title: "Đã cập nhật",
-      description: "Thông tin đặt bàn đã được cập nhật thành công",
-    });
-    setIsEditing(false);
-  };
-
-  const handleAddDish = (dish: (typeof mockDishes)[0]) => {
-    const existing = preOrders.find((po) => po.dish_id === dish.id);
-    if (existing) {
-      setPreOrders(
-        preOrders.map((po) =>
-          po.dish_id === dish.id ? { ...po, quantity: po.quantity + 1 } : po
-        )
-      );
-    } else {
-      setPreOrders([
-        ...preOrders,
-        {
-          id: `PO-${Date.now()}`,
-          dish_id: dish.id,
-          dish_name: dish.name,
-          quantity: 1,
-          price: dish.price,
-          status: "pending",
-        },
-      ]);
+  // Load reservation on mount
+  useEffect(() => {
+    if (authLoading || !user?.id) {
+      return;
     }
-    toast({
-      title: "Đã thêm món",
-      description: `${dish.name} đã được thêm vào danh sách`,
-    });
+
+    const loadReservation = async () => {
+      try {
+        setLoadingDetail(true);
+        setDetailError(null);
+        const response = await reservationService.getReservationById(id);
+        if (response.status === "success" && response.data) {
+          const reservation = response.data;
+          setSelectedReservation(reservation);
+          // Format datetime-local for input
+          const resDate = new Date(reservation.reservation_time);
+          const formattedDateTime = `${resDate.getFullYear()}-${String(
+            resDate.getMonth() + 1
+          ).padStart(2, "0")}-${String(resDate.getDate()).padStart(
+            2,
+            "0"
+          )}T${String(resDate.getHours()).padStart(2, "0")}:${String(
+            resDate.getMinutes()
+          ).padStart(2, "0")}`;
+          setEditData({
+            reservation_time: formattedDateTime,
+            num_people: reservation.num_people,
+            preferences:
+              typeof reservation.preferences === "string"
+                ? reservation.preferences
+                : reservation.preferences?.special_requests || "",
+          });
+        }
+      } catch (err: any) {
+        console.error("Failed to load reservation:", err);
+        setDetailError(err.message || "Không thể tải thông tin đặt bàn");
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải thông tin đặt bàn",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingDetail(false);
+      }
+    };
+
+    loadReservation();
+  }, [
+    id,
+    user?.id,
+    authLoading,
+    router,
+    setSelectedReservation,
+    setLoadingDetail,
+    setDetailError,
+    toast,
+  ]);
+
+  // Join reservation room for real-time updates
+  useEffect(() => {
+    if (reservationSocket.isConnected && id) {
+      reservationSocket.joinReservation(id);
+      return () => {
+        reservationSocket.leaveReservation(id);
+      };
+    }
+  }, [reservationSocket.isConnected, id, reservationSocket]);
+
+  // Listen to real-time reservation updates
+  useEffect(() => {
+    if (!reservationSocket.isConnected || !selectedReservation) return;
+
+    // Listen to reservation updates
+    const handleReservationUpdated = (reservation: any) => {
+      console.log("[ReservationDetail] Reservation updated:", reservation);
+      if (reservation.id === id || reservation.reservationId === id) {
+        updateSelectedReservation({
+          ...reservation,
+          updated_at: reservation.updated_at || reservation.updatedAt,
+        });
+      }
+    };
+
+    // Listen to status changes
+    const handleStatusChanged = (reservation: any) => {
+      console.log(
+        "[ReservationDetail] Reservation status changed:",
+        reservation
+      );
+      if (reservation.id === id || reservation.reservationId === id) {
+        updateSelectedReservation({
+          status: reservation.status,
+          updated_at: reservation.updated_at || reservation.updatedAt,
+        });
+        toast({
+          title: "Trạng thái thay đổi",
+          description: `Đặt bàn đã chuyển sang "${
+            statusConfig[reservation.status]?.label || reservation.status
+          }"`,
+        });
+      }
+    };
+
+    // Listen to reservation dish events
+    const handleDishAdded = (data: any) => {
+      console.log("[ReservationDetail] Dish added:", data);
+      if (data.reservationId === id && data.reservation) {
+        updateSelectedReservation({
+          pre_order_items: data.reservation.pre_order_items,
+          deposit_amount: data.reservation.deposit_amount,
+        });
+        toast({
+          title: "Đã thêm món",
+          description: `${
+            data.dish.dish?.name || data.dish.dish_id
+          } đã được thêm vào đặt trước`,
+        });
+      }
+    };
+
+    const handleDishUpdated = (data: any) => {
+      console.log("[ReservationDetail] Dish updated:", data);
+      if (data.reservationId === id && data.reservation) {
+        updateSelectedReservation({
+          pre_order_items: data.reservation.pre_order_items,
+          deposit_amount: data.reservation.deposit_amount,
+        });
+      }
+    };
+
+    const handleDishRemoved = (data: any) => {
+      console.log("[ReservationDetail] Dish removed:", data);
+      if (data.reservationId === id && data.reservation) {
+        updateSelectedReservation({
+          pre_order_items: data.reservation.pre_order_items,
+          deposit_amount: data.reservation.deposit_amount,
+        });
+        toast({
+          title: "Đã xóa món",
+          description: "Món đã được xóa khỏi đặt trước",
+        });
+      }
+    };
+
+    // Register all listeners
+    reservationSocket.onReservationUpdated(handleReservationUpdated);
+    reservationSocket.onReservationStatusChanged(handleStatusChanged);
+    reservationSocket.onReservationDishAdded(handleDishAdded);
+    reservationSocket.onReservationDishUpdated(handleDishUpdated);
+    reservationSocket.onReservationDishRemoved(handleDishRemoved);
+
+    // Cleanup function
+    return () => {
+      // Note: Socket listeners are managed by the hook
+    };
+  }, [
+    reservationSocket.isConnected,
+    reservationSocket,
+    selectedReservation,
+    id,
+    updateSelectedReservation,
+    toast,
+  ]);
+
+  // Refresh reservation
+  const refreshReservation = useCallback(async () => {
+    try {
+      setLoadingDetail(true);
+      const response = await reservationService.getReservationById(id);
+      if (response.status === "success" && response.data) {
+        setSelectedReservation(response.data);
+      }
+    } catch (err: any) {
+      console.error("Failed to refresh reservation:", err);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải lại thông tin đặt bàn",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, [id, setSelectedReservation, setLoadingDetail, toast]);
+
+  // Handle save edit
+  const handleSaveEdit = async () => {
+    if (!selectedReservation) return;
+
+    try {
+      setIsLoading(true);
+      await reservationService.updateReservation(id, {
+        reservation_time: editData.reservation_time,
+        num_people: editData.num_people,
+        preferences: {
+          ...selectedReservation.preferences,
+          special_requests: editData.preferences,
+        },
+      });
+      toast({
+        title: "Đã cập nhật",
+        description: "Thông tin đặt bàn đã được cập nhật thành công",
+      });
+      setIsEditing(false);
+      await refreshReservation();
+    } catch (err: any) {
+      console.error("Failed to update reservation:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể cập nhật thông tin đặt bàn",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpdateQuantity = (orderId: string, delta: number) => {
-    setPreOrders(
-      preOrders
-        .map((po) =>
-          po.id === orderId
-            ? { ...po, quantity: Math.max(1, po.quantity + delta) }
-            : po
-        )
-        .filter((po) => po.quantity > 0)
-    );
+  // Handle add dish
+  const handleAddDish = async (dish: SelectableDish) => {
+    if (!selectedReservation) return;
+
+    try {
+      setIsLoading(true);
+      await reservationService.addDishToReservation(id, dish.id, 1);
+      toast({
+        title: "Đã thêm món",
+        description: `${dish.name} đã được thêm vào đặt trước`,
+      });
+      setIsAddingDishes(false);
+      await refreshReservation();
+    } catch (err: any) {
+      console.error("Failed to add dish:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể thêm món",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleRemoveDish = (orderId: string) => {
-    const order = preOrders.find((po) => po.id === orderId);
-    if (order && confirm(`Xóa ${order.dish_name} khỏi danh sách?`)) {
-      setPreOrders(preOrders.filter((po) => po.id !== orderId));
+  // Handle update dish quantity
+  const handleUpdateQuantity = async (dishId: string, quantity: number) => {
+    if (!selectedReservation) return;
+
+    try {
+      setIsLoading(true);
+      await reservationService.updateDishQuantity(id, dishId, quantity);
+      await refreshReservation();
+    } catch (err: any) {
+      console.error("Failed to update quantity:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể cập nhật số lượng",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle remove dish
+  const handleRemoveDish = async (dishId: string) => {
+    if (!selectedReservation) return;
+
+    if (!confirm("Xóa món này khỏi đặt trước?")) return;
+
+    try {
+      setIsLoading(true);
+      await reservationService.removeDishFromReservation(id, dishId);
       toast({
         title: "Đã xóa món",
-        description: `${order.dish_name} đã được xóa`,
+        description: "Món đã được xóa khỏi đặt trước",
       });
+      await refreshReservation();
+    } catch (err: any) {
+      console.error("Failed to remove dish:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể xóa món",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handlePayment = () => {
-    const remaining = reservation.total_cost - reservation.deposit_paid;
-    router.push(
-      `/mock-vnpay?txnRef=TXN-${Date.now()}&amount=${remaining}&reservationId=${id}`
-    );
+  // Handle cancel reservation
+  const handleCancelReservation = async () => {
+    if (!selectedReservation || !cancelReason.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập lý do hủy",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      await reservationService.cancelReservation(id, cancelReason);
+      toast({
+        title: "Đã hủy đặt bàn",
+        description: "Đặt bàn đã được hủy thành công",
+      });
+      setShowCancelDialog(false);
+      setCancelReason("");
+      await refreshReservation();
+    } catch (err: any) {
+      console.error("Failed to cancel reservation:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể hủy đặt bàn",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
-  const totalPreOrderCost = preOrders.reduce(
-    (sum, po) => sum + po.price * po.quantity,
-    0
-  );
+  // Handle check-in
+  const handleCheckIn = async () => {
+    if (!selectedReservation) return;
+
+    try {
+      setIsCheckingIn(true);
+      const response = await reservationService.checkInReservation(id);
+      if (response.status === "success" && response.data?.order) {
+        toast({
+          title: "Check-in thành công",
+          description: "Chuyển đến trang đơn hàng",
+        });
+        router.push(`/orders/${response.data.order.id}`);
+      }
+    } catch (err: any) {
+      console.error("Failed to check-in:", err);
+      toast({
+        title: "Lỗi",
+        description: err.message || "Không thể check-in",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  if (authLoading || isLoadingDetail) {
+    return (
+      <div className="min-h-screen bg-background py-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Đang tải thông tin đặt bàn...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (detailError || !selectedReservation) {
+    return (
+      <div className="min-h-screen bg-background py-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-500" />
+          <p className="text-red-500 mb-4">
+            {detailError || "Không tìm thấy đặt bàn"}
+          </p>
+          <Button onClick={() => router.push("/reservations/list")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Quay lại danh sách
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const status =
+    statusConfig[selectedReservation.status] || statusConfig.pending;
+  const StatusIcon = status.icon;
+  const resDate = new Date(selectedReservation.reservation_time);
+  const preOrderItems = selectedReservation.pre_order_items || [];
+  const totalPreOrderCost = preOrderItems.reduce((sum, item) => {
+    const dishPrice = item.dish?.price || 0;
+    return sum + dishPrice * item.quantity;
+  }, 0);
 
   return (
     <div className="min-h-screen bg-background py-8">
@@ -207,14 +523,24 @@ export default function ReservationDetailPage({
           className="mb-8"
         >
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-            <div>
-              <h1 className="font-elegant text-4xl font-bold text-primary mb-2">
-                Chi Tiết Đặt Bàn
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                Mã đặt bàn:{" "}
-                <span className="font-mono font-semibold">{id}</span>
-              </p>
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/reservations/list")}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Quay lại
+              </Button>
+              <div>
+                <h1 className="font-elegant text-4xl font-bold text-primary mb-2">
+                  Chi Tiết Đặt Bàn
+                </h1>
+                <p className="text-muted-foreground text-lg">
+                  Mã đặt bàn:{" "}
+                  <span className="font-mono font-semibold">{id}</span>
+                </p>
+              </div>
             </div>
             <Badge
               className={cn(`${status.color} text-white px-4 py-2 text-base`)}
@@ -237,14 +563,18 @@ export default function ReservationDetailPage({
                     <Calendar className="h-6 w-6 text-accent" />
                     Thông Tin Đặt Bàn
                   </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditing(!isEditing)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    {isEditing ? "Hủy" : "Chỉnh Sửa"}
-                  </Button>
+                  {selectedReservation.status !== "cancelled" &&
+                    selectedReservation.status !== "completed" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditing(!isEditing)}
+                        disabled={isLoading}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        {isEditing ? "Hủy" : "Chỉnh Sửa"}
+                      </Button>
+                    )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -252,23 +582,15 @@ export default function ReservationDetailPage({
                   <div className="space-y-4">
                     <div className="grid md:grid-cols-2 gap-4">
                       <div>
-                        <Label>Ngày</Label>
+                        <Label>Thời gian đặt bàn</Label>
                         <Input
-                          type="date"
-                          value={editData.date}
+                          type="datetime-local"
+                          value={editData.reservation_time}
                           onChange={(e) =>
-                            setEditData({ ...editData, date: e.target.value })
-                          }
-                          className="border-accent/20 focus:border-accent"
-                        />
-                      </div>
-                      <div>
-                        <Label>Giờ</Label>
-                        <Input
-                          type="time"
-                          value={editData.time}
-                          onChange={(e) =>
-                            setEditData({ ...editData, time: e.target.value })
+                            setEditData({
+                              ...editData,
+                              reservation_time: e.target.value,
+                            })
                           }
                           className="border-accent/20 focus:border-accent"
                         />
@@ -288,23 +610,25 @@ export default function ReservationDetailPage({
                           className="border-accent/20 focus:border-accent"
                         />
                       </div>
-                      <div>
-                        <Label>Bàn</Label>
-                        <Input
-                          value={reservation.table_name}
-                          disabled
-                          className="border-accent/20"
-                        />
-                      </div>
+                      {selectedReservation.table && (
+                        <div>
+                          <Label>Bàn</Label>
+                          <Input
+                            value={`Bàn ${selectedReservation.table.table_number}`}
+                            disabled
+                            className="border-accent/20"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <Label>Yêu Cầu Đặc Biệt</Label>
                       <Textarea
-                        value={editData.special_requests}
+                        value={editData.preferences}
                         onChange={(e) =>
                           setEditData({
                             ...editData,
-                            special_requests: e.target.value,
+                            preferences: e.target.value,
                           })
                         }
                         rows={4}
@@ -315,13 +639,19 @@ export default function ReservationDetailPage({
                       <Button
                         onClick={handleSaveEdit}
                         className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                        disabled={isLoading}
                       >
-                        <Save className="h-4 w-4 mr-2" />
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-2" />
+                        )}
                         Lưu Thay Đổi
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => setIsEditing(false)}
+                        disabled={isLoading}
                       >
                         Hủy
                       </Button>
@@ -334,14 +664,12 @@ export default function ReservationDetailPage({
                         Ngày & Giờ
                       </p>
                       <p className="font-bold text-lg">
-                        {format(
-                          new Date(reservation.date),
-                          "EEEE, dd MMMM yyyy",
-                          { locale: vi }
-                        )}
+                        {format(resDate, "EEEE, dd MMMM yyyy", {
+                          locale: vi,
+                        })}
                       </p>
                       <p className="text-primary font-semibold text-xl">
-                        {reservation.time}
+                        {format(resDate, "HH:mm")}
                       </p>
                     </div>
                     <div>
@@ -349,38 +677,42 @@ export default function ReservationDetailPage({
                         Số Khách
                       </p>
                       <p className="font-bold text-2xl text-primary">
-                        {reservation.num_people} người
+                        {selectedReservation.num_people} người
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Bàn</p>
-                      <p className="font-bold text-lg">
-                        {reservation.table_name}
-                      </p>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3" />
-                        {reservation.floor}
-                      </p>
-                    </div>
-                    {reservation.event_type && (
+                    {selectedReservation.table && (
                       <div>
                         <p className="text-sm text-muted-foreground mb-1">
-                          Loại Sự Kiện
+                          Bàn
+                        </p>
+                        <p className="font-bold text-lg">
+                          Bàn {selectedReservation.table.table_number}
+                        </p>
+                        {selectedReservation.table.floor && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                            <MapPin className="h-3 w-3" />
+                            {selectedReservation.table.floor}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {selectedReservation.event && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">
+                          Sự Kiện
                         </p>
                         <Badge className="bg-accent/10 text-accent border-accent/20">
-                          {reservation.event_type}
+                          {selectedReservation.event.name}
                         </Badge>
                       </div>
                     )}
-                    {reservation.special_requests && (
+                    {editData.preferences && (
                       <div className="md:col-span-2">
                         <Separator className="my-4" />
                         <p className="text-sm text-muted-foreground mb-1">
                           Yêu Cầu Đặc Biệt
                         </p>
-                        <p className="text-sm">
-                          {reservation.special_requests}
-                        </p>
+                        <p className="text-sm">{editData.preferences}</p>
                       </div>
                     )}
                   </div>
@@ -396,34 +728,28 @@ export default function ReservationDetailPage({
                     <ShoppingCart className="h-6 w-6 text-accent" />
                     Món Đặt Trước
                   </CardTitle>
-                  <DishSelectionDialog
-                    open={isAddingDishes}
-                    onOpenChange={setIsAddingDishes}
-                    onSelectDish={handleAddDish}
-                    selectedDishIds={preOrders.map((po) => po.dish_id)}
-                    title="Chọn Món Đặt Trước"
-                    description="Chọn món ăn bạn muốn đặt trước cho bữa ăn"
-                  />
-                  <Button
-                    className="bg-gradient-gold text-primary-foreground hover:opacity-90"
-                    size="sm"
-                    onClick={() => setIsAddingDishes(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Thêm Món
-                  </Button>
+                  {selectedReservation.status !== "cancelled" &&
+                    selectedReservation.status !== "completed" && (
+                      <Button
+                        className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                        size="sm"
+                        onClick={() => setIsAddingDishes(true)}
+                        disabled={isLoading}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Thêm Món
+                      </Button>
+                    )}
                 </div>
               </CardHeader>
               <CardContent>
-                {preOrders.length > 0 ? (
+                {preOrderItems.length > 0 ? (
                   <div className="space-y-4">
-                    {preOrders.map((order, index) => {
-                      const dish = mockDishes.find(
-                        (d) => d.id === order.dish_id
-                      );
+                    {preOrderItems.map((item, index) => {
+                      const dish = item.dish;
                       return (
                         <motion.div
-                          key={order.id}
+                          key={`${item.dish_id}-${index}`}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.1 }}
@@ -432,13 +758,11 @@ export default function ReservationDetailPage({
                             <CardContent className="p-4">
                               <div className="flex gap-4">
                                 {/* Dish Image */}
-                                {dish && (
+                                {dish?.media_urls?.[0] && (
                                   <div className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
                                     <Image
-                                      src={
-                                        dish.media_urls[0] || "/placeholder.svg"
-                                      }
-                                      alt={dish.name}
+                                      src={dish.media_urls[0]}
+                                      alt={dish.name || "Dish"}
                                       fill
                                       className="object-cover"
                                     />
@@ -450,68 +774,95 @@ export default function ReservationDetailPage({
                                   <div className="flex items-start justify-between mb-2">
                                     <div>
                                       <h4 className="font-bold text-lg text-primary">
-                                        {order.dish_name}
+                                        {dish?.name || `Dish ${item.dish_id}`}
                                       </h4>
-                                      <Badge
-                                        variant="outline"
-                                        className="mt-1 border-accent/20"
-                                      >
-                                        {order.status === "pending"
-                                          ? "Chờ xác nhận"
-                                          : "Đã xác nhận"}
-                                      </Badge>
+                                      {dish?.description && (
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                          {dish.description}
+                                        </p>
+                                      )}
                                     </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleRemoveDish(order.id)}
-                                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                      <XCircle className="h-4 w-4" />
-                                    </Button>
+                                    {selectedReservation.status !==
+                                      "cancelled" &&
+                                      selectedReservation.status !==
+                                        "completed" && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            handleRemoveDish(item.dish_id)
+                                          }
+                                          disabled={isLoading}
+                                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
                                   </div>
 
                                   <div className="flex items-center justify-between mt-4">
                                     {/* Quantity Controls */}
-                                    <div className="flex items-center gap-3">
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          handleUpdateQuantity(order.id, -1)
-                                        }
-                                        disabled={order.quantity <= 1}
-                                        className="border-accent/20"
-                                      >
-                                        <Minus className="h-4 w-4" />
-                                      </Button>
-                                      <span className="font-bold text-lg w-8 text-center">
-                                        {order.quantity}
-                                      </span>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          handleUpdateQuantity(order.id, 1)
-                                        }
-                                        className="border-accent/20"
-                                      >
-                                        <Plus className="h-4 w-4" />
-                                      </Button>
-                                    </div>
+                                    {selectedReservation.status !==
+                                      "cancelled" &&
+                                    selectedReservation.status !==
+                                      "completed" ? (
+                                      <div className="flex items-center gap-3">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleUpdateQuantity(
+                                              item.dish_id,
+                                              item.quantity - 1
+                                            )
+                                          }
+                                          disabled={
+                                            isLoading || item.quantity <= 1
+                                          }
+                                          className="border-accent/20"
+                                        >
+                                          <Minus className="h-4 w-4" />
+                                        </Button>
+                                        <span className="font-bold text-lg w-8 text-center">
+                                          {item.quantity}
+                                        </span>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleUpdateQuantity(
+                                              item.dish_id,
+                                              item.quantity + 1
+                                            )
+                                          }
+                                          disabled={isLoading}
+                                          className="border-accent/20"
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-muted-foreground">
+                                        Số lượng: {item.quantity}
+                                      </div>
+                                    )}
 
                                     {/* Price */}
                                     <div className="text-right">
-                                      <p className="text-sm text-muted-foreground">
-                                        {order.price.toLocaleString("vi-VN")}đ
-                                        /món
-                                      </p>
-                                      <p className="font-bold text-lg text-primary">
-                                        {(
-                                          order.price * order.quantity
-                                        ).toLocaleString("vi-VN")}
-                                        đ
-                                      </p>
+                                      {dish?.price && (
+                                        <>
+                                          <p className="text-sm text-muted-foreground">
+                                            {dish.price.toLocaleString("vi-VN")}
+                                            đ /món
+                                          </p>
+                                          <p className="font-bold text-lg text-primary">
+                                            {(
+                                              dish.price * item.quantity
+                                            ).toLocaleString("vi-VN")}
+                                            đ
+                                          </p>
+                                        </>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -528,42 +879,20 @@ export default function ReservationDetailPage({
                     <p className="text-muted-foreground">
                       Chưa có món nào được đặt trước
                     </p>
-                    <Button
-                      variant="outline"
-                      className="mt-4 border-accent/20"
-                      onClick={() => setIsAddingDishes(true)}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Thêm Món Ngay
-                    </Button>
+                    {selectedReservation.status !== "cancelled" &&
+                      selectedReservation.status !== "completed" && (
+                        <Button
+                          variant="outline"
+                          className="mt-4 border-accent/20"
+                          onClick={() => setIsAddingDishes(true)}
+                          disabled={isLoading}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Thêm Món Ngay
+                        </Button>
+                      )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Customer Info */}
-            <Card className="border-2 border-accent/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-accent" />
-                  Thông Tin Khách Hàng
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">
-                    {reservation.customer_name}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{reservation.customer_phone}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{reservation.customer_email}</span>
-                </div>
               </CardContent>
             </Card>
           </div>
@@ -577,17 +906,13 @@ export default function ReservationDetailPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tổng chi phí:</span>
-                    <span className="font-semibold text-lg text-primary">
-                      {reservation.total_cost.toLocaleString("vi-VN")}đ
-                    </span>
-                  </div>
-                  {reservation.deposit_paid > 0 && (
+                  {selectedReservation.event_fee && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Đã cọc:</span>
-                      <span className="text-green-600">
-                        -{reservation.deposit_paid.toLocaleString("vi-VN")}đ
+                      <span className="text-muted-foreground">
+                        Phí sự kiện:
+                      </span>
+                      <span className="font-semibold">
+                        {selectedReservation.event_fee.toLocaleString("vi-VN")}đ
                       </span>
                     </div>
                   )}
@@ -596,35 +921,109 @@ export default function ReservationDetailPage({
                       <span className="text-muted-foreground">
                         Món đặt trước:
                       </span>
-                      <span>+{totalPreOrderCost.toLocaleString("vi-VN")}đ</span>
+                      <span>{totalPreOrderCost.toLocaleString("vi-VN")}đ</span>
                     </div>
                   )}
-                  <Separator />
+                  {selectedReservation.deposit_amount && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Cọc:</span>
+                      <span className="text-green-600">
+                        {(
+                          selectedReservation.deposit_amount || 0
+                        ).toLocaleString("vi-VN")}
+                        đ
+                      </span>
+                    </div>
+                  )}
+                  {/* <Separator />
                   <div className="flex justify-between font-bold text-xl">
-                    <span>Còn lại:</span>
+                    <span>Tổng:</span>
                     <span className="text-primary">
                       {(
-                        reservation.total_cost -
-                        reservation.deposit_paid +
-                        totalPreOrderCost
+                        (selectedReservation.event_fee || 0) +
+                        totalPreOrderCost +
+                        (selectedReservation.deposit_amount || 0)
                       ).toLocaleString("vi-VN")}
                       đ
                     </span>
-                  </div>
+                  </div> */}
                 </div>
-
-                {/* Payment Button */}
-                {reservation.deposit_paid < reservation.total_cost && (
-                  <Button
-                    className="w-full bg-gradient-gold text-primary-foreground hover:opacity-90 shadow-lg"
-                    onClick={handlePayment}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Thanh Toán Ngay
-                  </Button>
-                )}
               </CardContent>
             </Card>
+
+            {/* Event Info */}
+            {selectedReservation.event && (
+              <Card className="border-2 border-accent/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Gift className="h-5 w-5 text-accent" /> Thông Tin Sự Kiện
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tên sự kiện:</span>
+                    <span className="font-medium">
+                      {selectedReservation.event.name}
+                    </span>
+                  </div>
+                  {selectedReservation.event.description && (
+                    <div>
+                      <span className="text-muted-foreground">Mô tả:</span>
+                      <p className="mt-1">
+                        {selectedReservation.event.description}
+                      </p>
+                    </div>
+                  )}
+                  {typeof selectedReservation.event_fee === "number" && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Phí sự kiện:
+                      </span>
+                      <span className="font-medium">
+                        {selectedReservation.event_fee.toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Payment Info */}
+            {Array.isArray(selectedReservation.payments) &&
+              selectedReservation.payments.length > 0 && (
+                <Card className="border-2 border-accent/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Receipt className="h-5 w-5 text-accent" /> Thanh Toán
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {selectedReservation.payments.map((p: any) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <CreditCard className="h-4 w-4 text-muted-foreground" />
+                          <div className="text-sm">
+                            <div className="font-medium">
+                              {(p.amount || 0).toLocaleString("vi-VN")}đ
+                            </div>
+                            <div className="text-muted-foreground">
+                              {p.method || "vnpay"} • {p.status || "pending"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.created_at
+                            ? new Date(p.created_at).toLocaleString("vi-VN")
+                            : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
 
             {/* Actions */}
             <Card className="border-2 border-accent/20">
@@ -632,62 +1031,103 @@ export default function ReservationDetailPage({
                 <CardTitle>Thao Tác</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button
-                  className="w-full border-accent/20 hover:bg-accent/10"
-                  onClick={() => setIsEditing(true)}
-                  variant="outline"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Chỉnh Sửa Thông Tin
-                </Button>
-                {!reservation.checked_in && (
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => {
-                      toast({
-                        title: "Check-in thành công",
-                        description: "Chuyển đến trang đơn hàng",
-                      });
-                      router.push(`/orders/${id}`);
-                    }}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Check-in
-                  </Button>
-                )}
-                <Button
-                  className="w-full border-accent/20 hover:bg-accent/10"
-                  variant="outline"
-                  onClick={() => window.print()}
-                >
-                  <Receipt className="h-4 w-4 mr-2" />
-                  In Hóa Đơn
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* QR Code */}
-            <Card className="border-2 border-accent/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <QrCode className="h-5 w-5" />
-                  Mã QR
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-center p-4 bg-white rounded-lg border-2 border-border">
-                  <div className="w-40 h-40 bg-muted flex items-center justify-center rounded-lg">
-                    <QrCode className="h-20 w-20 text-muted-foreground" />
-                  </div>
-                </div>
-                <p className="text-center text-sm text-muted-foreground mt-3">
-                  Quét mã để xem thông tin đặt bàn
-                </p>
+                {selectedReservation.status !== "cancelled" &&
+                  selectedReservation.status !== "completed" && (
+                    <>
+                      <Button
+                        className="w-full border-accent/20 hover:bg-accent/10"
+                        onClick={() => setIsEditing(true)}
+                        variant="outline"
+                        disabled={isLoading}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Chỉnh Sửa Thông Tin
+                      </Button>
+                      {selectedReservation.status === "confirmed" && (
+                        <Button
+                          className="w-full bg-green-600 hover:bg-green-700 text-white"
+                          onClick={handleCheckIn}
+                          disabled={isLoading || isCheckingIn}
+                        >
+                          {isCheckingIn ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          )}
+                          Check-in
+                        </Button>
+                      )}
+                      <Button
+                        className="w-full border-red-500/20 hover:bg-red-50 text-red-600"
+                        variant="outline"
+                        onClick={() => setShowCancelDialog(true)}
+                        disabled={isLoading}
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Hủy Đặt Bàn
+                      </Button>
+                    </>
+                  )}
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      {/* Dish Selection Dialog */}
+      <DishSelectionDialog
+        open={isAddingDishes}
+        onOpenChange={setIsAddingDishes}
+        onSelectDish={handleAddDish}
+        selectedDishIds={preOrderItems.map((item) => item.dish_id)}
+        title="Chọn Món Đặt Trước"
+        description="Chọn món ăn bạn muốn đặt trước cho bữa ăn"
+      />
+
+      {/* Cancel Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hủy Đặt Bàn</DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do hủy đặt bàn
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              placeholder="Lý do hủy..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={4}
+              className="border-accent/20 focus:border-accent"
+            />
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                onClick={handleCancelReservation}
+                disabled={isCancelling || !cancelReason.trim()}
+              >
+                {isCancelling ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4 mr-2" />
+                )}
+                Xác Nhận Hủy
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCancelDialog(false);
+                  setCancelReason("");
+                }}
+                disabled={isCancelling}
+              >
+                Hủy
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

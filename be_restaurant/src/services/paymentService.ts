@@ -79,6 +79,11 @@ class PaymentService extends BaseService<Payment> {
     params.vnp_ReturnUrl = returnUrl;
     params.vnp_CreateDate = this.formatLocalDateYYYYMMDDHHmmss(new Date());
 
+  // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
+  // (see VNPay docs). Include it before signing so that the signing string
+  // excludes it but the final query contains it as required.
+  params.vnp_SecureHashType = 'HMACSHA512';
+
     if (params.vnp_IpAddr === "::1") params.vnp_IpAddr = "127.0.0.1";
 
     // ⚠️ KHÔNG encode trước khi sign
@@ -104,9 +109,12 @@ class PaymentService extends BaseService<Payment> {
   generateVnpayOrderUrl(
     order: { id: string; final_amount: number },
     bankCode?: string,
-    clientIp: string = "127.0.0.1"
+    clientIp: string = "127.0.0.1",
+    client: "admin" | "user" = "user"
   ): { url: string; txnRef: string } {
-    const txnRef = `ORD_${order.id}`;
+    const clientTag = client === "admin" ? "ADM" : "USR";
+    // Ensure unique TxnRef for each attempt to avoid "transaction already processed" at VNPay
+    const txnRef = `ORD_${order.id}_${clientTag}_${Date.now()}`;
     const params: Record<string, any> = {
       vnp_TxnRef: txnRef,
       vnp_OrderInfo: `Thanh toan don hang ${order.id}`,
@@ -128,9 +136,11 @@ class PaymentService extends BaseService<Payment> {
     id: string,
     amount: number,
     bankCode?: string,
-    clientIp: string = "127.0.0.1"
+    clientIp: string = "127.0.0.1",
+    client: "admin" | "user" = "user"
   ): { url: string; txnRef: string } {
-    const txnRef = `RES_${id}_${Date.now()}`;
+    const clientTag = client === "admin" ? "ADM" : "USR";
+    const txnRef = `RES_${id}_${clientTag}_${Date.now()}`;
     const params: Record<string, any> = {
       vnp_TxnRef: txnRef,
       vnp_OrderInfo: `Dat coc reservation ${id}`,
@@ -172,12 +182,14 @@ class PaymentService extends BaseService<Payment> {
     let targetId: string | undefined;
     if (txnRef.startsWith("ORD_")) {
       kind = "order";
-      targetId = txnRef.replace(/^ORD_/, "");
+      // Format: ORD_<orderId>_<ADM|USR>
+      const parts = txnRef.split("_");
+      targetId = parts[1]; // Extract orderId (second part)
     } else if (txnRef.startsWith("RES_")) {
       kind = "reservation";
-      // format RES_<reservationId>_<timestamp>
+      // Format: RES_<reservationId>_<ADM|USR>_<timestamp>
       const parts = txnRef.split("_");
-      targetId = parts[1];
+      targetId = parts[1]; // Extract reservationId (second part)
     }
 
     return { isValid, isSuccess, kind, targetId };

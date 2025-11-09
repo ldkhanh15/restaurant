@@ -77,7 +77,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
       disconnect();
 
       const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        process.env.NEXT_PUBLIC_WS_URL ||
+        process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") ||
+        "http://localhost:8000";
 
       const socketConfig = {
         path: "/socket.io",

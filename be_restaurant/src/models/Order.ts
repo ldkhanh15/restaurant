@@ -1,5 +1,5 @@
-import { DataTypes, Model, type Optional } from "sequelize"
-import sequelize from "../config/database"
+import { DataTypes, Model, type Optional } from "sequelize";
+import sequelize from "../config/database";
 
 interface OrderAttributes {
   id: string;
@@ -9,7 +9,16 @@ interface OrderAttributes {
   table_group_id?: string;
   event_id?: string;
   voucher_id?: string | null;
-  status: "pending" | "paid" | "dining" | "waiting_payment" | "cancelled";
+  status:
+    | "pending"
+    | "paid"
+    | "dining"
+    | "waiting_payment"
+    | "cancelled"
+    | "preparing"
+    | "ready"
+    | "delivered"
+    | "waiting_kitchen_confirmation";
   total_amount: number;
   voucher_discount_amount?: number;
   final_amount: number;
@@ -24,7 +33,8 @@ interface OrderAttributes {
   deleted_at?: Date | null;
 }
 
-interface OrderCreationAttributes extends Optional<OrderAttributes, "id" | "status" | "payment_status"> { }
+interface OrderCreationAttributes
+  extends Optional<OrderAttributes, "id" | "status" | "payment_status"> {}
 
 class Order
   extends Model<OrderAttributes, OrderCreationAttributes>
@@ -120,7 +130,11 @@ Order.init(
     },
     status: {
       type: DataTypes.ENUM(
-        "pending" , "paid" , "dining" , "waiting_payment" , "cancelled"
+        "pending",
+        "paid",
+        "dining",
+        "waiting_payment",
+        "cancelled"
       ),
       defaultValue: "pending",
     },
@@ -187,4 +201,4 @@ Order.init(
   }
 );
 
-export default Order
+export default Order;

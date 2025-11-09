@@ -72,6 +72,12 @@ export const getOrderById = async (
   try {
     const order = await orderService.getOrderById(req.params.id);
 
+    if (!order) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only access their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -136,6 +142,13 @@ export const updateOrder = async (
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
 
+    if (!currentOrder) {
+      return res.status(404).json({
+        status: "error",
+        message: "Order not found",
+      });
+    }
+
     // Ensure customer can only update their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -180,6 +193,12 @@ export const addItemToOrder = async (
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
 
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only add items to their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -223,6 +242,12 @@ export const updateItemQuantity = async (
     const currentOrder = await orderService.getOrderById(
       orderItem.order_id as string
     );
+
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
 
     // Ensure customer can only update items in their own orders
     const currentUserId = req.user?.id;
@@ -286,6 +311,12 @@ export const deleteItem = async (
       orderItem.order_id as string
     );
 
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only delete items from their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -316,6 +347,12 @@ export const applyVoucher = async (
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
 
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only apply vouchers to their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -345,6 +382,12 @@ export const removeVoucher = async (
 ) => {
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
+
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
 
     // Ensure customer can only remove vouchers from their own orders
     const currentUserId = req.user?.id;
@@ -393,6 +436,12 @@ export const requestSupport = async (
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
 
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only request support for their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -423,6 +472,12 @@ export const requestPayment = async (
   try {
     const currentOrder = await orderService.getOrderById(req.params.id);
 
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
     // Ensure customer can only request payment for their own orders
     const currentUserId = req.user?.id;
     const userRole = req.user?.role;
@@ -438,7 +493,55 @@ export const requestPayment = async (
       });
     }
 
-    const result = await orderService.requestPayment(req.params.id);
+    // Determine client type: admin/employee -> "admin", customer -> "user"
+    // Can also be passed from request body
+    const clientFromBody = req.body?.client as "admin" | "user" | undefined;
+    const client: "admin" | "user" =
+      clientFromBody ||
+      (userRole === "admin" || userRole === "employee" ? "admin" : "user");
+
+    const bankCode = req.body?.bankCode as string | undefined;
+    const result = await orderService.requestPayment(
+      req.params.id,
+      bankCode,
+      client
+    );
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const requestCashPayment = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const currentOrder = await orderService.getOrderById(req.params.id);
+
+    if (!currentOrder) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
+    const currentUserId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (
+      userRole === "customer" &&
+      currentOrder.user_id &&
+      currentOrder.user_id !== String(currentUserId)
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "Forbidden: You can only request payment for your own orders",
+      });
+    }
+
+    const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+    const result = await orderService.requestCashPayment(req.params.id, note);
     res.json({ status: "success", data: result });
   } catch (error) {
     next(error);

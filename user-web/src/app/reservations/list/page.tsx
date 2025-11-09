@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,22 +25,37 @@ import {
   CheckCircle,
   X,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { mockReservations } from "@/mock/mockReservations";
 import { cn } from "@/lib/utils";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
+import {
+  reservationService,
+  type Reservation,
+} from "@/services/reservationService";
+import { useReservationListStore } from "@/store/reservationListStore";
+import { useReservationSocket } from "@/hooks/useReservationSocket";
+import { useToast } from "@/components/ui/use-toast";
 
 const statusOptions = [
   { value: "all", label: "Tất cả" },
   { value: "pending", label: "Chờ xác nhận" },
   { value: "confirmed", label: "Đã xác nhận" },
-  { value: "checked_in", label: "Đã check-in" },
   { value: "completed", label: "Hoàn thành" },
   { value: "cancelled", label: "Đã hủy" },
+  { value: "no_show", label: "Không đến" },
 ];
 
-const statusConfig = {
+const statusConfig: Record<
+  string,
+  {
+    label: string;
+    color: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
   pending: {
     label: "Chờ Xác Nhận",
     color: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
@@ -52,14 +66,9 @@ const statusConfig = {
     color: "bg-green-500/20 text-green-600 border-green-500/30",
     icon: CheckCircle,
   },
-  checked_in: {
-    label: "Đã Check-in",
-    color: "bg-blue-500/20 text-blue-600 border-blue-500/30",
-    icon: CheckCircle,
-  },
   completed: {
     label: "Hoàn Thành",
-    color: "bg-gray-500/20 text-gray-600 border-gray-500/30",
+    color: "bg-blue-500/20 text-blue-600 border-blue-500/30",
     icon: CheckCircle,
   },
   cancelled: {
@@ -67,16 +76,155 @@ const statusConfig = {
     color: "bg-red-500/20 text-red-600 border-red-500/30",
     icon: X,
   },
+  no_show: {
+    label: "Không Đến",
+    color: "bg-gray-500/20 text-gray-600 border-gray-500/30",
+    icon: AlertCircle,
+  },
 };
 
 export default function ReservationsListPage() {
   const router = useRouter();
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
+  const { toast } = useToast();
+  const reservationSocket = useReservationSocket();
+
+  const {
+    reservations,
+    isLoading,
+    error,
+    setReservations,
+    setLoading,
+    setError,
+    updateReservationInList,
+    addReservation,
+  } = useReservationListStore();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all"); // all, today, upcoming, past
 
+  // Load reservations on mount
+  useEffect(() => {
+    if (authLoading || !user?.id) {
+      return;
+    }
+
+    const loadReservations = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await reservationService.getMyReservations({
+          page: 1,
+          limit: 100,
+        });
+        if (response.status === "success" && response.data?.data) {
+          setReservations(response.data.data);
+        }
+      } catch (err: any) {
+        console.error("Failed to load reservations:", err);
+        setError(err.message || "Không thể tải danh sách đặt bàn");
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải danh sách đặt bàn",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReservations();
+  }, [user?.id, authLoading, setReservations, setLoading, setError]);
+
+  // Update reservation in list helper
+  const updateReservation = useCallback(
+    (reservationId: string, updates: Partial<Reservation>) => {
+      updateReservationInList(reservationId, updates);
+    },
+    [updateReservationInList]
+  );
+
+  // Listen to real-time reservation updates
+  useEffect(() => {
+    if (!reservationSocket.isConnected) return;
+
+    // Listen to reservation updates
+    const handleReservationUpdated = (reservation: any) => {
+      console.log("[Reservations] Reservation updated:", reservation);
+      updateReservation(reservation.id || reservation.reservationId, {
+        status: reservation.status as any,
+        updated_at: reservation.updated_at || reservation.updatedAt,
+        ...reservation,
+      });
+    };
+
+    // Listen to status changes
+    const handleStatusChanged = (reservation: any) => {
+      console.log("[Reservations] Reservation status changed:", reservation);
+      updateReservation(reservation.id || reservation.reservationId, {
+        status: reservation.status as any,
+        updated_at: reservation.updated_at || reservation.updatedAt,
+      });
+      toast({
+        title: "Trạng thái thay đổi",
+        description: `Đặt bàn đã chuyển sang "${
+          statusConfig[reservation.status]?.label || reservation.status
+        }"`,
+      });
+    };
+
+    // Listen to new reservations
+    const handleReservationCreated = (reservation: any) => {
+      console.log("[Reservations] New reservation created:", reservation);
+      // Only add if it belongs to current user
+      if (
+        reservation.user_id === user?.id ||
+        reservation.customer_id === user?.id
+      ) {
+        const newReservation: Reservation = {
+          id: reservation.id || reservation.reservationId,
+          user_id: reservation.user_id,
+          customer_id: reservation.customer_id,
+          table_id: reservation.table_id,
+          reservation_time: reservation.reservation_time,
+          num_people: reservation.num_people || 0,
+          status: reservation.status || "pending",
+          created_at: reservation.created_at || new Date().toISOString(),
+          updated_at: reservation.updated_at || new Date().toISOString(),
+          pre_order_items: reservation.pre_order_items,
+          ...reservation,
+        };
+        addReservation(newReservation);
+        toast({
+          title: "Đặt bàn mới",
+          description: `Đặt bàn ${
+            reservation.id || reservation.reservationId
+          } đã được tạo`,
+        });
+      }
+    };
+
+    // Register all listeners
+    reservationSocket.onReservationUpdated(handleReservationUpdated);
+    reservationSocket.onReservationStatusChanged(handleStatusChanged);
+    reservationSocket.onReservationCreated(handleReservationCreated);
+
+    // Cleanup function
+    return () => {
+      // Note: Socket listeners are managed by the hook
+    };
+  }, [
+    reservationSocket.isConnected,
+    reservationSocket,
+    user?.id,
+    updateReservation,
+    addReservation,
+    toast,
+  ]);
+
   const filteredReservations = useMemo(() => {
-    let filtered = [...mockReservations];
+    let filtered = [...reservations];
 
     // Filter by status
     if (statusFilter !== "all") {
@@ -88,18 +236,18 @@ export default function ReservationsListPage() {
     today.setHours(0, 0, 0, 0);
     if (dateFilter === "today") {
       filtered = filtered.filter((res) => {
-        const resDate = new Date(res.date);
+        const resDate = new Date(res.reservation_time);
         resDate.setHours(0, 0, 0, 0);
         return resDate.getTime() === today.getTime();
       });
     } else if (dateFilter === "upcoming") {
       filtered = filtered.filter((res) => {
-        const resDate = new Date(res.date);
+        const resDate = new Date(res.reservation_time);
         return resDate >= today;
       });
     } else if (dateFilter === "past") {
       filtered = filtered.filter((res) => {
-        const resDate = new Date(res.date);
+        const resDate = new Date(res.reservation_time);
         resDate.setHours(0, 0, 0, 0);
         return resDate < today;
       });
@@ -110,22 +258,47 @@ export default function ReservationsListPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (res) =>
-          res.customer_name.toLowerCase().includes(query) ||
-          res.customer_phone.includes(query) ||
-          res.table_name.toLowerCase().includes(query) ||
-          res.id.toLowerCase().includes(query)
+          res.id.toLowerCase().includes(query) ||
+          res.table?.table_number?.toLowerCase().includes(query) ||
+          (res.user?.full_name &&
+            res.user.full_name.toLowerCase().includes(query))
       );
     }
 
     // Sort: upcoming first, then by date
     filtered.sort((a, b) => {
-      const dateA = new Date(`${a.date}T${a.time}`);
-      const dateB = new Date(`${b.date}T${b.time}`);
+      const dateA = new Date(a.reservation_time);
+      const dateB = new Date(b.reservation_time);
       return dateB.getTime() - dateA.getTime();
     });
 
     return filtered;
-  }, [searchQuery, statusFilter, dateFilter]);
+  }, [reservations, searchQuery, statusFilter, dateFilter]);
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Đang tải danh sách đặt bàn...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-500" />
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={() => router.push("/reservations/list")}>
+            Thử lại
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 py-8 px-4 sm:px-6 lg:px-8">
@@ -160,7 +333,7 @@ export default function ReservationsListPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm kiếm theo tên, SĐT, bàn..."
+                placeholder="Tìm kiếm theo mã, bàn..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 border-accent/20 focus:border-accent"
@@ -198,11 +371,10 @@ export default function ReservationsListPage() {
         {filteredReservations.length > 0 ? (
           <div className="grid gap-6">
             {filteredReservations.map((reservation, index) => {
-              const status = statusConfig[reservation.status];
+              const status =
+                statusConfig[reservation.status] || statusConfig.pending;
               const StatusIcon = status.icon;
-              const resDate = new Date(
-                `${reservation.date}T${reservation.time}`
-              );
+              const resDate = new Date(reservation.reservation_time);
 
               return (
                 <motion.div
@@ -220,7 +392,7 @@ export default function ReservationsListPage() {
                           <div className="flex items-center gap-4 flex-wrap">
                             <div>
                               <h3 className="font-bold text-xl text-primary font-elegant mb-1">
-                                {reservation.customer_name}
+                                Đặt bàn #{reservation.id.slice(0, 8)}
                               </h3>
                               <p className="text-sm text-muted-foreground font-mono">
                                 {reservation.id}
@@ -244,35 +416,40 @@ export default function ReservationsListPage() {
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4 text-accent" />
                               <span className="font-medium">
-                                {reservation.time}
+                                {format(resDate, "HH:mm")}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Users className="h-4 w-4 text-accent" />
                               <span>{reservation.num_people} người</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <MapPin className="h-4 w-4 text-accent" />
-                              <span>
-                                {reservation.table_name} • {reservation.floor}
-                              </span>
-                            </div>
-                            {reservation.pre_orders &&
-                              reservation.pre_orders.length > 0 && (
+                            {reservation.table && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-accent" />
+                                <span>
+                                  Bàn {reservation.table.table_number}
+                                  {reservation.table.floor &&
+                                    ` • ${reservation.table.floor}`}
+                                </span>
+                              </div>
+                            )}
+                            {reservation.pre_order_items &&
+                              reservation.pre_order_items.length > 0 && (
                                 <div className="text-muted-foreground">
-                                  {reservation.pre_orders.length} món đặt trước
+                                  {reservation.pre_order_items.length} món đặt
+                                  trước
                                 </div>
                               )}
-                            <div className="font-semibold text-primary">
-                              {reservation.total_cost.toLocaleString("vi-VN")}đ
-                            </div>
+                            {reservation.deposit_amount && (
+                              <div className="font-semibold text-primary">
+                                Cọc:{" "}
+                                {reservation.deposit_amount.toLocaleString(
+                                  "vi-VN"
+                                )}
+                                đ
+                              </div>
+                            )}
                           </div>
-
-                          {reservation.special_requests && (
-                            <p className="text-sm text-muted-foreground italic">
-                              "{reservation.special_requests}"
-                            </p>
-                          )}
                         </div>
 
                         {/* Right: Actions */}
@@ -286,18 +463,6 @@ export default function ReservationsListPage() {
                             <Eye className="h-4 w-4 mr-2" />
                             Xem Chi Tiết
                           </Button>
-                          {reservation.status === "confirmed" &&
-                            !reservation.checked_in && (
-                              <Button
-                                variant="outline"
-                                className="w-full border-accent/20 hover:bg-accent/10"
-                                onClick={() =>
-                                  router.push(`/orders/${reservation.id}`)
-                                }
-                              >
-                                Check-in
-                              </Button>
-                            )}
                         </div>
                       </div>
                     </CardContent>

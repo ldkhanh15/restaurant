@@ -485,6 +485,7 @@ export interface Notification {
     | "chat_message"
     | "support_request"
     | "payment_completed"
+    | "payment_requested"
     | "other";
   content: string;
   title?: string;
@@ -620,7 +621,7 @@ export const api = {
       apiClient.post(`/orders/${id}/support`),
     requestPayment: (
       id: string,
-      data: { method: string; amount: number }
+      data: { method: string; amount: number; client?: string }
     ): Promise<ApiResponse<{ redirect_url: string }>> =>
       apiClient.post(`/orders/${id}/payment/request`, data),
     getRevenueStats: (filters?: {

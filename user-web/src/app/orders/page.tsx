@@ -34,7 +34,7 @@ import {
 } from "@/lib/motion-variants";
 import { orderService, type Order } from "@/services/orderService";
 import { useOrderStore } from "@/store/orderStore";
-import { useAuth } from "@/lib/auth";
+import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
 import { toast } from "@/hooks/use-toast";
 
@@ -81,7 +81,7 @@ const statusConfig: Record<
 
 export default function OrdersPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useEnsureAuthenticated();
   const orderSocket = useOrderSocket();
   const {
     orders,
@@ -98,8 +98,7 @@ export default function OrdersPage() {
 
   // Load orders on mount
   useEffect(() => {
-    if (!user?.id) {
-      router.push("/login");
+    if (authLoading || !user?.id) {
       return;
     }
 
@@ -135,29 +134,39 @@ export default function OrdersPage() {
     };
 
     loadOrders();
-  }, [user?.id, router, setOrders, setLoading, setError]);
+  }, [user?.id, authLoading, setOrders, setLoading, setError]);
 
   // Listen to real-time order updates
   useEffect(() => {
     if (!orderSocket.isConnected) return;
 
     // Listen to order updates
-    orderSocket.onOrderUpdated((order) => {
+    const handleOrderUpdated = (order: any) => {
       console.log("[Orders] Order updated:", order);
+      const totalAmount =
+        typeof order.total_amount === "number"
+          ? order.total_amount
+          : typeof order.total === "number"
+          ? order.total
+          : 0;
+      const finalAmount =
+        typeof order.final_amount === "number"
+          ? order.final_amount
+          : totalAmount;
       updateOrderInList(order.id, {
         status: order.status as any,
         updated_at: order.updated_at,
-        total_amount: order.total || 0,
-        final_amount: order.total || 0,
+        total_amount: totalAmount,
+        final_amount: finalAmount,
       });
       toast({
         title: "Cập nhật đơn hàng",
         description: `Đơn hàng ${order.id} đã được cập nhật`,
       });
-    });
+    };
 
     // Listen to status changes
-    orderSocket.onOrderStatusChanged((order) => {
+    const handleStatusChanged = (order: any) => {
       console.log("[Orders] Order status changed:", order);
       updateOrderInList(order.id, {
         status: order.status as any,
@@ -169,13 +178,23 @@ export default function OrdersPage() {
           statusConfig[order.status]?.label || order.status
         }"`,
       });
-    });
+    };
 
     // Listen to new orders
-    orderSocket.onOrderCreated((order) => {
+    const handleOrderCreated = (order: any) => {
       console.log("[Orders] New order created:", order);
       // Only add if it belongs to current user
       if (order.user_id === user?.id || order.customer_id === user?.id) {
+        const totalAmount =
+          typeof order.total_amount === "number"
+            ? order.total_amount
+            : typeof order.total === "number"
+            ? order.total
+            : 0;
+        const finalAmount =
+          typeof order.final_amount === "number"
+            ? order.final_amount
+            : totalAmount;
         // Convert socket Order to service Order format
         const newOrder: Order = {
           id: order.id,
@@ -184,21 +203,22 @@ export default function OrdersPage() {
           table_id: order.table_id,
           status: order.status as any,
           payment_status: "pending",
-          total_amount: order.total || 0,
-          final_amount: order.total || 0,
+          total_amount: totalAmount,
+          final_amount: finalAmount,
           created_at: order.created_at,
           updated_at: order.updated_at,
+          ...order,
         };
-        setOrders([newOrder, ...orders]);
+        setOrders((prev: Order[]) => [newOrder, ...prev]);
         toast({
           title: "Đơn hàng mới",
           description: `Đơn hàng ${order.id} đã được tạo`,
         });
       }
-    });
+    };
 
     // Listen to payment completion
-    orderSocket.onPaymentCompleted((order) => {
+    const handlePaymentCompleted = (order: any) => {
       console.log("[Orders] Payment completed:", order);
       updateOrderInList(order.id, {
         status: "paid" as any,
@@ -209,12 +229,103 @@ export default function OrdersPage() {
         title: "Thanh toán thành công",
         description: `Đơn hàng ${order.id} đã được thanh toán`,
       });
-    });
+    };
+
+    // Listen to order item events - update order totals
+    const handleItemCreated = (data: any) => {
+      console.log("[Orders] Order item created:", data);
+      if (data.orderId && data.order) {
+        updateOrderInList(data.orderId, {
+          total_amount:
+            data.order.total_amount ??
+            data.order.final_amount ??
+            data.order.total ??
+            0,
+          final_amount:
+            data.order.final_amount ??
+            data.order.total_amount ??
+            data.order.total ??
+            0,
+          updated_at: data.updatedAt,
+        });
+      }
+    };
+
+    const handleItemQuantityChanged = (data: any) => {
+      console.log("[Orders] Order item quantity changed:", data);
+      if (data.orderId && data.order) {
+        updateOrderInList(data.orderId, {
+          total_amount:
+            data.order.total_amount ??
+            data.order.final_amount ??
+            data.order.total ??
+            0,
+          final_amount:
+            data.order.final_amount ??
+            data.order.total_amount ??
+            data.order.total ??
+            0,
+          updated_at: data.updatedAt,
+        });
+      }
+    };
+
+    const handleItemDeleted = (data: any) => {
+      console.log("[Orders] Order item deleted:", data);
+      if (data.orderId && data.order) {
+        updateOrderInList(data.orderId, {
+          total_amount:
+            data.order.total_amount ??
+            data.order.final_amount ??
+            data.order.total ??
+            0,
+          final_amount:
+            data.order.final_amount ??
+            data.order.total_amount ??
+            data.order.total ??
+            0,
+          updated_at: data.updatedAt,
+        });
+      }
+    };
+
+    const handleItemStatusChanged = (data: any) => {
+      console.log("[Orders] Order item status changed:", data);
+      if (data.orderId && data.order) {
+        updateOrderInList(data.orderId, {
+          total_amount:
+            data.order.total_amount ??
+            data.order.final_amount ??
+            data.order.total ??
+            0,
+          final_amount:
+            data.order.final_amount ??
+            data.order.total_amount ??
+            data.order.total ??
+            0,
+          updated_at: data.updatedAt,
+        });
+      }
+    };
+
+    // Register all listeners
+    orderSocket.onOrderUpdated(handleOrderUpdated);
+    orderSocket.onOrderStatusChanged(handleStatusChanged);
+    orderSocket.onOrderCreated(handleOrderCreated);
+    orderSocket.onPaymentCompleted(handlePaymentCompleted);
+    orderSocket.onOrderItemCreated(handleItemCreated);
+    orderSocket.onOrderItemQuantityChanged(handleItemQuantityChanged);
+    orderSocket.onOrderItemDeleted(handleItemDeleted);
+    orderSocket.onOrderItemStatusChanged(handleItemStatusChanged);
+
+    // Cleanup function
+    return () => {
+      // Note: Socket listeners are managed by the hook, but we can add cleanup if needed
+    };
   }, [
     orderSocket.isConnected,
     orderSocket,
     user?.id,
-    orders,
     updateOrderInList,
     setOrders,
   ]);
@@ -230,6 +341,17 @@ export default function OrdersPage() {
       statusFilter === "all" || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-muted-foreground text-lg">Đang tải dữ liệu...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user?.id) {
     return null; // Will redirect

@@ -48,34 +48,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load token and user from localStorage on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem("auth_token");
-    const savedUser = localStorage.getItem("restaurant_user");
+    let isMounted = true;
 
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+    const bootstrapAuth = async () => {
+      try {
+        const savedToken = localStorage.getItem("auth_token");
+        const savedUser = localStorage.getItem("restaurant_user");
 
-      // Validate token and refresh user info
-      authService
-        .getCurrentUser()
-        .then((response) => {
-          if (response?.data) {
-            setUser(response.data as User);
-            localStorage.setItem(
-              "restaurant_user",
-              JSON.stringify(response.data)
-            );
+        if (savedToken && savedUser) {
+          if (!isMounted) return;
+          setToken(savedToken);
+          setUser(JSON.parse(savedUser));
+
+          try {
+            const response = await authService.getCurrentUser();
+            if (!isMounted) return;
+            if (response?.data) {
+              setUser(response.data as User);
+              localStorage.setItem(
+                "restaurant_user",
+                JSON.stringify(response.data)
+              );
+            }
+          } catch (error) {
+            if (!isMounted) return;
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem("auth_token");
+            localStorage.removeItem("restaurant_user");
           }
-        })
-        .catch(() => {
-          // Token invalid, clear auth
-          setToken(null);
-          setUser(null);
+        } else {
           localStorage.removeItem("auth_token");
           localStorage.removeItem("restaurant_user");
-        });
-    }
-    setIsLoading(false);
+          if (isMounted) {
+            setToken(null);
+            setUser(null);
+          }
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    bootstrapAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const refreshUser = async () => {

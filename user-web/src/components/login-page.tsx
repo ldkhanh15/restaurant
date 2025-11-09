@@ -18,7 +18,11 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Utensils, Mail, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react";
 
-export default function LoginPage() {
+interface LoginPageProps {
+  redirectTo?: string;
+}
+
+export default function LoginPage({ redirectTo = "/" }: LoginPageProps) {
   const { login, isLoading } = useAuth();
   const { navigate } = useRouter();
   const [formData, setFormData] = useState({
@@ -40,8 +44,8 @@ export default function LoginPage() {
     try {
       const success = await login(formData.email, formData.password);
       if (success) {
-        // Redirect to home page
-        window.location.href = "/";
+        const target = redirectTo.startsWith("/") ? redirectTo : "/";
+        window.location.href = target;
       } else {
         setError("Email hoặc mật khẩu không đúng");
       }

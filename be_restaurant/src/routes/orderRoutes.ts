@@ -186,6 +186,13 @@ router.post(
   orderController.requestPayment
 );
 
+// Request cash payment (notify admin)
+router.post(
+  "/:id/payment/cash",
+  [param("id").isUUID().withMessage("Invalid order ID"), validate],
+  orderController.requestCashPayment
+);
+
 // Get revenue statistics
 router.get(
   "/stats/revenue",

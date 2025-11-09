@@ -7,6 +7,7 @@ export interface ReservationDraft {
   customer_phone: string;
   customer_email: string;
   num_people: number;
+  duration_minutes: number;
   special_requests: string;
 
   // Step 2: Time Selection
@@ -19,7 +20,8 @@ export interface ReservationDraft {
   selected_floor: string | null;
 
   // Step 4: Event Selection (optional)
-  event_type: string | null;
+  event_id: string | null;
+  event_type: string | null; // Keep for backward compatibility
   event_details: string | null;
   selected_services: string[];
 
@@ -54,12 +56,14 @@ const initialDraft: ReservationDraft = {
   customer_phone: "",
   customer_email: "",
   num_people: 2,
+  duration_minutes: 90,
   special_requests: "",
   date: null,
   time: "",
   selected_table_id: null,
   selected_table_name: null,
   selected_floor: null,
+  event_id: null,
   event_type: null,
   event_details: null,
   selected_services: [],

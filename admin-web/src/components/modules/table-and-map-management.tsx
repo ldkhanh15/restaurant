@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { TableMapManagement } from "./table-map-management"
 import { TableManagement } from "./table-management"
 import { RestaurantAreaManagement } from "./restaurant-area-management"
@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Plus } from "lucide-react"
+import { masterService } from "@/services/masterService"
+import { toast } from "react-toastify"
 
 interface TableAttributes {
   id: string
@@ -47,7 +49,7 @@ interface RestaurantAreaAttributes {
   id: string
   name: string
   area_size: number
-  shape_type: "square" | "rectangle" | "circle" | "polygon"
+  shape_type: "circle" | "square" | "rhombus" | "parallelogram" | "rectangle" | "polygon"
   status: "active" | "maintenance" | "clean"
   created_at?: Date
   updated_at?: Date
@@ -58,7 +60,6 @@ export function TableAndMapManagement() {
   const [tables, setTables] = useState<TableAttributes[]>([])
   const [restaurantArea, setRestaurantArea] = useState<any>(null)
   const [isCreateTableDialogOpen, setIsCreateTableDialogOpen] = useState(false)
-
   const stats = {
     totalTables: tables.length,
     availableTables: tables.filter((t) => t.status === "available").length,
@@ -67,6 +68,25 @@ export function TableAndMapManagement() {
     cleaningTables: tables.filter((t) => t.status === "cleaning").length,
   }
 
+  const getArea = async () => {
+      try {
+        const response = await masterService.get()
+        if (response) {
+          const data = response as any
+          setRestaurantArea(data || null)
+        } else {
+          toast.error("Lấy thông tin khu vực thất bại")
+        }
+      } catch (err) {
+        toast.error("Lỗi khi tải thông tin khu vực")
+        setRestaurantArea(null)
+      }
+    }
+  
+    useEffect(() => {
+      getArea()
+    }, [])
+    
   return (
     <div className="space-y-6">
       {/* Header Stats */}
@@ -148,11 +168,11 @@ export function TableAndMapManagement() {
           <TableMapManagement
             tables={tables as any}
             setTables={setTables}
-            area = {restaurantArea as any}
+            areaShape={restaurantArea ? restaurantArea.shape_type : undefined}
           />
         </TabsContent>
         <TabsContent value="layout">
-          <RestaurantAreaManagement/>
+          <RestaurantAreaManagement area={restaurantArea} onAreaChange={setRestaurantArea} />
         </TabsContent>
       </Tabs>
     </div>

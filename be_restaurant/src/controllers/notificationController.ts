@@ -17,12 +17,13 @@ export const getAllNotifications = async (
 
     // If customer, only show their own notifications
     // Admin/employee can see all or filter by user_id
+    const notificationFilters: any = { ...filters };
     if (userRole === "customer" && currentUserId) {
-      filters.user_id = String(currentUserId);
+      notificationFilters.user_id = String(currentUserId);
     }
 
     const result = await notificationService.getAllNotifications({
-      ...filters,
+      ...notificationFilters,
       page,
       limit,
     });

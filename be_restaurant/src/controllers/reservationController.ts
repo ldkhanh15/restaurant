@@ -87,9 +87,14 @@ export const createReservation = async (
   try {
     // Debug: log incoming pre_order_items to help trace accidental pre-orders
     try {
-      console.log(`[Reservation] createReservation user=${req.user?.id} pre_order_items=`, req.body?.pre_order_items)
+      console.log(
+        `[Reservation] createReservation user=${req.user?.id} pre_order_items=`,
+        req.body?.pre_order_items
+      );
     } catch (e) {
-      console.log('[Reservation] createReservation - failed to log pre_order_items')
+      console.log(
+        "[Reservation] createReservation - failed to log pre_order_items"
+      );
     }
 
     const data = {
@@ -157,11 +162,37 @@ export const cancelReservation = async (
 ) => {
   try {
     const { reason } = req.body;
-    const reservation = await reservationService.cancelReservation(
-      req.params.id,
-      reason
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Check if user is authorized (admin/employee or owner)
+    const reservation = await reservationService.getReservationById(
+      req.params.id
     );
-    res.json({ status: "success", data: reservation });
+    if (!reservation) {
+      return res.status(404).json({
+        status: "error",
+        message: "Reservation not found",
+      });
+    }
+
+    // Allow if admin/employee or if user owns the reservation
+    if (
+      userRole !== "admin" &&
+      userRole !== "employee" &&
+      reservation.user_id !== userId
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only cancel your own reservations",
+      });
+    }
+
+    const cancelledReservation = await reservationService.cancelReservation(
+      req.params.id,
+      reason || "Cancelled by user"
+    );
+    res.json({ status: "success", data: cancelledReservation });
   } catch (error) {
     next(error);
   }
@@ -190,10 +221,19 @@ export const createDepositPayment = async (
 ) => {
   try {
     const { amount, bankCode } = req.body;
+    // Determine client source from query or header; default to user
+    const clientFromQuery = (req.query.client as string) || "";
+    const headerClient = (req.headers["x-client"] as string) || "";
+    const client =
+      (clientFromQuery || headerClient).toLowerCase() === "admin"
+        ? "admin"
+        : "user";
+
     const result = await reservationService.createDepositPayment(
       req.params.id,
       amount,
-      bankCode
+      bankCode,
+      client
     );
     res.json({ status: "success", data: result });
   } catch (error) {
@@ -224,6 +264,58 @@ export const handleDepositPaymentFailure = async (
   try {
     const reservation = await reservationService.handleDepositPaymentFailure(
       req.params.id
+    );
+    res.json({ status: "success", data: reservation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addDishToReservation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { dish_id, quantity } = req.body;
+    const reservation = await reservationService.addDishToReservation(
+      req.params.id,
+      dish_id,
+      quantity
+    );
+    res.json({ status: "success", data: reservation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDishQuantity = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { quantity } = req.body;
+    const reservation = await reservationService.updateDishQuantity(
+      req.params.id,
+      req.params.dishId,
+      quantity
+    );
+    res.json({ status: "success", data: reservation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeDishFromReservation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const reservation = await reservationService.removeDishFromReservation(
+      req.params.id,
+      req.params.dishId
     );
     res.json({ status: "success", data: reservation });
   } catch (error) {

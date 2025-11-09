@@ -218,4 +218,95 @@ export const reservationEvents = {
       );
     }
   },
+
+  // Reservation dish events
+  reservationDishAdded: (
+    io: Server,
+    reservationId: string,
+    dish: any,
+    reservation: any
+  ) => {
+    const payload = {
+      reservationId,
+      dish,
+      reservation: {
+        id: reservation.id,
+        pre_order_items: reservation.pre_order_items,
+        deposit_amount: reservation.deposit_amount,
+        updated_at: reservation.updated_at,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    broadcastToAdmin(io, "admin:reservation:dish_added", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:dish_added",
+        payload
+      );
+    }
+  },
+
+  reservationDishUpdated: (
+    io: Server,
+    reservationId: string,
+    dish: any,
+    reservation: any
+  ) => {
+    const payload = {
+      reservationId,
+      dish,
+      reservation: {
+        id: reservation.id,
+        pre_order_items: reservation.pre_order_items,
+        deposit_amount: reservation.deposit_amount,
+        updated_at: reservation.updated_at,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    broadcastToAdmin(io, "admin:reservation:dish_updated", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:dish_updated",
+        payload
+      );
+    }
+  },
+
+  reservationDishRemoved: (
+    io: Server,
+    reservationId: string,
+    dishId: string,
+    reservation: any
+  ) => {
+    const payload = {
+      reservationId,
+      dishId,
+      reservation: {
+        id: reservation.id,
+        pre_order_items: reservation.pre_order_items,
+        deposit_amount: reservation.deposit_amount,
+        updated_at: reservation.updated_at,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    broadcastToAdmin(io, "admin:reservation:dish_removed", payload);
+
+    if (reservation.user_id) {
+      forwardToCustomer(
+        io,
+        reservation.user_id,
+        "reservation:dish_removed",
+        payload
+      );
+    }
+  },
 };

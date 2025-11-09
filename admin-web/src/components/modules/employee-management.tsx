@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "react-toastify";
 import employeeApi from "../../services/employeeService";
 import employeeShiftApi from "../../services/employeeShiftsService";
 import attendanceApi from "../../services/attendanceService";
@@ -113,7 +113,6 @@ export function EmployeeManagement() {
   const [totalEmployees, setTotalEmployees] = useState(0);
   const [totalShifts, setTotalShifts] = useState(0);
   const limit = 30;
-  const { toast } = useToast();
 
   useEffect(() => {
     fetchEmployees();
@@ -134,6 +133,7 @@ export function EmployeeManagement() {
         // Check if data is directly an array
         console.log("Employee fetch response:", response);
         if (Array.isArray(response.data)) {
+          toast.success("Tải danh sách nhân viên thành công");
           setEmployees(response.data);
           // if (response.pagination) {
           //   setTotalPages(response.pagination.totalPages || 1);
@@ -150,10 +150,10 @@ export function EmployeeManagement() {
 
           if (data.items && Array.isArray(data.items)) {
             setEmployees(data.items);
-            if (data.pagination) {
-              setTotalPages(data.pagination.totalPages || 1);
-              setTotalEmployees(data.pagination.totalItems || 0);
-            }
+            // if (data.pagination) {
+            //   setTotalPages(data.pagination.totalPages || 1);
+            //   setTotalEmployees(data.pagination.totalItems || 0);
+            // }
           } else {
             // Handle other object structures - try to extract any array we can find
             const possibleArrays = Object.values(data).filter(Array.isArray);
@@ -168,10 +168,7 @@ export function EmployeeManagement() {
                 "Unexpected data format - couldn't find array:",
                 data
               );
-              toast({
-                title: "Cảnh báo",
-                description: "Định dạng dữ liệu không đúng mong đợi",
-              });
+              toast.warning("Định dạng dữ liệu không đúng mong đợi");
             }
           }
         }
@@ -179,10 +176,7 @@ export function EmployeeManagement() {
         else {
           setEmployees([]);
           console.error("Unexpected data format:", response.data);
-          toast({
-            title: "Cảnh báo",
-            description: "Định dạng dữ liệu không đúng mong đợi",
-          });
+          toast.warning("Định dạng dữ liệu không đúng mong đợi");
         }
       } else {
         setEmployees([]);
@@ -190,11 +184,7 @@ export function EmployeeManagement() {
       }
     } catch (err) {
       console.error("Failed to fetch employees:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách nhân viên");
     } finally {
       setIsLoading(false);
     }
@@ -234,11 +224,7 @@ export function EmployeeManagement() {
       }
     } catch (err) {
       console.error("Failed to fetch unassigned users:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách người dùng chưa được phân công",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách người dùng chưa được phân công");
     }
   };
 
@@ -258,18 +244,11 @@ export function EmployeeManagement() {
 
       await employeeApi.createEmployee(newEmployee);
       setIsCreateDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã thêm nhân viên mới",
-      });
+      toast.success("Đã thêm nhân viên mới");
       fetchEmployees();
     } catch (err) {
       console.error("Failed to create employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể thêm nhân viên mới",
-        variant: "destructive",
-      });
+      toast.error("Không thể thêm nhân viên mới");
     }
   };
 
@@ -286,36 +265,22 @@ export function EmployeeManagement() {
 
       await employeeApi.updateEmployee(id, updatedData);
       setIsViewDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật thông tin nhân viên",
-      });
+      toast.success("Đã cập nhật thông tin nhân viên");
       fetchEmployees();
     } catch (err) {
       console.error("Failed to update employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật thông tin nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật thông tin nhân viên");
     }
   };
 
   const handleDeleteEmployee = async (id: string) => {
     try {
       await employeeApi.deleteEmployee(id);
-      toast({
-        title: "Thành công",
-        description: "Đã xóa nhân viên",
-      });
+      toast.success("Đã xóa nhân viên");
       fetchEmployees();
     } catch (err) {
       console.error("Failed to delete employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa nhân viên");
     }
   };
 
@@ -333,13 +298,13 @@ export function EmployeeManagement() {
       if (response && response.data) {
         if (Array.isArray(response.data)) {
           setShifts(response.data);
-          if (response.pagination) {
-            setTotalShiftPages(response.pagination.totalPages || 1);
-            setTotalShifts(response.pagination.totalItems || 0);
-          } else {
-            setTotalShiftPages(1);
-            setTotalShifts(response.data.length);
-          }
+          // if (response.pagination) {
+          //   setTotalShiftPages(response.pagination.totalPages || 1);
+          //   setTotalShifts(response.pagination.totalItems || 0);
+          // } else {
+          //   setTotalShiftPages(1);
+          //   setTotalShifts(response.data.length);
+          // }
         } else if (
           typeof response.data === "object" &&
           response.data !== null
@@ -365,20 +330,13 @@ export function EmployeeManagement() {
                 "Unexpected data format - couldn't find array:",
                 data
               );
-              toast({
-                title: "Cảnh báo",
-                description:
-                  "Định dạng dữ liệu ca làm việc không đúng mong đợi",
-              });
+              toast.warning("Định dạng dữ liệu ca làm việc không đúng mong đợi");
             }
           }
         } else {
           setShifts([]);
           console.error("Unexpected data format:", response.data);
-          toast({
-            title: "Cảnh báo",
-            description: "Định dạng dữ liệu ca làm việc không đúng mong đợi",
-          });
+          toast.warning("Định dạng dữ liệu ca làm việc không đúng mong đợi");
         }
       } else {
         setShifts([]);
@@ -387,11 +345,7 @@ export function EmployeeManagement() {
     } catch (err) {
       console.error("Failed to fetch employee shifts:", err);
       setShiftError("Không thể tải danh sách ca làm việc của nhân viên");
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách ca làm việc của nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách ca làm việc của nhân viên");
     } finally {
       setIsLoading(false);
     }
@@ -401,18 +355,11 @@ export function EmployeeManagement() {
     try {
       await employeeShiftApi.createEmployeeShift(shiftData);
       setIsShiftCreateDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã thêm ca làm việc mới",
-      });
+      toast.success("Đã thêm ca làm việc mới");
       fetchEmployeeShifts();
     } catch (err) {
       console.error("Failed to create shift:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể thêm ca làm việc mới",
-        variant: "destructive",
-      });
+      toast.error("Không thể thêm ca làm việc mới");
     }
   };
 
@@ -421,18 +368,11 @@ export function EmployeeManagement() {
     try {
       await employeeShiftApi.updateEmployeeShift(id, shiftData);
       setIsShiftViewDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật thông tin ca làm việc",
-      });
+      toast.success("Đã cập nhật thông tin ca làm việc");
       fetchEmployeeShifts();
     } catch (err) {
       console.error("Failed to update shift:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật thông tin ca làm việc",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật thông tin ca làm việc");
     }
   };
 
@@ -442,18 +382,11 @@ export function EmployeeManagement() {
       try {
         // Sử dụng updateEmployeeShift với isDeleted: true để soft delete
         await employeeShiftApi.deleteEmployeeShift(id);
-        toast({
-          title: "Thành công",
-          description: "Đã xóa ca làm việc",
-        });
+        toast.success("Đã xóa ca làm việc");
         fetchEmployeeShifts();
       } catch (err) {
         console.error("Failed to delete shift:", err);
-        toast({
-          title: "Lỗi",
-          description: "Không thể xóa ca làm việc",
-          variant: "destructive",
-        });
+        toast.error("Không thể xóa ca làm việc");
       }
     }
   };
@@ -461,10 +394,10 @@ export function EmployeeManagement() {
   const fetchAttendanceLogs = async () => {
     setIsLoading(true);
     try {
-      const { data: response } = await attendanceApi.getAllAttendanceLogs();
+      const response = await attendanceApi.getAllAttendanceLogs();
       if (response && response.data) {
         console.log("attendance call:", response.data);
-        setAttendance(response.data);
+        setAttendance(response.data as Attendance[]);
         setIsAttendanceEditDialogOpen(false);
         setIsAttendanceCreateDialogOpen(false);
       } else {
@@ -472,11 +405,7 @@ export function EmployeeManagement() {
       }
     } catch (err) {
       console.error("Failed to fetch attendance logs:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách nhật ký chấm công",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách nhật ký chấm công");
     } finally {
       setIsLoading(false);
     }
@@ -487,18 +416,11 @@ export function EmployeeManagement() {
       await attendanceApi.createAttendanceLog(attendanceData);
       setIsAttendanceEditDialogOpen(false);
       setIsAttendanceCreateDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã thêm nhân viên mới",
-      });
+      toast.success("Đã thêm nhân viên mới");
       fetchAttendanceLogs();
     } catch (err) {
       console.error("Failed to create employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể thêm nhân viên mới",
-        variant: "destructive",
-      });
+      toast.error("Không thể thêm nhân viên mới");
     }
   };
 
@@ -520,36 +442,22 @@ export function EmployeeManagement() {
       await attendanceApi.updateAttendanceLog(id, updatedData);
       setIsAttendanceEditDialogOpen(false);
       setIsAttendanceCreateDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật thông tin nhân viên",
-      });
+      toast.success("Đã cập nhật thông tin nhân viên");
       fetchAttendanceLogs();
     } catch (err) {
       console.error("Failed to update employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật thông tin nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật thông tin nhân viên");
     }
   };
 
   const handleDeleteEmployeeAttendance = async (id: string) => {
     try {
       await attendanceApi.deleteAttendanceLog(id);
-      toast({
-        title: "Thành công",
-        description: "Đã xóa nhân viên",
-      });
+      toast.success("Đã xóa nhân viên");
       fetchAttendanceLogs();
     } catch (err) {
       console.error("Failed to delete employee:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa nhân viên",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa nhân viên");
     }
   };
 
@@ -559,20 +467,16 @@ export function EmployeeManagement() {
   const fetchPayrollRecords = async () => {
     setIsLoading(true);
     try {
-      const { data: response } = await payrollApi.getAllPayrollRecords();
-      if (response && response.data) {
-        console.log("payroll call:", response.data);
-        setPayrolls(response.data);
+      const respo = await payrollApi.getAllPayrollRecords();
+      if (respo && respo.data) {
+        console.log("payroll call:", respo.data);
+        setPayrolls(respo.data);
       } else {
         setPayrolls([]);
       }
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách bảng lương",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách bảng lương");
     } finally {
       setIsLoading(false);
     }
@@ -582,18 +486,11 @@ export function EmployeeManagement() {
       await payrollApi.createPayrollRecord(payrollData);
       setIsPayrollCreateDialogOpen(false);
       setIsPayrollEditDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã thêm bảng lương mới",
-      });
+      toast.success("Đã thêm bảng lương mới");
       fetchPayrollRecords();
     } catch (err) {
       console.error("Failed to create payroll record:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể thêm bảng lương mới",
-        variant: "destructive",
-      });
+      toast.error("Không thể thêm bảng lương mới");
     }
   };
   const handleUpdatePayrollRecord = async (id: string, payrollData: any) => {
@@ -608,36 +505,22 @@ export function EmployeeManagement() {
       await payrollApi.updatePayrollRecord(id, payrollData);
       setIsPayrollCreateDialogOpen(false);
       setIsPayrollEditDialogOpen(false);
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật bảng lương",
-      });
+      toast.success("Đã cập nhật bảng lương");
       fetchPayrollRecords();
     } catch (err) {
       console.error("Failed to update payroll record:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách nhật ký chấm công",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật bảng lương");
     }
   };
 
   const handleDeletePayroll = async (id: string) => {
     try {
       await payrollApi.deletePayrollRecord(id);
-      toast({
-        title: "Thành công",
-        description: "Đã xóa bảng lương",
-      });
+      toast.success("Đã xóa bảng lương");
       fetchPayrollRecords();
     } catch (err) {
       console.error("Failed to delete payroll record:", err);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa bảng lương",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa bảng lương");
     }
   };
 
@@ -665,6 +548,7 @@ export function EmployeeManagement() {
 
   return (
     <div className="space-y-6">
+      <h1>Quản lý nhân viên 123</h1>
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>

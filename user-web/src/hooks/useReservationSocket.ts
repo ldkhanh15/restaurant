@@ -30,6 +30,28 @@ interface UseReservationSocketReturn {
   onDepositPaymentFailed: (
     callback: (reservation: Reservation) => void
   ) => void;
+  // Reservation dish events
+  onReservationDishAdded: (
+    callback: (data: {
+      reservationId: string;
+      dish: any;
+      reservation: any;
+    }) => void
+  ) => void;
+  onReservationDishUpdated: (
+    callback: (data: {
+      reservationId: string;
+      dish: any;
+      reservation: any;
+    }) => void
+  ) => void;
+  onReservationDishRemoved: (
+    callback: (data: {
+      reservationId: string;
+      dishId: string;
+      reservation: any;
+    }) => void
+  ) => void;
   removeListeners: () => void;
 }
 
@@ -256,6 +278,58 @@ export function useReservationSocket(): UseReservationSocketReturn {
       .filter(Boolean) as Reservation[];
   }, [reservations, reservationsByUser]);
 
+  // Reservation dish event listeners
+  const onReservationDishAdded = useCallback(
+    (
+      callback: (data: {
+        reservationId: string;
+        dish: any;
+        reservation: any;
+      }) => void
+    ) => {
+      if (socket) {
+        socket.on("reservation:dish_added", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onReservationDishUpdated = useCallback(
+    (
+      callback: (data: {
+        reservationId: string;
+        dish: any;
+        reservation: any;
+      }) => void
+    ) => {
+      if (socket) {
+        socket.on("reservation:dish_updated", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onReservationDishRemoved = useCallback(
+    (
+      callback: (data: {
+        reservationId: string;
+        dishId: string;
+        reservation: any;
+      }) => void
+    ) => {
+      if (socket) {
+        socket.on("reservation:dish_removed", (data: any) => {
+          callback(data);
+        });
+      }
+    },
+    [socket]
+  );
+
   // Cleanup function
   const removeListeners = useCallback(() => {
     if (socket) {
@@ -266,6 +340,9 @@ export function useReservationSocket(): UseReservationSocketReturn {
       socket.removeAllListeners("reservation:deposit_payment_requested");
       socket.removeAllListeners("reservation:deposit_payment_completed");
       socket.removeAllListeners("reservation:deposit_payment_failed");
+      socket.removeAllListeners("reservation:dish_added");
+      socket.removeAllListeners("reservation:dish_updated");
+      socket.removeAllListeners("reservation:dish_removed");
     }
   }, [socket]);
 
@@ -289,6 +366,9 @@ export function useReservationSocket(): UseReservationSocketReturn {
     onDepositPaymentRequested,
     onDepositPaymentCompleted,
     onDepositPaymentFailed,
+    onReservationDishAdded,
+    onReservationDishUpdated,
+    onReservationDishRemoved,
     removeListeners,
   };
 }
