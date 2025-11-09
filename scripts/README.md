@@ -39,7 +39,7 @@ chmod +x scripts/deploy.sh
 
 **Environment Variables:**
 
-- `DEPLOY_PATH`: Đường dẫn deploy (default: `/home/ubuntu/restaurant`)
+- `DEPLOY_PATH`: Đường dẫn deploy (default: auto-detect based on user - `/home/ec2-user/restaurant` for Amazon Linux, `/home/ubuntu/restaurant` for Ubuntu)
 - `BRANCH`: Git branch để deploy (default: `main`)
 
 **Example:**

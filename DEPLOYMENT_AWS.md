@@ -27,6 +27,10 @@ Hướng dẫn deploy Restaurant Management System lên AWS EC2 (t3.micro).
 ### 1.2 Connect to EC2
 
 ```bash
+# For Amazon Linux 2023
+ssh -i your-key.pem ec2-user@your-ec2-ip
+
+# For Ubuntu
 ssh -i your-key.pem ubuntu@your-ec2-ip
 ```
 
@@ -68,8 +72,10 @@ Vào GitHub Repository → Settings → Secrets and variables → Actions, thêm
 
 4. **`EC2_USER`**
 
-   - SSH user (thường là `ubuntu` cho Ubuntu AMI)
-   - Ví dụ: `ubuntu`
+   - SSH user
+   - Amazon Linux 2023: `ec2-user`
+   - Ubuntu: `ubuntu`
+   - Ví dụ: `ec2-user` hoặc `ubuntu`
 
 5. **`EC2_SSH_KEY`**
 
@@ -84,14 +90,15 @@ Vào GitHub Repository → Settings → Secrets and variables → Actions, thêm
 
 6. **`EC2_DEPLOY_PATH`** (Optional)
    - Đường dẫn deploy trên EC2
-   - Default: `/home/ubuntu/restaurant`
+   - Default: `/home/ec2-user/restaurant` (Amazon Linux) hoặc `/home/ubuntu/restaurant` (Ubuntu)
 
 ## 📝 Step 3: Configure Environment Variables
 
 ### 3.1 On EC2 Instance
 
 ```bash
-cd /home/ubuntu/restaurant
+# For Amazon Linux 2023, use ec2-user home
+cd /home/ec2-user/restaurant
 
 # Copy example files
 cp env.example .env
@@ -158,6 +165,11 @@ VNP_RETURN_URL_RESERVATION=http://your-ec2-ip:8000/api/payments/vnpay/return
 ### 4.1 Manual Deployment
 
 ```bash
+# For Amazon Linux 2023
+cd /home/ec2-user/restaurant
+./scripts/deploy.sh
+
+# For Ubuntu
 cd /home/ubuntu/restaurant
 ./scripts/deploy.sh
 ```
@@ -177,6 +189,11 @@ Workflow file: `.github/workflows/deploy.yml`
 ### 5.1 Check Service Status
 
 ```bash
+# For Amazon Linux 2023
+cd /home/ec2-user/restaurant
+docker-compose ps
+
+# For Ubuntu
 cd /home/ubuntu/restaurant
 docker-compose ps
 ```

@@ -7,8 +7,8 @@ Hướng dẫn nhanh để setup CI/CD cho AWS EC2.
 ### 1. Setup EC2 Instance
 
 ```bash
-# SSH vào EC2
-ssh -i your-key.pem ubuntu@your-ec2-ip
+# SSH vào EC2 (Amazon Linux 2023 uses ec2-user)
+ssh -i your-key.pem ec2-user@your-ec2-ip
 
 # Clone repository
 git clone https://github.com/your-username/restaurant.git
@@ -20,13 +20,14 @@ chmod +x scripts/setup-ec2.sh
 
 # Logout và login lại để Docker group có hiệu lực
 exit
-ssh -i your-key.pem ubuntu@your-ec2-ip
+ssh -i your-key.pem ec2-user@your-ec2-ip
 ```
 
 ### 2. Configure Environment Variables
 
 ```bash
-cd /home/ubuntu/restaurant
+# For Amazon Linux 2023
+cd /home/ec2-user/restaurant
 
 # Copy và edit .env files
 cp env.example .env
@@ -48,14 +49,14 @@ Vào **GitHub Repository** → **Settings** → **Secrets and variables** → **
 
 Thêm các secrets sau:
 
-| Secret Name             | Value                     | Example                                    |
-| ----------------------- | ------------------------- | ------------------------------------------ |
-| `AWS_ACCESS_KEY_ID`     | AWS IAM access key        | `AKIAIOSFODNN7EXAMPLE`                     |
-| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key        | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
-| `EC2_HOST`              | EC2 public IP hoặc domain | `54.123.45.67`                             |
-| `EC2_USER`              | SSH user                  | `ubuntu`                                   |
-| `EC2_SSH_KEY`           | Private key content       | `-----BEGIN RSA PRIVATE KEY-----...`       |
-| `EC2_DEPLOY_PATH`       | (Optional) Deploy path    | `/home/ubuntu/restaurant`                  |
+| Secret Name             | Value                     | Example                                                                            |
+| ----------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| `AWS_ACCESS_KEY_ID`     | AWS IAM access key        | `AKIAIOSFODNN7EXAMPLE`                                                             |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key        | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`                                         |
+| `EC2_HOST`              | EC2 public IP hoặc domain | `54.123.45.67`                                                                     |
+| `EC2_USER`              | SSH user                  | `ec2-user` (Amazon Linux) hoặc `ubuntu` (Ubuntu)                                   |
+| `EC2_SSH_KEY`           | Private key content       | `-----BEGIN RSA PRIVATE KEY-----...`                                               |
+| `EC2_DEPLOY_PATH`       | (Optional) Deploy path    | `/home/ec2-user/restaurant` (Amazon Linux) hoặc `/home/ubuntu/restaurant` (Ubuntu) |
 
 **Lấy SSH Key:**
 
@@ -70,7 +71,8 @@ cat your-key.pem
 **Option A: Manual Deploy (First Time)**
 
 ```bash
-cd /home/ubuntu/restaurant
+# For Amazon Linux 2023
+cd /home/ec2-user/restaurant
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```

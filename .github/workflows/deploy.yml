@@ -39,14 +39,15 @@ jobs:
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH || '/home/ubuntu/restaurant' }}
+          EC2_DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH || '/home/ec2-user/restaurant' }}
         run: |
           # Create deployment script
           cat > /tmp/deploy_remote.sh << 'DEPLOYSCRIPT'
           #!/bin/bash
           set -e
           
-          DEPLOY_PATH="${DEPLOY_PATH:-/home/ubuntu/restaurant}"
+          # Use provided DEPLOY_PATH or default based on user
+          DEPLOY_PATH="${DEPLOY_PATH:-/home/ec2-user/restaurant}"
           
           # Navigate to deployment directory
           cd "$DEPLOY_PATH" || exit 1

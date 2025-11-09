@@ -12,7 +12,13 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-DEPLOY_PATH="${DEPLOY_PATH:-/home/ubuntu/restaurant}"
+# Auto-detect user home directory
+if [ "$USER" = "ec2-user" ]; then
+  DEFAULT_DEPLOY_PATH="/home/ec2-user/restaurant"
+else
+  DEFAULT_DEPLOY_PATH="/home/$USER/restaurant"
+fi
+DEPLOY_PATH="${DEPLOY_PATH:-$DEFAULT_DEPLOY_PATH}"
 BRANCH="${BRANCH:-main}"
 
 echo -e "${GREEN}========================================${NC}"
