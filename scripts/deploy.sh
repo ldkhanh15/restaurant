@@ -72,9 +72,19 @@ if docker compose version &> /dev/null; then
   COMPOSE_CMD="docker compose"
 fi
 
+# Determine compose file (production or development)
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+if [ ! -f "$COMPOSE_FILE" ]; then
+  echo -e "${YELLOW}⚠️  $COMPOSE_FILE not found, using docker-compose.yml${NC}"
+  COMPOSE_FILE="docker-compose.yml"
+fi
+
+# Make production scripts executable if they exist
+chmod +x start-restaurant-system-prod.sh fix-mysql-volume-prod.sh 2>/dev/null || true
+
 # Stop existing containers
 echo -e "${YELLOW}🛑 Stopping existing containers...${NC}"
-$COMPOSE_CMD down || true
+$COMPOSE_CMD -f $COMPOSE_FILE down || true
 
 # Clean up old images (t3.micro has limited storage)
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
@@ -84,50 +94,56 @@ docker image prune -af --filter "until=24h" || true
 echo -e "${YELLOW}🔨 Building Docker images (with BuildKit cache)...${NC}"
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
-$COMPOSE_CMD build
+$COMPOSE_CMD -f $COMPOSE_FILE build
 
-# Start services
-echo -e "${YELLOW}🚀 Starting services...${NC}"
-$COMPOSE_CMD up -d
-
-# Wait for services to initialize
-echo -e "${YELLOW}⏳ Waiting for services to initialize...${NC}"
-sleep 30
-
-# Check service status
-echo -e "${GREEN}📊 Service Status:${NC}"
-$COMPOSE_CMD ps
-
-# Health check
-echo -e "${YELLOW}🏥 Running health checks...${NC}"
-MAX_RETRIES=20
-RETRY_COUNT=0
-HEALTHY=false
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-  if curl -f http://localhost:8000/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Backend is healthy!${NC}"
-    HEALTHY=true
-    break
+# Use production startup script if available and using prod compose file
+if [ -f start-restaurant-system-prod.sh ] && [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
+  echo -e "${YELLOW}🚀 Starting services using production script...${NC}"
+  SERVER_IP="${SERVER_IP:-98.91.23.236}" PROTOCOL="${PROTOCOL:-https}" ./start-restaurant-system-prod.sh
+else
+  # Manual start
+  echo -e "${YELLOW}🚀 Starting services...${NC}"
+  $COMPOSE_CMD -f $COMPOSE_FILE up -d
+  
+  # Wait for services to initialize
+  echo -e "${YELLOW}⏳ Waiting for services to initialize...${NC}"
+  sleep 60
+  
+  # Check service status
+  echo -e "${GREEN}📊 Service Status:${NC}"
+  $COMPOSE_CMD -f $COMPOSE_FILE ps
+  
+  # Health check
+  echo -e "${YELLOW}🏥 Running health checks...${NC}"
+  MAX_RETRIES=20
+  RETRY_COUNT=0
+  HEALTHY=false
+  
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+      echo -e "${GREEN}✅ Backend is healthy!${NC}"
+      HEALTHY=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo -e "${YELLOW}⏳ Waiting for backend... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
+    sleep 10
+  done
+  
+  if [ "$HEALTHY" = false ]; then
+    echo -e "${RED}❌ Backend health check failed!${NC}"
+    echo -e "${YELLOW}📋 Backend logs:${NC}"
+    $COMPOSE_CMD -f $COMPOSE_FILE logs backend --tail 50
+    exit 1
   fi
-  RETRY_COUNT=$((RETRY_COUNT + 1))
-  echo -e "${YELLOW}⏳ Waiting for backend... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
-  sleep 10
-done
-
-if [ "$HEALTHY" = false ]; then
-  echo -e "${RED}❌ Backend health check failed!${NC}"
-  echo -e "${YELLOW}📋 Backend logs:${NC}"
-  $COMPOSE_CMD logs backend --tail 50
-  exit 1
+  
+  # Final status
+  echo -e "${GREEN}========================================${NC}"
+  echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
+  echo -e "${GREEN}========================================${NC}"
+  echo -e "${GREEN}📊 Final Service Status:${NC}"
+  $COMPOSE_CMD -f $COMPOSE_FILE ps
 fi
-
-# Final status
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}📊 Final Service Status:${NC}"
-$COMPOSE_CMD ps
 
 # Get server IP (use configured IP or detect from EC2 metadata)
 SERVER_IP="${SERVER_IP:-98.91.23.236}"
@@ -135,10 +151,13 @@ if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "auto" ]; then
   SERVER_IP=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || curl -s ifconfig.me || echo "localhost")
 fi
 
-PROTOCOL="${PROTOCOL:-http}"
-echo -e "${GREEN}🌐 Access URLs:${NC}"
-echo -e "   Backend:  $PROTOCOL://$SERVER_IP:8000"
-echo -e "   User Web: $PROTOCOL://$SERVER_IP:3000"
-echo -e "   Admin Web: $PROTOCOL://$SERVER_IP:3001"
-echo -e "   Health Check: $PROTOCOL://$SERVER_IP:8000/health"
+# Only show URLs if not using production script (script already shows URLs)
+if [ ! -f start-restaurant-system-prod.sh ] || [ "$COMPOSE_FILE" != "docker-compose.prod.yml" ]; then
+  PROTOCOL="${PROTOCOL:-https}"
+  echo -e "${GREEN}🌐 Access URLs:${NC}"
+  echo -e "   Backend:  $PROTOCOL://$SERVER_IP:8000"
+  echo -e "   User Web: $PROTOCOL://$SERVER_IP:3000"
+  echo -e "   Admin Web: $PROTOCOL://$SERVER_IP:3001"
+  echo -e "   Health Check: $PROTOCOL://$SERVER_IP:8000/health"
+fi
 
