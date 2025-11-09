@@ -1,53 +1,105 @@
 # ============================================
 # Restaurant Management System Startup Script
 # ============================================
-# This script starts all services in the correct order with proper timing
+# This script starts all services in the correct order with proper health checks
+# Optimized for Windows with Docker Desktop
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Starting Restaurant Management System" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
-# Step 1: Stop any existing containers
-Write-Host "[1/4] Stopping existing containers..." -ForegroundColor Yellow
-docker-compose down 2>&1 | Out-Null
-
-# Step 2: Start infrastructure services (MySQL, Chatbot, Backend)
-Write-Host "[2/4] Starting infrastructure services (MySQL, Chatbot, Backend)..." -ForegroundColor Yellow
-docker-compose up -d mysql chatbot backend
-
-# Step 3: Wait for backend to become healthy (database sync takes ~2 minutes)
-Write-Host "[3/4] Waiting for backend to complete database sync (this may take 2-3 minutes)..." -ForegroundColor Yellow
-$maxWait = 180 # 3 minutes
-$waited = 0
-$interval = 10
-
-while ($waited -lt $maxWait) {
-    Start-Sleep -Seconds $interval
-    $waited += $interval
+# Function to check container health status
+function Wait-ForHealthy {
+    param(
+        [string]$ContainerName,
+        [string]$ServiceName,
+        [int]$MaxWait = 180,
+        [int]$Interval = 10
+    )
     
-    $status = docker inspect restaurant_backend --format='{{.State.Health.Status}}' 2>$null
+    Write-Host "Waiting for $ServiceName to become healthy (max $MaxWait seconds)..." -ForegroundColor Yellow
+    $waited = 0
     
-    if ($status -eq "healthy") {
-        Write-Host "✓ Backend is healthy!" -ForegroundColor Green
-        break
+    while ($waited -lt $MaxWait) {
+        Start-Sleep -Seconds $Interval
+        $waited += $Interval
+        
+        $status = docker inspect $ContainerName --format='{{.State.Health.Status}}' 2>$null
+        
+        if ($status -eq "healthy") {
+            Write-Host "✓ $ServiceName is healthy!" -ForegroundColor Green
+            return $true
+        }
+        
+        if ($status -eq "unhealthy") {
+            Write-Host "✗ $ServiceName is unhealthy!" -ForegroundColor Red
+            Write-Host "  Check logs with: docker-compose logs $($ServiceName.ToLower())" -ForegroundColor Yellow
+            return $false
+        }
+        
+        Write-Host "  Waiting... ($waited/$MaxWait seconds) - Status: $status" -ForegroundColor Gray
     }
     
-    Write-Host "  Waiting... ($waited/$maxWait seconds)" -ForegroundColor Gray
+    Write-Host "✗ $ServiceName failed to become healthy after $MaxWait seconds" -ForegroundColor Red
+    return $false
 }
 
-if ($status -ne "healthy") {
-    Write-Host "✗ Backend failed to become healthy after $maxWait seconds" -ForegroundColor Red
-    Write-Host "  Check logs with: docker-compose logs backend" -ForegroundColor Yellow
+# Step 1: Stop any existing containers
+Write-Host "[1/5] Stopping existing containers..." -ForegroundColor Yellow
+docker-compose down 2>&1 | Out-Null
+
+# Step 2: Start MySQL first
+Write-Host "`n[2/5] Starting MySQL database..." -ForegroundColor Yellow
+docker-compose up -d mysql
+
+if (-not (Wait-ForHealthy -ContainerName "restaurant_mysql" -ServiceName "MySQL" -MaxWait 120)) {
+    Write-Host "`n❌ MySQL failed to start. Showing logs:" -ForegroundColor Red
+    docker-compose logs mysql --tail 30
     exit 1
 }
 
-# Step 4: Start frontend services
-Write-Host "[4/4] Starting frontend services (Admin Web, User Web)..." -ForegroundColor Yellow
+# Step 3: Start Chatbot
+Write-Host "`n[3/5] Starting Chatbot service..." -ForegroundColor Yellow
+docker-compose up -d chatbot
+
+if (-not (Wait-ForHealthy -ContainerName "restaurant_chatbot" -ServiceName "Chatbot" -MaxWait 120)) {
+    Write-Host "`n⚠️  Chatbot health check failed, but continuing..." -ForegroundColor Yellow
+    docker-compose logs chatbot --tail 20
+}
+
+# Step 4: Start Backend
+Write-Host "`n[4/5] Starting Backend API (database sync may take 2-3 minutes)..." -ForegroundColor Yellow
+docker-compose up -d backend
+
+if (-not (Wait-ForHealthy -ContainerName "restaurant_backend" -ServiceName "Backend" -MaxWait 240)) {
+    Write-Host "`n❌ Backend failed to start. Showing logs:" -ForegroundColor Red
+    docker-compose logs backend --tail 50
+    exit 1
+}
+
+# Step 5: Start Frontend services
+Write-Host "`n[5/5] Starting Frontend services (Admin Web, User Web)..." -ForegroundColor Yellow
 docker-compose up -d admin-web user-web
 
-# Wait for frontend health checks
-Write-Host "Waiting for frontend services to become healthy (60 seconds)..." -ForegroundColor Yellow
+# Wait for frontend services to initialize
+Write-Host "Waiting for frontend services to initialize (60 seconds)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 60
+
+# Check frontend health
+$adminStatus = docker inspect restaurant_admin_web --format='{{.State.Health.Status}}' 2>$null
+$userStatus = docker inspect restaurant_user_web --format='{{.State.Health.Status}}' 2>$null
+
+if ($adminStatus -eq "healthy") {
+    Write-Host "✓ Admin Web is healthy!" -ForegroundColor Green
+} else {
+    Write-Host "⚠️  Admin Web status: $adminStatus" -ForegroundColor Yellow
+}
+
+if ($userStatus -eq "healthy") {
+    Write-Host "✓ User Web is healthy!" -ForegroundColor Green
+} else {
+    Write-Host "⚠️  User Web status: $userStatus" -ForegroundColor Yellow
+}
 
 # Display final status
 Write-Host "`n========================================" -ForegroundColor Cyan
@@ -69,4 +121,3 @@ Write-Host "      this is due to WSL port forwarding conflict." -ForegroundColor
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "System Started Successfully! 🚀" -ForegroundColor Green
 Write-Host "========================================`n" -ForegroundColor Cyan
-

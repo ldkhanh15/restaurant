@@ -8,7 +8,7 @@
 # - User Web Frontend (user-web)
 # ============================================
 
-version: "3.8"
+# version: "3.8"  # Removed - obsolete in Docker Compose v2
 
 services:
   # ============================================
@@ -31,11 +31,22 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test:
+        [
+          "CMD",
+          "mysql",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD:-rootpassword}",
+          "-e",
+          "SELECT 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 90s
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -90,7 +101,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import requests; requests.get('http://98.91.23.236:7860/api/health', timeout=5)",
+          "import requests; requests.get('http://localhost:7860/api/health', timeout=5)",
         ]
       interval: 30s
       timeout: 10s
@@ -129,10 +140,10 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD:-restaurant_password}
       # Chatbot URL using Docker service name (must include /api prefix)
       CHATBOT_URL: http://chatbot:7860/api
-      CLIENT_ADMIN_URL: http://98.91.23.236:3001
-      CLIENT_USER_URL: http://98.91.23.236:3000
-      VNP_RETURN_URL_ORDER: http://98.91.23.236:8000/api/payments/vnpay/return
-      VNP_RETURN_URL_RESERVATION: http://98.91.23.236:8000/api/payments/vnpay/return
+      CLIENT_ADMIN_URL: http://localhost:3001
+      CLIENT_USER_URL: http://localhost:3000
+      VNP_RETURN_URL_ORDER: http://localhost:8000/api/payments/vnpay/return
+      VNP_RETURN_URL_RESERVATION: http://localhost:8000/api/payments/vnpay/return
     volumes:
       - ./be_restaurant/uploads:/app/uploads
       - ./be_restaurant/logs:/app/logs
@@ -174,7 +185,7 @@ services:
       args:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://98.91.23.236:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8000
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_admin_web
     restart: unless-stopped
@@ -208,7 +219,7 @@ services:
       args:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://98.91.23.236:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8000
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_user_web
     restart: unless-stopped
