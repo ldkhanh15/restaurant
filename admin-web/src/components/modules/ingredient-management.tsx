@@ -379,7 +379,7 @@ export function IngredientManagement({
               <Plus className="mr-2 h-4 w-4" /> Thêm nguyên liệu
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Thêm nguyên liệu mới</DialogTitle>
               <DialogDescription>Nhập thông tin nguyên liệu mới</DialogDescription>
@@ -601,7 +601,7 @@ export function IngredientManagement({
 
       {/* VIEW DIALOG */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chi tiết nguyên liệu</DialogTitle>
           </DialogHeader>
@@ -621,7 +621,7 @@ export function IngredientManagement({
 
       {/* EDIT DIALOG */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Sửa thông tin nguyên liệu</DialogTitle>
           </DialogHeader>
@@ -730,7 +730,7 @@ export function IngredientManagement({
 
       {/* DELETE DIALOG */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Xác nhận xóa</DialogTitle>
             <DialogDescription>

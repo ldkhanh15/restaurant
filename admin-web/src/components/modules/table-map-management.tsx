@@ -438,9 +438,12 @@ export function TableMapManagement({ tables, setTables, areaShape }: TableMapMan
           setIsCreateReservationOpen(open)
           if (!open) setSelectedTableForReservation(null)
         }}
-        onCreateReservation={data =>
-          handleCreateReservation({ ...data, table_id: selectedTableForReservation?.id })
-        }
+        selectedTable={selectedTableForReservation}
+        onSuccess={() => {
+          setIsCreateReservationOpen(false)
+          setSelectedTableForReservation(null)
+          toast.success("Đã gửi thông tin đặt bàn!")
+        }}
       />
     </div>
   )
