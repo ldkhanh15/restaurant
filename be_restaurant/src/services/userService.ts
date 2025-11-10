@@ -2,7 +2,6 @@ import { BaseService } from "./baseService";
 import Employee from "../models/Employee";
 import User from "../models/User";
 import { hashPassword } from "../utils/password";
-import { hash } from "crypto";
 import { AppError } from "../middlewares/errorHandler";
 import { AppConstants } from "../constants/AppConstants";
 
@@ -12,12 +11,18 @@ class UserService extends BaseService<User> {
   }
 
   async create(data: User): Promise<User> {
-    const username = data.username.trim();
+    const username = data.username?.trim();
+    if (!username) {
+      throw new AppError("Username is required", 400);
+    }
     const existingUser = await this.model.findOne({ where: { username } });
     if (existingUser) {
       throw new AppError("User already exists", 409);
     }
-    const email = data.email.trim();
+    const email = data.email?.trim();
+    if (!email) {
+      throw new AppError("Email is required", 400);
+    }
     const existingEmail = await this.model.findOne({ where: { email } });
     if (existingEmail) {
       throw new AppError("Email already exists", 409);

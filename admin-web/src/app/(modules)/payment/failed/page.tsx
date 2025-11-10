@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+// Force dynamic rendering
+export const dynamic = "force-dynamic";
+
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   XCircle,
@@ -14,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export default function PaymentFailedPage() {
+function PaymentFailedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
@@ -164,5 +167,13 @@ export default function PaymentFailedPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function PaymentFailedPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentFailedContent />
+    </Suspense>
   );
 }

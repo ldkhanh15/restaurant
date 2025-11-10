@@ -1,11 +1,6 @@
 # ============================================
-# Docker Compose Configuration for Restaurant System
-# ============================================
-# This file orchestrates all services:
-# - MySQL Database
-# - Backend API (be_restaurant)
-# - Admin Web Frontend (admin-web)
-# - User Web Frontend (user-web)
+# Production Docker Compose Configuration
+# Optimized for AWS EC2 t3.micro (1 vCPU, 1GB RAM)
 # ============================================
 
 # version: "3.8"  # Removed - obsolete in Docker Compose v2
@@ -24,7 +19,6 @@ services:
       MYSQL_USER: ${MYSQL_USER:-restaurant_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-restaurant_password}
       TZ: Asia/Ho_Chi_Minh
-    # No ports exposed - only accessible within Docker network
     volumes:
       - mysql_data:/var/lib/mysql
       - ./be_restaurant/data.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -72,7 +66,7 @@ services:
           cpus: "0.25"
 
   # ============================================
-  # Chatbot Service (Python FastAPI)
+  # Chatbot Service
   # ============================================
   chatbot:
     build:
@@ -82,9 +76,7 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_chatbot
     restart: unless-stopped
-    # No ports exposed - only accessible within Docker network
     environment:
-      # Backend URL using Docker service name
       BE_URL: http://backend:8000/api
       PYTHONUNBUFFERED: 1
     volumes:
@@ -117,7 +109,7 @@ services:
           cpus: "0.1"
 
   # ============================================
-  # Backend API Service (be_restaurant)
+  # Backend API Service
   # ============================================
   backend:
     build:
@@ -132,18 +124,16 @@ services:
     env_file:
       - ./be_restaurant/.env
     environment:
-      # Override DB_HOST to use Docker service name for network communication
       DB_HOST: mysql
       DB_PORT: ${MYSQL_PORT:-3306}
       DB_NAME: ${MYSQL_DATABASE:-restaurant_db}
       DB_USER: ${MYSQL_USER:-restaurant_user}
       DB_PASSWORD: ${MYSQL_PASSWORD:-restaurant_password}
-      # Chatbot URL using Docker service name (must include /api prefix)
       CHATBOT_URL: http://chatbot:7860/api
-      CLIENT_ADMIN_URL: http://localhost:3001
-      CLIENT_USER_URL: http://localhost:3000
-      VNP_RETURN_URL_ORDER: http://localhost:8000/api/payments/vnpay/return
-      VNP_RETURN_URL_RESERVATION: http://localhost:8000/api/payments/vnpay/return
+      CLIENT_ADMIN_URL: ${CLIENT_ADMIN_URL:-https://98.91.23.236:3001}
+      CLIENT_USER_URL: ${CLIENT_USER_URL:-https://98.91.23.236:3000}
+      VNP_RETURN_URL_ORDER: ${VNP_RETURN_URL_ORDER:-https://98.91.23.236:8000/api/payments/vnpay/return}
+      VNP_RETURN_URL_RESERVATION: ${VNP_RETURN_URL_RESERVATION:-https://98.91.23.236:8000/api/payments/vnpay/return}
     volumes:
       - ./be_restaurant/uploads:/app/uploads
       - ./be_restaurant/logs:/app/logs
@@ -164,8 +154,8 @@ services:
         ]
       interval: 30s
       timeout: 10s
-      retries: 3
       start_period: 120s
+      retries: 3
     deploy:
       resources:
         limits:
@@ -183,23 +173,19 @@ services:
       context: ./admin-web
       dockerfile: Dockerfile
       args:
-        # Build args - pass API URL for build-time embedding
-        # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://98.91.23.236:8000}
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_admin_web
     restart: unless-stopped
     ports:
       - "${ADMIN_WEB_PORT:-3001}:3001"
     environment:
-      # Runtime environment variables
       NODE_ENV: production
     networks:
       - app-network
     depends_on:
       backend:
         condition: service_healthy
-    # Health check defined in Dockerfile
     deploy:
       resources:
         limits:
@@ -217,23 +203,19 @@ services:
       context: ./user-web
       dockerfile: Dockerfile
       args:
-        # Build args - pass API URL for build-time embedding
-        # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://98.91.23.236:8000}
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_user_web
     restart: unless-stopped
     ports:
       - "${USER_WEB_PORT:-3000}:3000"
     environment:
-      # Runtime environment variables
       NODE_ENV: production
     networks:
       - app-network
     depends_on:
       backend:
         condition: service_healthy
-    # Health check defined in Dockerfile
     deploy:
       resources:
         limits:
@@ -256,5 +238,4 @@ networks:
 # ============================================
 volumes:
   mysql_data:
-    name: restaurant_mysql_data
     driver: local

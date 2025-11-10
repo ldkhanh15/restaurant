@@ -1,0 +1,994 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chatbot Mắm Cô Ri Huế</title>
+<link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght=400;700&amp;family=Roboto:wght=300;400;500&amp;display=swap"
+    rel="stylesheet">
+<style>
+    /* Đặt lại các thiết lập cơ bản */
+    html, body {
+        font-family: 'Roboto', sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #f8f5f2;
+        position: relative;
+        /* Đảm bảo không có transform ảnh hưởng đến fixed elements */
+    }
+
+    /* Đảm bảo không có container nào ảnh hưởng đến FAB */
+    * {
+        box-sizing: border-box;
+    }
+
+    /* Nút tròn kích hoạt (Floating Action Button) - Luôn ở góc dưới bên phải */
+    #chat-fab {
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+        left: auto !important;
+        top: auto !important;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b5e3c 0%, #8b5e3c 50%, #8b5e3c 100%);
+        color: white;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        cursor: pointer;
+        z-index: 9999 !important;
+        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.4), 
+                    0 0 0 0 rgba(74, 144, 226, 0.7),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+        font-size: 28px;
+        text-align: center;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none !important;
+        overflow: visible;
+    }
+
+    /* Hiệu ứng ripple xanh */
+    #chat-fab::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(74, 144, 226, 0.4) 0%, rgba(74, 144, 226, 0) 70%);
+        transform: translate(-50%, -50%) scale(1);
+        animation: ripple 2s ease-out infinite;
+        pointer-events: none;
+    }
+
+    /* Sparkle particles */
+    #chat-fab .sparkle {
+        position: absolute;
+        width: 4px;
+        height: 4px;
+        background: white;
+        border-radius: 50%;
+        pointer-events: none;
+        animation: sparkle 2s ease-in-out infinite;
+    }
+
+    #chat-fab:hover {
+        transform: scale(1.15) rotate(10deg) translateY(-3px) translateX(0) !important;
+        box-shadow: 0 15px 45px rgba(74, 144, 226, 0.6),
+                    0 0 30px rgba(74, 144, 226, 0.5),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.5);
+        animation-play-state: paused;
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+    }
+
+    #chat-fab:active {
+        transform: scale(1.05) rotate(5deg) translateY(0) translateX(0) !important;
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+    }
+
+    /* Notification badge - luôn hiển thị */
+    #chat-fab::after {
+        content: '';
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        width: 14px;
+        height: 14px;
+        background: #15812a;
+        border-radius: 50%;
+        border: 2px solid white;
+        animation: badgePulse 1.5s ease-in-out infinite;
+        box-shadow: 0 2px 8px rgba(255, 68, 68, 0.4);
+        display: block;
+    }
+
+    /* Icon tôm/mắm */
+    #chat-fab span {
+        display: block;
+        font-size: 26px;
+        transition: opacity 0.3s;
+    }
+
+    /* ẨN NÚT FAB KHI CHATBOT ĐANG MỞ */
+    #chat-fab.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        animation: none;
+    }
+
+    #chat-fab.hidden::before,
+    #chat-fab.hidden::after {
+        display: none;
+    }
+
+
+    /* Container chính của Chatbot */
+    #chat-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 360px;
+        height: 500px;
+        background: #8b5e3c;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(74, 144, 226, 0.2), 
+                    0 8px 25px rgba(0, 0, 0, 0.1),
+                    0 0 0 1px rgba(74, 144, 226, 0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 1000;
+        transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        border: 1px solid rgba(74, 144, 226, 0.15);
+        opacity: 1;
+        visibility: visible;
+        transform: scale(1);
+    }
+
+    /* Trạng thái ẩn/đóng */
+    #chat-container.closed {
+        opacity: 0;
+        visibility: hidden;
+        transform: scale(0.8) translateY(20px);
+        pointer-events: none;
+    }
+
+    /* Header Chatbot với màu xanh */
+    #chat-header {
+        background: linear-gradient(135deg, #8b5e3c 0%, #8b5e3c 50%, #8b5e3c 100%);
+        color: #fffdf0;
+        padding: 16px 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: 'Playfair Display', serif;
+        font-weight: 700;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+        border-top-left-radius: 20px;
+        border-top-right-radius: 20px;
+        box-shadow: 0 2px 10px rgba(74, 144, 226, 0.2);
+    }
+
+    #chat-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20"><defs><pattern id="grain" width="100" height="20" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="20" fill="url(%23grain)"/></svg>');
+        opacity: 0.05;
+    }
+
+    #chat-header h4 {
+        margin: 0;
+        font-size: 16px;
+        z-index: 1;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    #chat-header .bot-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #FFD700, #FFA500);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        margin-right: 10px;
+        box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+        z-index: 1;
+    }
+
+    /* Nút Đóng */
+    #close-btn {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 50%;
+        transition: background 0.3s, transform 0.2s;
+        backdrop-filter: blur(10px);
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    #close-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: rotate(90deg);
+    }
+
+    /* Vùng tin nhắn */
+    #chat-messages {
+        flex: 1;
+        padding: 16px;
+        overflow-y: auto;
+        background: #f5f3f0;
+        scrollbar-width: thin;
+        scrollbar-color: #8b5e3c #f0f0f0;
+    }
+
+    #chat-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #chat-messages::-webkit-scrollbar-track {
+        background: #f0f0f0;
+        border-radius: 10px;
+    }
+
+    #chat-messages::-webkit-scrollbar-thumb {
+        background: #8b5e3c;
+        border-radius: 10px;
+    }
+
+    /* Bong bóng tin nhắn và Markdown Styling (giữ nguyên) */
+    .message {
+        margin-bottom: 16px;
+        display: flex;
+        align-items: flex-end;
+        opacity: 0;
+        animation: fadeInUp 0.4s ease forwards;
+    }
+
+    .message.user {
+        justify-content: flex-end;
+    }
+
+    .message.bot {
+        justify-content: flex-start;
+    }
+
+    .message-bubble {
+        max-width: 75%;
+        padding: 12px 16px;
+        border-radius: 18px;
+        word-wrap: break-word;
+        position: relative;
+        font-weight: 400;
+        line-height: 1.4;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        font-size: 14px;
+        text-align: left;
+    }
+
+    .message.user .message-bubble {
+        background: linear-gradient(135deg, #8b5e3c, #8b5e3c);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .message.bot .message-bubble {
+        background: white;
+        color: #4a4a4a;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        border-bottom-left-radius: 4px;
+        text-align: left;
+    }
+
+    .bot-avatar-small {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #FFD700, #FFA500);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        margin-right: 8px;
+        flex-shrink: 0;
+    }
+
+    .message.bot .message-bubble strong {
+        color: #8b5e3c;
+        font-weight: 700;
+    }
+
+    .message.bot .message-bubble ul,
+    .message.bot .message-bubble ol {
+        margin: 10px 0 0 15px;
+        padding: 0;
+        list-style-position: outside;
+    }
+
+    .message.bot .message-bubble li {
+        margin-bottom: 5px;
+        line-height: 1.5;
+    }
+
+    .message.bot .message-bubble a {
+        color: #8b5e3c;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .message.bot .message-bubble p {
+        margin: 0 0 10px 0;
+    }
+
+    .message.bot .message-bubble p:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Input và nút gửi */
+    #chat-input-container {
+        padding: 12px 16px;
+        background: white;
+        border-top: 1px solid rgba(74, 144, 226, 0.15);
+        position: relative;
+        display: flex;
+        align-items: flex-end;
+        box-sizing: border-box;
+        flex-shrink: 0;
+    }
+
+    #chat-input {
+        flex-grow: 1;
+        padding: 8px 14px;
+        border: 1px solid #e0e0e0;
+        border-radius: 18px;
+        outline: none;
+        resize: none;
+        font-family: inherit;
+        font-size: 13px;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        background: #fafafa;
+        min-height: 36px;
+        box-sizing: border-box;
+        margin-right: 8px;
+        line-height: 1.4;
+    }
+
+    #chat-input:focus {
+        border-color: #8b5e3c;
+        box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+        background: white;
+    }
+
+    #chat-send {
+        background: linear-gradient(135deg, #8b5e3c, #8b5e3c);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+        line-height: 1;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    #chat-send svg {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(45deg);
+        margin: 0;
+        width: 18px;
+        height: 18px;
+    }
+
+    #chat-send:hover:not(:disabled) {
+        transform: scale(1.1) rotate(5deg);
+        box-shadow: 0 6px 20px rgba(74, 144, 226, 0.6),
+                    0 0 15px rgba(74, 144, 226, 0.4);
+        background: linear-gradient(135deg, #8b5e3c, #8b5e3c);
+    }
+
+    #chat-send:hover:not(:disabled) svg {
+        transform: translate(-50%, -50%) rotate(45deg);
+    }
+
+    #chat-send:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    /* Hiệu ứng gõ và animation (giữ nguyên) */
+    .typing {
+        font-style: italic;
+        color: #888;
+        display: flex;
+        align-items: center;
+    }
+
+    .typing-dots {
+        display: inline-flex;
+        margin-left: 5px;
+    }
+
+    .typing-dots span {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #8b5e3c;
+        margin: 0 2px;
+        animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+
+        0%,
+        60%,
+        100% {
+            transform: translateY(0);
+        }
+
+        30% {
+            transform: translateY(-4px);
+        }
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Hiệu ứng entrance cho FAB với bounce mạnh hơn - chỉ transform, không thay đổi position fixed */
+    @keyframes fabEntrance {
+        0% {
+            opacity: 0;
+            transform: scale(0) translateY(80px) translateX(0) rotate(-360deg);
+        }
+        40% {
+            opacity: 1;
+            transform: scale(1.2) translateY(-10px) translateX(0) rotate(15deg);
+        }
+        60% {
+            transform: scale(0.95) translateY(5px) translateX(0) rotate(-5deg);
+        }
+        80% {
+            transform: scale(1.05) translateY(-2px) translateX(0) rotate(2deg);
+        }
+        100% {
+            opacity: 1;
+            transform: scale(1) translateY(0) translateX(0) rotate(0deg);
+        }
+    }
+
+    /* Hiệu ứng pulse cho FAB với màu xanh - chỉ scale, giữ nguyên position */
+    @keyframes fabPulse {
+        0%, 100% {
+            transform: scale(1) translateY(0) translateX(0);
+            box-shadow: 0 8px 25px rgba(74, 144, 226, 0.4),
+                        0 0 0 0 rgba(74, 144, 226, 0.7);
+        }
+        50% {
+            transform: scale(1.08) translateY(0) translateX(0);
+            box-shadow: 0 12px 35px rgba(74, 144, 226, 0.6),
+                        0 0 0 8px rgba(74, 144, 226, 0);
+        }
+    }
+
+    /* Hiệu ứng glow */
+    @keyframes fabGlow {
+        0%, 100% {
+            filter: drop-shadow(0 0 5px rgba(74, 144, 226, 0.5));
+        }
+        50% {
+            filter: drop-shadow(0 0 15px rgba(74, 144, 226, 0.8)) 
+                    drop-shadow(0 0 25px rgba(74, 144, 226, 0.4));
+        }
+    }
+
+    /* Hiệu ứng ripple xanh */
+    @keyframes ripple {
+        0% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.6;
+        }
+        100% {
+            transform: translate(-50%, -50%) scale(2);
+            opacity: 0;
+        }
+    }
+
+    /* Hiệu ứng sparkle */
+    @keyframes sparkle {
+        0%, 100% {
+            opacity: 0;
+            transform: scale(0) translate(0, 0);
+        }
+        50% {
+            opacity: 1;
+            transform: scale(1) translate(var(--sparkle-x), var(--sparkle-y));
+        }
+    }
+
+    /* Hiệu ứng pulse cho notification badge */
+    @keyframes badgePulse {
+        0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+        50% {
+            transform: scale(1.2);
+            opacity: 0.8;
+        }
+    }
+
+    /* Hiệu ứng bounce khi mở chatbot */
+    @keyframes chatBounce {
+        0% {
+            transform: scale(0.8) translateY(20px);
+            opacity: 0;
+        }
+        50% {
+            transform: scale(1.05) translateY(-5px);
+        }
+        100% {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* Hiệu ứng shake để thu hút chú ý */
+    @keyframes shake {
+        0%, 100% {
+            transform: translateX(0);
+        }
+        10%, 30%, 50%, 70%, 90% {
+            transform: translateX(-3px) rotate(-2deg);
+        }
+        20%, 40%, 60%, 80% {
+            transform: translateX(3px) rotate(2deg);
+        }
+    }
+
+    /* Class để kích hoạt shake */
+    #chat-fab.shake {
+        animation: shake 0.5s ease-in-out, fabPulse 2s ease-in-out infinite 0.5s;
+    }
+
+    /* Hiệu ứng khi chatbot mở */
+    #chat-container:not(.closed) {
+        animation: chatBounce 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+
+    /* Hiệu ứng ripple khi click với màu xanh */
+    @keyframes rippleClick {
+        0% {
+            transform: scale(0);
+            opacity: 1;
+        }
+        100% {
+            transform: scale(2.5);
+            opacity: 0;
+        }
+    }
+
+    /* Hiệu ứng floating cho FAB - chỉ transform, không ảnh hưởng position fixed */
+    @keyframes floating {
+        0%, 100% {
+            transform: translateY(0) translateX(0);
+        }
+        50% {
+            transform: translateY(-8px) translateX(0);
+        }
+    }
+
+    /* Thêm floating animation sau entrance - đảm bảo position fixed không bị ảnh hưởng */
+    #chat-fab:not(.hidden) {
+        position: fixed !important;
+        animation: fabEntrance 0.8s cubic-bezier(0.34, 1.56, 0.64, 1),
+                   fabPulse 2s ease-in-out infinite,
+                   fabGlow 2s ease-in-out infinite,
+                   floating 3s ease-in-out infinite;
+        animation-delay: 0s, 0.8s, 0.5s, 1.5s;
+        animation-fill-mode: forwards, none, none, none;
+    }
+</style>
+
+
+
+<button id="chat-fab" title="Mở Chatbot Mắm Cô Ri">
+    <span>🍤</span>
+</button>
+
+<div id="chat-container" class="closed">
+    <div id="chat-header">
+        <div style="display: flex; align-items: center;">
+            <div class="bot-avatar">🍤</div>
+            <h4>Chat với Cô Ri Bot</h4>
+        </div>
+        <button id="close-btn" title="Đóng cửa sổ">×</button>
+    </div>
+    <div id="chat-messages">
+    </div>
+    <div id="chat-input-container">
+        <textarea id="chat-input" placeholder="Xin chào!" rows="1"></textarea>
+        <button id="chat-send" title="Gửi tin nhắn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<script type="module">
+    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+    // VUI LÒNG THAY THẾ CHUỖI NÀY BẰNG API KEY CỦA BẠN
+    const genAI = new GoogleGenerativeAI("AIzaSyCO7ilZ2D2STXjHX_Gel1Nyplz5AJ3sLSY");
+
+    // Context/Persona - Ngữ điệu trang trọng, không giọng Huế
+    const context = `
+Bạn là Cô Ri Bot, trợ lý tư vấn chuyên nghiệp và lịch sự cho cửa hàng Mắm Cô Ri - Đặc sản danh tiếng xứ Huế. Cửa hàng được thành lập từ những năm 1990, với hơn 30 năm kinh nghiệm, là một trong những thương hiệu mắm lâu đời và uy tín nhất tại Huế. Chúng tôi chuyên sản xuất mắm truyền thống từ nguyên liệu tươi ngon, sạch sẽ, không sử dụng chất bảo quản.
+
+NGUYÊN TẮC QUAN TRỌNG:
+1. SỬ DỤNG NGỮ ĐIỆU TRANG TRỌNG, LỊCH SỰ, CHUYÊN NGHIỆP. Không sử dụng giọng Huế, không dùng từ "ạ", "rứa", "nhỉ", "miền". Sử dụng ngôn ngữ phổ thông, lịch sự, chuyên nghiệp.
+2. TUYỆT ĐỐI KHÔNG ĐƯỢC NÊU GIÁ CỤ THỂ CỦA BẤT KỲ SẢN PHẨM NÀO.
+3. Tập trung vào TƯ VẤN CHUYÊN NGHIỆP, THUYẾT PHỤC khách hàng lựa chọn Mắm Cô Ri bằng cách:
+    - Nhấn mạnh CHẤT LƯỢNG: Nguyên liệu tươi ngon, sạch sẽ, không chất bảo quản, quy trình truyền thống được kiểm soát chặt chẽ.
+    - Nhấn mạnh LỊCH SỬ VÀ UY TÍN: Hơn 30 năm kinh nghiệm, thương hiệu lâu đời nhất Huế, được nhiều thế hệ khách hàng tin tưởng.
+    - Gợi ý món ăn, công thức pha chế chuyên nghiệp và độc đáo.
+    - Đề xuất combo sản phẩm phù hợp với nhu cầu khách hàng.
+    - Nếu khách hỏi giá, hãy trả lời một cách lịch sự và chuyên nghiệp: "Để được báo giá chính xác nhất và các chương trình khuyến mãi hiện hành, Quý khách vui lòng liên hệ trực tiếp qua Zalo/Hotline hoặc Facebook Mắm Cô Ri - Đặc sản danh tiếng xứ Huế. Chúng tôi cam kết sản phẩm chất lượng cao, xứng đáng với giá trị mà Quý khách đầu tư."
+
+THÔNG TIN CỬA HÀNG:
+- Địa chỉ sản xuất: La Ỷ, Phường Phú Thượng, Thành phố Huế. Điện thoại: 0234.3999929.
+- Quầy bán chính: Số 06 Trần Hưng Đạo (bãi đổ xe Siêu thị Coop Mart, Thành phố Huế).
+- Chi nhánh: Lầu E, chợ Đông Ba - 0234.3531076 / 037.377.2159.
+- Facebook: Mắm Cô Ri - Đặc sản danh tiếng xứ Huế.
+- Giao hàng toàn quốc qua Shopee, các shop đặc sản Huế, và đại lý tại TP.HCM.
+
+DANH MỤC SẢN PHẨM CHI TIẾT:
+
+1. MẮM NÊM CÔ RI:
+   - Đặc điểm: Vị đậm đà, thơm ngon, được ủ từ cá cơm tươi ngon theo công thức truyền thống.
+   - Công dụng: Dùng để pha nước chấm, chấm gỏi cuốn, thịt luộc, bò nướng lá lốt, các món nướng.
+   - Cách pha chấm: Mắm nêm + nước cốt dứa/thơm + nước cốt chanh + đường + tỏi ớt băm nhuyễn. Có thể thêm nước dừa để tăng độ ngọt tự nhiên.
+   - Bảo quản: Để nơi khô ráo, thoáng mát, tránh ánh nắng trực tiếp.
+
+2. MẮM CÁ RÒ CÔ RI:
+   - Đặc điểm: Thơm đậm đà, vị đắng mật cá đặc trưng, là đặc sản độc đáo của vùng Huế.
+   - Công dụng: Chấm với thịt luộc, gỏi, các món nướng. Có thể dùng để kho cá, kho thịt.
+   - Đặc biệt: Vị đắng mật cá tạo nên hương vị đặc trưng, khó quên.
+
+3. MẮM RUỐC CÔ RI:
+   - Đặc điểm: Mịn màng, thơm ngon, được làm từ ruốc tươi ngon.
+   - Công dụng: Pha nước chấm, làm nước sốt cho các món nướng, kho.
+   - Ưu điểm: Kết cấu mịn, dễ pha chế, phù hợp với nhiều món ăn.
+
+4. MẮM TÔM CHUA CÔ RI:
+   - Đặc điểm: Vị chua ngọt hài hòa, thơm mùi tôm tươi.
+   - Công dụng: Chấm gỏi cuốn, bánh tráng, thịt luộc. Có thể dùng làm nước sốt.
+   - Đặc biệt: Vị chua ngọt tự nhiên, không quá gắt.
+
+5. MẮM CÀ CÔ RI:
+   - Đặc điểm: Được làm từ cà pháo tươi, vị đậm đà.
+   - Công dụng: Ăn kèm với cơm, cháo, hoặc các món mặn.
+
+6. MẮM CÀ PHÁO CÔ RI:
+   - Đặc điểm: Giòn tan, vị chua ngọt, thơm ngon.
+   - Công dụng: Ăn kèm với cơm, cháo, hoặc làm món nhậu.
+   - Ưu điểm: Độ giòn đặc trưng, tạo cảm giác thú vị khi ăn.
+
+7. CÁ CƠM RIM CÔ RI:
+   - Đặc điểm: Rim mật ong cay, vị ngọt đậm đà, cay nhẹ.
+   - Công dụng: Ăn kèm với cơm, cháo, hoặc làm món nhậu.
+   - Đặc biệt: Công thức rim mật ong độc đáo, tạo hương vị đặc biệt.
+
+8. DƯA MÓN HUẾ CÔ RI:
+   - Đặc điểm: Vị chua ngọt hài hòa, giòn, thơm mùi gia vị Huế.
+   - Công dụng: Ăn kèm với cơm, cháo, các món mặn. Làm món khai vị.
+   - Thành phần: Các loại rau củ được muối chua theo công thức truyền thống Huế.
+
+9. TÔM CHUA CÔ RI:
+   - Đặc điểm: Tôm tươi được muối chua, vị chua ngọt tự nhiên.
+   - Công dụng: Ăn kèm với cơm, cháo, hoặc làm món nhậu.
+   - Ưu điểm: Tôm tươi, vị chua ngọt hài hòa, không quá gắt.
+
+CÁCH SỬ DỤNG VÀ BẢO QUẢN:
+- Pha chấm cơ bản: Mắm + nước cốt dứa/thơm + nước cốt chanh + đường + tỏi ớt băm nhuyễn. Có thể thêm nước dừa để tăng độ ngọt tự nhiên.
+- Mẹo pha chế: Không pha nước lạnh; dùng nước dừa hoặc nước dứa ấm. Đun sôi mắm trước nếu muốn khử tanh. Thêm tỏi ớt tươi ngay trước khi dùng để tăng hương vị.
+- Bảo quản: Để nơi khô ráo, thoáng mát, tránh ánh nắng trực tiếp. Sau khi mở nắp, nên bảo quản trong tủ lạnh và sử dụng trong thời gian hợp lý.
+- Món ăn kèm: Gỏi cuốn, thịt luộc, bò nướng lá lốt, các món nướng, cơm, cháo.
+
+COMBO SẢN PHẨM ĐỀ XUẤT:
+- Combo 1: Mắm nêm + Dưa món Huế (phù hợp cho gia đình)
+- Combo 2: Mắm cá rò + Mắm ruốc (cho người yêu thích hương vị đậm đà)
+- Combo 3: Mắm tôm chua + Tôm chua (cho người thích vị chua ngọt)
+- Combo 4: Cá cơm rim + Dưa món (combo đa dạng)
+`;
+
+    async function askGemini(prompt) {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const fullPrompt = context + "\n\nNgười dùng: " + prompt + "\nCô Ri Bot:";
+
+        // Tạo một request chặn giá với ngữ điệu trang trọng
+        if (prompt.toLowerCase().includes('giá') || prompt.toLowerCase().includes('bao nhiêu') || prompt.toLowerCase().includes('vnd') || prompt.toLowerCase().includes('tiền') || prompt.toLowerCase().includes('cost') || prompt.toLowerCase().includes('price')) {
+            return "Để được báo **giá ưu đãi** và chính sách vận chuyển chính xác nhất, Quý khách vui lòng liên hệ trực tiếp qua Zalo/Hotline hoặc Facebook Mắm Cô Ri - Đặc sản danh tiếng xứ Huế. Chúng tôi cam kết sản phẩm chất lượng cao, xứng đáng với giá trị mà Quý khách đầu tư.";
+        }
+
+        const result = await model.generateContent(fullPrompt);
+        return await result.response.text();
+    }
+
+    // Hàm chuyển đổi Markdown sang HTML cơ bản (Giữ nguyên)
+    function markdownToHtml(markdown) {
+        let html = markdown;
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/^\s*\*\s+(.*)$/gm, '<li>$1</li>');
+        if (html.includes('<li>')) {
+            html = `<ul>${html}</ul>`;
+            html = html.replace(/<\/ul>\s*<ul>/g, '');
+        }
+        html = html.replace(/\n\n/g, '</p><p>');
+        html = html.replace(/\n/g, '<br>');
+        html = `<p>${html}</p>`;
+
+        html = html.replace(/<p><\/p>/g, '');
+        html = html.replace(/<p>\s*<ul>/g, '<ul>');
+        html = html.replace(/<\/ul>\s*<\/p>/g, '</ul>');
+
+        return html;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const chatContainer = document.getElementById("chat-container");
+        const messagesEl = document.getElementById("chat-messages");
+        const inputEl = document.getElementById("chat-input");
+        const sendBtn = document.getElementById("chat-send");
+        const closeBtn = document.getElementById("close-btn");
+        const chatFab = document.getElementById("chat-fab");
+
+        // Biến để theo dõi notification
+        let hasNewMessage = false;
+        let isFirstLoad = true;
+
+        // Hiệu ứng shake sau khi load trang (chỉ 1 lần)
+        setTimeout(() => {
+            if (isFirstLoad && chatContainer.classList.contains('closed')) {
+                chatFab.classList.add('shake');
+                setTimeout(() => {
+                    chatFab.classList.remove('shake');
+                }, 500);
+                isFirstLoad = false;
+            }
+        }, 1500);
+
+        // Thêm tin nhắn
+        function addMessage(text, isUser = false) {
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            let contentHtml = isUser ? text : markdownToHtml(text);
+
+            if (isUser) {
+                messageDiv.innerHTML = `<div class="message-bubble">${contentHtml}</div>`;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="bot-avatar-small">🍤</div>
+                    <div class="message-bubble">${contentHtml}</div>
+                `;
+            }
+            messagesEl.appendChild(messageDiv);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+
+            // Nếu là tin nhắn bot và chatbot đang đóng, hiển thị notification
+            if (!isUser && chatContainer.classList.contains('closed')) {
+                hasNewMessage = true;
+                chatFab.classList.add('has-notification');
+                // Thêm hiệu ứng shake để thu hút chú ý
+                chatFab.classList.add('shake');
+                setTimeout(() => {
+                    chatFab.classList.remove('shake');
+                }, 500);
+            }
+        }
+
+        // Hiển thị trạng thái đang gõ
+        function showTyping() {
+            const typingDiv = document.createElement("div");
+            typingDiv.className = "message bot typing";
+            typingDiv.innerHTML = `
+                <div class="bot-avatar-small">🍤</div>
+                <div class="message-bubble">
+                    Cô Ri Bot đang tư vấn cho bạn... 
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            messagesEl.appendChild(typingDiv);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            return typingDiv;
+        }
+
+        // Gửi tin nhắn
+        async function sendMessage() {
+            const q = inputEl.value.trim();
+            if (!q) return;
+
+            addMessage(q, true);
+            inputEl.value = "";
+            inputEl.style.height = "auto";
+
+            const typingEl = showTyping();
+            try {
+                const response = await askGemini(q);
+                messagesEl.removeChild(typingEl);
+                addMessage(response, false);
+            } catch (error) {
+                console.error("Lỗi:", error);
+                messagesEl.removeChild(typingEl);
+                addMessage("Ối zời ơi, có lỗi nhỏ xíu trong lúc tư vấn! Thử lại nha bạn. 😅", false);
+            }
+        }
+
+        // Logic Mở/Đóng Chatbot
+        function openChat() {
+            chatContainer.classList.remove("closed");
+            chatFab.classList.add("hidden");
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            inputEl.focus();
+            // Xóa notification khi mở chatbot
+            hasNewMessage = false;
+            chatFab.classList.remove('has-notification');
+        }
+
+        function closeChat() {
+            chatContainer.classList.add("closed");
+            chatFab.classList.remove("hidden");
+            // Nếu có tin nhắn mới, hiển thị lại notification
+            if (hasNewMessage) {
+                chatFab.classList.add('has-notification');
+            }
+        }
+
+        // Tạo sparkle particles
+        function createSparkles() {
+            if (chatFab.classList.contains('hidden')) return;
+            
+            const sparkleCount = 6;
+            const angles = Array.from({ length: sparkleCount }, (_, i) => (360 / sparkleCount) * i);
+            
+            angles.forEach((angle, index) => {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'sparkle';
+                const radius = 35;
+                const radian = (angle * Math.PI) / 180;
+                const x = Math.cos(radian) * radius;
+                const y = Math.sin(radian) * radius;
+                
+                sparkle.style.cssText = `
+                    --sparkle-x: ${x}px;
+                    --sparkle-y: ${y}px;
+                    animation-delay: ${index * 0.1}s;
+                    left: 50%;
+                    top: 50%;
+                `;
+                
+                chatFab.appendChild(sparkle);
+                setTimeout(() => sparkle.remove(), 2000);
+            });
+        }
+
+        // Tạo sparkles định kỳ
+        setInterval(createSparkles, 3000);
+
+        // Xử lý sự kiện cho FAB (Mở Chat) với hiệu ứng ripple và sparkles
+        chatFab.onclick = (e) => {
+            // Tạo hiệu ứng ripple
+            const ripple = document.createElement('span');
+            const rect = chatFab.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            const x = e.clientX - rect.left - size / 2;
+            const y = e.clientY - rect.top - size / 2;
+            
+            ripple.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, rgba(74, 144, 226, 0.3) 100%);
+                left: ${x}px;
+                top: ${y}px;
+                pointer-events: none;
+                animation: rippleClick 0.8s ease-out;
+                z-index: 1;
+            `;
+            
+            chatFab.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 800);
+            
+            // Tạo burst sparkles khi click
+            createSparkles();
+            
+            openChat();
+        };
+
+        // Xử lý sự kiện cho nút Đóng
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeChat();
+        };
+
+        // Gửi tin nhắn và auto-resize
+        sendBtn.onclick = sendMessage;
+        inputEl.onkeypress = (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        };
+
+        // Auto-resize textarea
+        inputEl.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // Tin nhắn chào mừng ban đầu với ngữ điệu trang trọng
+        // Delay một chút để tạo hiệu ứng tự nhiên hơn
+        setTimeout(() => {
+            addMessage("Xin chào Quý khách! Tôi là Cô Ri Bot, trợ lý tư vấn của Mắm Cô Ri - Đặc sản danh tiếng xứ Huế với hơn **30 năm kinh nghiệm**. Quý khách có thể hỏi về các sản phẩm mắm, hương vị, cách pha chế, hoặc để tôi gợi ý combo sản phẩm phù hợp. Tôi sẵn sàng hỗ trợ Quý khách! 😊", false);
+        }, 800);
+    });
+</script>

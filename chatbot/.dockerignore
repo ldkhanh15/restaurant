@@ -1,0 +1,45 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Logs
+*.log
+logs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+README.md
+
+# Test files
+test_*.py
+*_test.py
+
+# Gradio cache (not needed for API-only mode)
+gradio_cached_examples/
+flagged/
+
+# Local env files (use Docker env vars instead)
+.env
+.env.local
+

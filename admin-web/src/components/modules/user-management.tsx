@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, Plus, Edit, Trash2, Eye, Filter } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 import { userRoles } from "@/lib/constants";
 
 interface User {
