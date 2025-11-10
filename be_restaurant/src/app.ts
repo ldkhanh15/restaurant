@@ -282,7 +282,7 @@ app.use("/api/attendance", attendanceLogRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/blog", blogPostRoutes);
+app.use("/api/blogs", blogPostRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/recommendations", userBehaviorRoutes);
