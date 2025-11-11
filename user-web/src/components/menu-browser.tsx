@@ -39,6 +39,7 @@ import userBehaviorService, {
 } from "@/services/userBehaviorService";
 import categoryService from "@/services/categoryService";
 import { constructFromSymbol } from "date-fns/constants";
+import { useAuth } from "@/lib/auth";
 
 interface DishAttributes {
   id: string;
@@ -101,6 +102,7 @@ export default function MenuBrowser() {
   const [filters, setFilters] = useState<Filters>({});
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showOrderPlacement, setShowOrderPlacement] = useState(false);
+  const { user } = useAuth();
 
   // === TÍNH TOÁN PHÂN TRANG ===
   const totalPages = useMemo(() => {
@@ -116,6 +118,19 @@ export default function MenuBrowser() {
     //add behavior of usser when searching dish
     if (userBehavior) {
       await userBehaviorService.addBehavior(userBehavior);
+    }
+  };
+
+  const handleClickDish = (dishId: string) => {
+    router.push(`/dishes/${dishId}`);
+
+    if (user) {
+      
+      addUserBehavior({
+        user_id: user.id,
+        item_id: dishId,
+        action_type: "CLICK",
+      });
     }
   };
 
@@ -173,9 +188,9 @@ export default function MenuBrowser() {
       const res = await dishService.getAll(params);
 
       //add behavior of usser when searching dish
-      if (filters.search) {
+      if (filters.search && user) {
         await addUserBehavior({
-          user_id: "c10a35d6-55e7-4fc7-95c7-5fe517f568d7",
+          user_id: user.id,
           item_id: "",
           action_type: "SEARCH",
           search_query: filters.search,
@@ -702,9 +717,9 @@ export default function MenuBrowser() {
                                 variant="outline"
                                 size="sm"
                                 className="border-accent/20 hover:bg-accent/10"
-                                onClick={() =>
-                                  router.push(`/dishes/${dish.id}`)
-                                }
+                                onClick={() => {
+                                  handleClickDish(dish.id);
+                                }}
                               >
                                 <Eye className="w-4 h-4 mr-2" />
                                 Chi Tiết
