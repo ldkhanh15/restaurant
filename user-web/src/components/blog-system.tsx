@@ -34,11 +34,10 @@ import blogService from "@/services/blogService";
 
 const categories = [
   { id: "all", name: "Tất Cả" },
-  { id: "Kỹ Thuật Nấu Ăn", name: "Kỹ Thuật Nấu Ăn" },
-  { id: "Menu Mới", name: "Menu Mới" },
-  { id: "Thiết Kế", name: "Thiết Kế" },
-  { id: "Đồ Uống", name: "Đồ Uống" },
-  { id: "Nguyên Liệu", name: "Nguyên Liệu" },
+  { id: "Công thức", name: "Công thức" },
+  { id: "Thực đơn", name: "Thực đơn" },
+  { id: "Hướng dẫn", name: "Hướng dẫn" },
+  { id: "Tin tức", name: "Tin tức" },
 ];
 
 // Pagination Controls Component
@@ -76,19 +75,31 @@ const PaginationControls = ({
       <div className="flex items-center gap-2">
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
           // Show first page, last page, current page and pages around current page
-          const shouldShow = 
+          const shouldShow =
             page === 1 ||
             page === totalPages ||
             Math.abs(page - currentPage) <= 1;
 
           if (!shouldShow && page === 2 && currentPage > 4) {
-            return <span key={page} className="text-muted-foreground">...</span>;
+            return (
+              <span key={page} className="text-muted-foreground">
+                ...
+              </span>
+            );
           }
-          
-          if (!shouldShow && page === totalPages - 1 && currentPage < totalPages - 3) {
-            return <span key={page} className="text-muted-foreground">...</span>;
+
+          if (
+            !shouldShow &&
+            page === totalPages - 1 &&
+            currentPage < totalPages - 3
+          ) {
+            return (
+              <span key={page} className="text-muted-foreground">
+                ...
+              </span>
+            );
           }
-          
+
           if (!shouldShow) return null;
 
           return (
@@ -200,13 +211,20 @@ const BlogCard = ({
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <User className="h-4 w-4" />
-                <span>{post.author?.name || post.author?.full_name || post.author?.username || "Ẩn danh"}</span>
+                <span>
+                  {post.author?.name ||
+                    post.author?.full_name ||
+                    post.author?.username ||
+                    "Ẩn danh"}
+                </span>
               </div>
               {post.published_at && (
                 <div className="flex items-center gap-1.5">
                   <Calendar className="h-4 w-4" />
                   <span>
-                    {format(new Date(post.published_at), "dd/MM/yyyy", { locale: vi })}
+                    {format(new Date(post.published_at), "dd/MM/yyyy", {
+                      locale: vi,
+                    })}
                   </span>
                 </div>
               )}
@@ -230,14 +248,13 @@ const BlogCard = ({
 
 export default function BlogSystem() {
   const router = useRouter();
-  const [blogs, setBlogs] = useState<BlogPost[]>([]);
-  const [allBlogs, setAllBlogs] = useState<BlogPost[]>([]); // Store all blogs for counting
+  const [allBlogs, setAllBlogs] = useState<BlogPost[]>([]); // Store all blogs
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"published_at">("published_at");
-  
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
@@ -246,120 +263,110 @@ export default function BlogSystem() {
   const fetchAllBlogsForCounting = async () => {
     try {
       const response = await blogService.getAll({
-        status: 'published',
-        limit: 1000 // Get all for counting
+        status: "published",
+        limit: 10, // Get all for counting
       });
       const data = response.data?.data || response.data || [];
       setAllBlogs(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching blogs for counting:', err);
+      console.error("Error fetching blogs for counting:", err);
       setAllBlogs([]);
     }
   };
 
-  // Fetch blogs from API with filters
-  const fetchBlogs = async () => {
+  // Fetch all blogs once
+  const fetchAllBlogs = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      let response;
-      
-      // If there's a search query, use search API
-      if (searchQuery.trim()) {
-        response = await blogService.search(searchQuery.trim());
-      } 
-      // If specific category is selected, use category API
-      else if (selectedCategory !== "all") {
-        response = await blogService.getByCategory(selectedCategory);
-      }
-      // Otherwise, get all published blogs
-      else {
-        response = await blogService.getAll({
-          status: 'published',
-          limit: 100
-        });
-      }
-      
+
+      const response = await blogService.getAll({
+        status: "published",
+        limit: 10, // Get all blogs
+      });
+
       // Extract data from response
       const data = response.data?.data || response.data || [];
-      setBlogs(Array.isArray(data) ? data : []);
+      setAllBlogs(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching blogs:', err);
-      setError(err instanceof Error ? err.message : 'Không thể tải bài viết');
-      setBlogs([]); // Set empty array on error
+      console.error("Error fetching blogs:", err);
+      setError(err instanceof Error ? err.message : "Không thể tải bài viết");
+      setAllBlogs([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial load: fetch all blogs for counting
+  // Initial load: fetch all blogs
   useEffect(() => {
+    fetchAllBlogs();
     fetchAllBlogsForCounting();
   }, []);
 
-  // Fetch data when filters change
+  // Reset page when filters change
   useEffect(() => {
-    setCurrentPage(1); // Reset to page 1 when category changes
-    fetchBlogs();
-  }, [selectedCategory]);
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery]);
 
-  // Debounce search query to avoid too many API calls
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      // If search is empty, fetch regular filtered data
-      fetchBlogs();
-      return;
+  // Client-side filtering based on search and category
+  const filteredBlogs = useMemo(() => {
+    let filtered = [...allBlogs];
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((blog: BlogPost) =>
+        blog.title?.toLowerCase().includes(query)
+      );
     }
 
-    setCurrentPage(1); // Reset to page 1 when search changes
+    // Filter by category
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter(
+        (blog: BlogPost) => blog.category === selectedCategory
+      );
+    }
 
-    const timeoutId = setTimeout(() => {
-      fetchBlogs();
-    }, 500); // 500ms delay
+    // Filter by status
+    filtered = filtered.filter((blog: BlogPost) => blog.status === "published");
 
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
-
-  // Find featured post (most recent published post)
-  const featuredPost = useMemo(() => {
-    if (blogs.length === 0) return null;
-
-    // Use the most recent published post as featured
-    const publishedBlogs = blogs.filter(blog => blog.status === "published");
-    if (publishedBlogs.length === 0) return null;
-
-    return publishedBlogs.reduce((latest, current) => {
-      if (!latest.published_at) return current;
-      if (!current.published_at) return latest;
-      return new Date(current.published_at) > new Date(latest.published_at) ? current : latest;
-    });
-  }, [blogs]);
-
-  // Sort blogs (since filtering is done by API)
-  const filteredBlogs = useMemo(() => {
-    let filtered = [...blogs];
-
-    // Ensure only published blogs are shown
-    filtered = filtered.filter(blog => blog.status === "published");
-
-    // Sort blogs
+    // Sort blogs by published_at (newest first)
     filtered.sort((a, b) => {
-      // Only sort by published_at (newest first)
       if (!a.published_at || !b.published_at) return 0;
-      return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+      return (
+        new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+      );
     });
 
     return filtered;
-  }, [blogs, sortBy]);
+  }, [allBlogs, searchQuery, selectedCategory, sortBy]);
+
+  // Find featured post (most recent published post)
+  const featuredPost = useMemo(() => {
+    if (filteredBlogs.length === 0 || searchQuery ) return null;
+
+    // Use the most recent published post as featured
+    return filteredBlogs.reduce((latest: BlogPost, current: BlogPost) => {
+      if (!latest.published_at) return current;
+      if (!current.published_at) return latest;
+      return new Date(current.published_at) > new Date(latest.published_at)
+        ? current
+        : latest;
+    });
+  }, [filteredBlogs]);
 
   // Separate featured and regular posts
-  const regularBlogs = filteredBlogs.filter(blog => blog.id !== featuredPost?.id);
+  const regularBlogs = filteredBlogs.filter(
+    (blog: BlogPost) => blog.id !== featuredPost?.id
+  );
 
   // Pagination calculations
   const totalPages = Math.ceil(regularBlogs.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedBlogs = regularBlogs.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedBlogs = regularBlogs.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
   const handlePostClick = (postId: string) => {
     console.log("Navigating to blog detail with postId:", postId);
@@ -371,7 +378,9 @@ export default function BlogSystem() {
       <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-accent" />
-          <p className="text-muted-foreground font-serif">Đang tải bài viết...</p>
+          <p className="text-muted-foreground font-serif">
+            Đang tải bài viết...
+          </p>
         </div>
       </div>
     );
@@ -382,22 +391,27 @@ export default function BlogSystem() {
       <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="h-8 w-8 mx-auto mb-4 text-destructive" />
-          <p className="text-destructive font-serif mb-4">Không thể tải bài viết</p>
+          <p className="text-destructive font-serif mb-4">
+            Không thể tải bài viết
+          </p>
           <p className="text-muted-foreground text-sm mb-4">{error}</p>
           <div className="space-x-4">
-            <Button onClick={() => {
-              setError(null);
-              fetchBlogs();
-              fetchAllBlogsForCounting();
-            }} className="mt-4">
+            <Button
+              onClick={() => {
+                setError(null);
+                fetchAllBlogs();
+                fetchAllBlogsForCounting();
+              }}
+              className="mt-4"
+            >
               Thử lại
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 setSearchQuery("");
                 setSelectedCategory("all");
                 setError(null);
-              }} 
+              }}
               variant="outline"
             >
               Đặt lại bộ lọc
@@ -448,9 +462,10 @@ export default function BlogSystem() {
           {/* Category Pills */}
           <div className="flex flex-wrap gap-2">
             {categories.map((category) => {
-              const count = category.id === "all"
-                ? allBlogs.length
-                : allBlogs.filter(b => b.category === category.id).length;
+              const count =
+                category.id === "all"
+                  ? allBlogs.length
+                  : allBlogs.filter((b) => b.category === category.id).length;
 
               return (
                 <motion.div
@@ -528,7 +543,7 @@ export default function BlogSystem() {
                   />
                 ))}
               </div>
-              
+
               {/* Pagination Controls */}
               <PaginationControls
                 currentPage={currentPage}
