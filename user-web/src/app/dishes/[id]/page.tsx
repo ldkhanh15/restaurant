@@ -7,13 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Star,
-  ShoppingCart,
-  ArrowLeft,
-  Info,
-  Leaf,
-} from "lucide-react";
+import { Star, ShoppingCart, ArrowLeft, Info, Leaf, User } from "lucide-react";
 import { dishService, type Dish } from "@/services/dishService";
 import Image from "next/image";
 import {
@@ -26,6 +20,9 @@ import {
   buttonVariants,
   viewportOptions,
 } from "@/lib/motion-variants";
+import { reviewService, type Review } from "@/services/reviewService";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 
 export default function DishDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -33,7 +30,9 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
   const [quantity, setQuantity] = useState(1);
   const [dish, setDish] = useState<Dish | null>(null);
   const [similarDishes, setSimilarDishes] = useState<Dish[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,17 +45,47 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
 
         // Fetch similar dishes by category
         if (dishData.category_id) {
-          const similarResponse = await dishService.getByCategory(dishData.category_id);
+          const similarResponse = await dishService.getByCategory(
+            dishData.category_id
+          );
           const filtered = similarResponse.data
             .filter((d: Dish) => d.id !== id && d.active && !d.deleted_at)
             .slice(0, 4);
           setSimilarDishes(filtered);
         }
+
+        // Fetch reviews for this dish
+        await fetchReviews();
       } catch (err) {
         console.error("Error fetching dish:", err);
         setError("Không thể tải thông tin món ăn");
       } finally {
         setLoading(false);
+      }
+    };
+
+    const fetchReviews = async () => {
+      try {
+        setReviewsLoading(true);
+        const reviewResponse = await reviewService.getReviewsByDishId(id);
+        const reviewData = reviewResponse.data || [];
+        // Filter only dish reviews for this specific dish
+        const dishReviews = Array.isArray(reviewData) 
+          ? reviewData
+              .filter((review: Review) => review.type === 'dish' && review.dish_id === id)
+              .sort((a, b) => {
+                // Sort by created_at, newest first
+                const dateA = new Date(a.created_at || 0);
+                const dateB = new Date(b.created_at || 0);
+                return dateB.getTime() - dateA.getTime();
+              })
+          : [];
+        setReviews(dishReviews);
+      } catch (err) {
+        console.error("Error fetching reviews:", err);
+        // Don't set error for reviews, just log it
+      } finally {
+        setReviewsLoading(false);
       }
     };
 
@@ -71,6 +100,35 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
   const formatPrice = (price: number | string | null | undefined): string => {
     const num = Number(price);
     return isNaN(num) ? "0" : num.toLocaleString("vi-VN");
+  };
+
+  // Helper: Format date safely
+  const formatDate = (date: Date | string | undefined): string => {
+    if (!date) return "";
+    try {
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
+      return format(dateObj, "dd/MM/yyyy", { locale: vi });
+    } catch {
+      return "";
+    }
+  };
+
+  // Star Rating Component for Reviews
+  const StarRating = ({ rating }: { rating: number }) => {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`h-4 w-4 ${
+              star <= rating
+                ? "text-yellow-500 fill-yellow-500"
+                : "text-gray-300"
+            }`}
+          />
+        ))}
+      </div>
+    );
   };
 
   if (loading) {
@@ -156,7 +214,9 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
               </motion.div>
             ) : (
               <div className="w-full h-full bg-muted flex items-center justify-center">
-                <span className="text-muted-foreground text-lg">Không có ảnh</span>
+                <span className="text-muted-foreground text-lg">
+                  Không có ảnh
+                </span>
               </div>
             )}
 
@@ -192,10 +252,7 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
           </motion.div>
 
           {/* Details */}
-          <motion.div
-            variants={slideInRight}
-            className="space-y-6"
-          >
+          <motion.div variants={slideInRight} className="space-y-6">
             <div className="space-y-5">
               <motion.div variants={itemVariants}>
                 <h1 className="font-elegant text-4xl md:text-5xl font-bold text-primary">
@@ -225,7 +282,10 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
               </motion.div>
 
               {/* Quantity & Add to Cart */}
-              <motion.div variants={itemVariants} className="flex items-center gap-6">
+              <motion.div
+                variants={itemVariants}
+                className="flex items-center gap-6"
+              >
                 <div className="flex items-center gap-3">
                   <span className="font-medium">Số lượng:</span>
                   <div className="flex items-center border rounded-lg">
@@ -385,6 +445,98 @@ export default function DishDetailPage({ params }: { params: { id: string } }) {
             </div>
           </motion.section>
         )}
+
+        {/* Reviews Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="mt-16"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-elegant text-3xl font-bold text-primary">
+              Đánh giá từ khách hàng
+            </h2>
+            {reviews.length > 0 && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <StarRating rating={Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length)} />
+                  <span className="font-semibold">
+                    {(reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)}/5
+                  </span>
+                </div>
+                <Separator orientation="vertical" className="h-6" />
+                <span className="text-sm text-muted-foreground">
+                  {reviews.length} đánh giá
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {reviewsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <span className="ml-3 text-muted-foreground">Đang tải đánh giá...</span>
+            </div>
+          ) : reviews.length > 0 ? (
+            <div className="space-y-4">
+              {reviews.map((review, index) => (
+                <motion.div
+                  key={review.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="border border-border/50 rounded-lg p-4 bg-card/50 shadow-sm hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-accent/20 to-accent/10 rounded-full flex items-center justify-center">
+                        <User className="h-5 w-5 text-accent" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">
+                          {review.user?.username || "Người dùng ẩn danh"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <StarRating rating={review.rating} />
+                          <span className="text-xs text-muted-foreground">
+                            ({review.rating}/5)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <time className="text-xs text-muted-foreground">
+                      {formatDate(review.created_at)}
+                    </time>
+                  </div>
+                  
+                  {review.comment && (
+                    <p className="text-sm text-foreground/80 leading-relaxed ml-13">
+                      "{review.comment}"
+                    </p>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-12"
+            >
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <Star className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-muted-foreground italic text-lg">
+                Chưa có đánh giá nào cho món ăn này.
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Hãy là người đầu tiên chia sẻ trải nghiệm của bạn!
+              </p>
+            </motion.div>
+          )}
+        </motion.section>
       </div>
     </motion.div>
   );

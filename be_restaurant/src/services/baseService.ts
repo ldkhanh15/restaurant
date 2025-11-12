@@ -1,5 +1,6 @@
 import type { Model, ModelStatic, FindOptions, WhereOptions } from "sequelize";
 import { AppError } from "../middlewares/errorHandler";
+import { User } from "../models";
 
 export class BaseService<T extends Model> {
   protected model: ModelStatic<T>;
@@ -53,6 +54,16 @@ export class BaseService<T extends Model> {
   }
 
   async findByDishId(dishId: string, options?: FindOptions): Promise<T[]> {
-    return await this.model.findAll({ where: { dish_id: dishId }, ...options });
+    return await this.model.findAll({
+      where: { dish_id: dishId },
+      include: [
+        {
+          model: User, // include model User
+          as: "user", // alias defined in association
+          attributes: ["id", "username", "email"], // lấy những field cần thiết
+        },
+      ],
+      ...options, // cho phép ghi đè thêm options khác nếu có
+    });
   }
 }

@@ -9,6 +9,7 @@ export type Review = {
   rating: number;
   comment?: string;
   created_at?: Date;
+  user?: any; // include properties: id, username, email
 };
 
 export type CreateReviewData = {

@@ -9,7 +9,7 @@ export const reviewService = {
   create: (data: CreateReviewData) => apiClient.post<any>("/reviews", data),
   update: (id: string, data: Review) => apiClient.put<any>(`/reviews/${id}`, data),
   delete: (id: string) => apiClient.delete<any>(`/reviews/${id}`),
-  getByDishId: (dishId: string) => apiClient.get<any>(`/reviews/dish/${dishId}`)
+  getReviewsByDishId: (dishId: string) => apiClient.get<any>(`/reviews/dish/${dishId}`)
 };
 
 export default reviewService;
