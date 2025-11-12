@@ -356,13 +356,13 @@ export const logUserBehavior = async (
 
     // I want to delete records keeping only the 10 most recent records for each user based on the timestamp in the LogUserBehavior table
     await sequelize.query(
-      `DELETE FROM LogUserBehavior
+      `DELETE FROM user_behavior_logs
        WHERE id NOT IN (
          SELECT id FROM (
-           SELECT id FROM LogUserBehavior
+           SELECT id FROM user_behavior_logs
            WHERE user_id = :user_id
            ORDER BY timestamp DESC
-           LIMIT 10
+           LIMIT 14
          ) AS subquery
        )`,
       {
