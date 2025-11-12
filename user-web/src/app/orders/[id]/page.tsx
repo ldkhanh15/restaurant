@@ -686,7 +686,7 @@ export default function OrderDetailPage({
       0
     ) || 0;
   const outstandingAmount = Math.max(0, finalAmount - paidAmount);
-  const canSubmitPayment = true
+  const canSubmitPayment = true;
 
   if (authLoading || isLoadingDetail) {
     return (
@@ -740,6 +740,8 @@ export default function OrderDetailPage({
   const canRequestPayment =
     selectedOrder.payment_status !== "paid" &&
     selectedOrder.status !== "cancelled";
+
+  console.log("Selected Order:", selectedOrder);
 
   return (
     <div className="min-h-screen bg-background py-8">

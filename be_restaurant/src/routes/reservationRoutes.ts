@@ -49,7 +49,7 @@ router.get(
 router.post(
   "/",
   [
-    body("table_id").isUUID().withMessage("Invalid table ID"),
+    body("table_id").isString().withMessage("Invalid table ID"),
     body("reservation_time")
       .isISO8601()
       .withMessage("Invalid reservation time"),

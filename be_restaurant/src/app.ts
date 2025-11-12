@@ -62,7 +62,7 @@ const app = express();
 // Middleware
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: "*",
     credentials: true,
   })
 );
@@ -237,12 +237,10 @@ if (process.env.NODE_ENV !== "production") {
         const sp = new URLSearchParams(payload.query);
         for (const [k, v] of sp.entries()) params[k] = v;
       } else {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "Provide url or query in JSON body",
-          });
+        return res.status(400).json({
+          status: "error",
+          message: "Provide url or query in JSON body",
+        });
       }
 
       const provided = String(params.vnp_SecureHash || "");
