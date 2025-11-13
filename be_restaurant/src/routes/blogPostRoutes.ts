@@ -9,9 +9,9 @@ const router = Router()
 router.get(
     "/",
     [
-        query("page").optional().isInt({ min: 1 }),
-        query("limit").optional().isInt({ min: 1, max: 100 }),
-        query("status").optional().isIn(["draft", "published", "deleted"]),
+        query("page").optional().isInt({ min: 1 }).withMessage("page must be >= 1"),
+        query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be between 1 and 100"),
+        query("status").optional().isIn(["draft", "published", "deleted"]).withMessage("status must be one of: draft, published, deleted"),
         validate,
     ],
     blogPostController.getAllBlogPosts,

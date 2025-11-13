@@ -17,9 +17,9 @@ interface ApiResponse<T> {
   }
 }
 export const dishService = {
-    getAll: (params: any) => apiClient.get('/dishes', { params }),
-    getById: (id: string) => apiClient.get(`/dishes/${id}`),
-    create: (data: any) => apiClient.post("/dishes", data, {
+    getAll: (params: any) => apiClient.get<any>('/dishes', { params }),
+    getById: (id: string) => apiClient.get<any>(`/dishes/${id}`),
+    create: (data: any) => apiClient.post<any>("/dishes", data, {
       headers: {
         "Content-Type": "multipart/form-data",
       }
@@ -30,7 +30,7 @@ export const dishService = {
       }
     }),
     remove: (id: string) => apiClient.delete(`/dishes/${id}`),
-    getDishesByCategoryId: (id: string) => apiClient.get(`/dishes/category/${id}`),
+    getDishesByCategoryId: (id: string) => apiClient.get<any>(`/dishes/category/${id}`),
     importIngredients:(data:any) => apiClient.post('dishes/ingredients',data),
    
 }

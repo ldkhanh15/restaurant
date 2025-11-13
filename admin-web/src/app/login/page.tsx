@@ -37,6 +37,8 @@ export default function LoginPage() {
         localStorage.setItem("token", response.token);
         localStorage.setItem("user", JSON.stringify(response.user));
 
+        setToken(response.token);
+
         toast({
           title: "Đăng nhập thành công",
           description: `Chào mừng ${response.user.username}!`,

@@ -430,7 +430,15 @@ export function BlogManagement() {
             : post
         )
       );
-      toast.success(`Đã cập nhật trạng thái bài viết thành ${newStatus === 'published' ? 'đã xuất bản' : newStatus === 'draft' ? 'nháp' : 'lưu trữ'}`);
+      toast.success(
+        `Đã cập nhật trạng thái bài viết thành ${
+          newStatus === "published"
+            ? "đã xuất bản"
+            : newStatus === "draft"
+            ? "nháp"
+            : "lưu trữ"
+        }`
+      );
     } catch (error) {
       console.error("Failed to update post status:", error);
       toast.error("Không thể cập nhật trạng thái bài viết");
@@ -459,10 +467,10 @@ export function BlogManagement() {
     const file = event.target.files?.[0];
     if (file) {
       // Validate file type
-    if (!file.type.startsWith("image/")) {
-      toast.error("Vui lòng chọn file ảnh hợp lệ");
-      return;
-    }      // Validate file size (5MB)
+      if (!file.type.startsWith("image/")) {
+        toast.error("Vui lòng chọn file ảnh hợp lệ");
+        return;
+      } // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
         validateField("thumbnail", file);
         toast.error("Kích thước ảnh không được vượt quá 5MB");
@@ -576,6 +584,7 @@ export function BlogManagement() {
         ...formData,
         content: processedContent, // Use processed content with cloud URLs
         thumbnail_url: uploadedImageUrl || formData.thumbnail_url,
+        published_at: formData.status === "published" ? new Date() : null,
       };
 
       console.log("after Post data to submit:", postData);
@@ -1189,7 +1198,9 @@ export function BlogManagement() {
                                 // Validate file size
                                 if (file.size > 5 * 1024 * 1024) {
                                   validateField("thumbnail", file);
-                                  toast.error("Kích thước ảnh không được vượt quá 5MB");
+                                  toast.error(
+                                    "Kích thước ảnh không được vượt quá 5MB"
+                                  );
                                   return;
                                 }
                                 setSelectedImage(file);
@@ -1602,7 +1613,7 @@ export function BlogManagement() {
                             value={formData.meta_description}
                             onChange={(e) => {
                               const value = e.target.value;
-                              if (value.length <= 160) {
+                              if (value.length <= 460) {
                                 setFormData((prev) => ({
                                   ...prev,
                                   meta_description: value,
@@ -1850,7 +1861,9 @@ export function BlogManagement() {
                                 // Validate file size
                                 if (file.size > 5 * 1024 * 1024) {
                                   validateField("thumbnail", file);
-                                  toast.error("Kích thước ảnh không được vượt quá 5MB");
+                                  toast.error(
+                                    "Kích thước ảnh không được vượt quá 5MB"
+                                  );
                                   return;
                                 }
                                 setSelectedImage(file);

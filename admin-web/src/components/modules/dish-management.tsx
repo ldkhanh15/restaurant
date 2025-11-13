@@ -132,9 +132,10 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
   })
 
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  // Default quantity = 0, input trống ban đầu
   const [newIngredient, setNewIngredient] = useState({ ingredient_id: "", quantity: 0 })
 
-  // ==== VALIDATION: Kiểm tra trùng tên ngay tại FE (client-side) ====
+  // ==== VALIDATION ====
   const validateForm = async (isEdit: boolean = false, currentDishId?: string): Promise<string | null> => {
     if (!formData.name.trim()) return "Tên món ăn không được để trống"
     if (!formData.description.trim()) return "Mô tả không được để trống"
@@ -147,12 +148,11 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       if (ing.quantity <= 0) return "Số lượng nguyên liệu phải lớn hơn 0"
     }
 
-    // === KIỂM TRA TRÙNG TÊN NGAY TẠI FE ===
     const inputName = formData.name.trim().toLowerCase()
     const duplicate = dishes.find(dish =>
-      dish.id !== currentDishId && // Loại trừ món đang edit
+      dish.id !== currentDishId &&
       dish.name.trim().toLowerCase() === inputName &&
-      !dish.deleted_at // Bỏ qua món đã xóa
+      !dish.deleted_at
     )
 
     if (duplicate) return `Tên món ăn đã tồn tại`
@@ -289,7 +289,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       ...formData,
       ingredients: [...formData.ingredients, { ...newIngredient }],
     })
-    setNewIngredient({ ingredient_id: "", quantity: 0 })
+    setNewIngredient({ ingredient_id: "", quantity: 0 }) // Reset về 0
   }
 
   const removeIngredient = (index: number) => {
@@ -348,7 +348,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
         return
       }
       if ((responseDish.status as any) === 'existed') {
-        toast.error(responseDish.message || 'Tên món ăn đã tồn tại')
+        toast.error('Tên món ăn đã tồn tại')
         return
       }
       getData()
@@ -419,7 +419,7 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
       ingredients: [],
     })
     setPreviewImage(null)
-    setNewIngredient({ ingredient_id: "", quantity: 0 })
+    setNewIngredient({ ingredient_id: "", quantity: 0 }) // Reset về 0
   }
 
   useEffect(() => {
@@ -429,6 +429,8 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
   useEffect(() => {
     if (isEditDialogOpen && selectedDish) populateForm(selectedDish)
   }, [isEditDialogOpen, selectedDish])
+
+  const selectedNewIngredient = ingredients.find(i => i.id === newIngredient.ingredient_id)
 
   return (
     <div className="space-y-6">
@@ -472,12 +474,12 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
               Thêm món ăn
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Thêm món ăn mới</DialogTitle>
               <DialogDescription>Tạo món ăn mới cho thực đơn</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4 max-h-[80vh] overflow-y-auto px-1">
               {/* Tên & Giá */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
@@ -494,10 +496,11 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
                   <Input
                     id="dish-price"
                     type="number"
+                    step="0.01"
                     placeholder="0"
                     value={formData.price || ""}
                     onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    min={1}
+                    min={0.01}
                   />
                 </div>
               </div>
@@ -536,7 +539,18 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
               {/* Hình ảnh */}
               <div className="grid gap-2">
                 <Label>Hình ảnh *</Label>
-                <Input type="file" accept="image/*" onChange={handleImageUpload} />
+                <div className="flex items-center gap-4">
+                  <label className="border h-10 px-4 rounded-md bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
+                    Chọn ảnh
+                    <Input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageUpload} 
+                      className="hidden"
+                    />
+                  </label>
+                  {previewImage && <span className="text-sm text-muted-foreground">Đã chọn 1 ảnh</span>}
+                </div>
                 {previewImage && (
                   <div className="mt-2 w-48 h-48 bg-muted rounded-lg overflow-hidden">
                     <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
@@ -544,41 +558,55 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
                 )}
               </div>
 
-              {/* Nguyên liệu */}
+              {/* Nguyên liệu - CHO PHÉP NHẬP 0 ĐẦU TIÊN */}
               <div className="grid gap-2">
                 <Label>Nguyên liệu *</Label>
-                <div className="flex gap-4">
-                  <Select
-                    value={newIngredient.ingredient_id}
-                    onValueChange={(value) => setNewIngredient({ ...newIngredient, ingredient_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn nguyên liệu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(ingredients || []).map((ing) => (
-                        <SelectItem key={ing.id} value={ing.id}>
-                          {ing.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <Select
+                      value={newIngredient.ingredient_id}
+                      onValueChange={(value) => setNewIngredient({ ...newIngredient, ingredient_id: value })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Chọn nguyên liệu" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ingredients.map((ing) => (
+                          <SelectItem key={ing.id} value={ing.id}>
+                            {ing.name} ({ing.unit})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Input
-                    type="number"
-                    step="any"
+                    type="text"
                     placeholder="Số lượng"
-                    value={newIngredient.quantity || ""}
-                    onChange={(e) => setNewIngredient({ ...newIngredient, quantity: parseFloat(e.target.value) || 0 })}
-                    min={0.01}
+                    value={newIngredient.quantity}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      // Chỉ cho phép số và dấu chấm
+                      if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                        setNewIngredient({ ...newIngredient, quantity: val as any})
+                      } else {
+                        toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
+                      }
+                    }}
+                    className="w-28"
                   />
-                  <Button onClick={addIngredient}>Thêm</Button>
+                  {selectedNewIngredient && (
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      {selectedNewIngredient.unit}
+                    </span>
+                  )}
+                  <Button onClick={addIngredient} size="sm" className="whitespace-nowrap">Thêm</Button>
                 </div>
                 <div className="mt-2 space-y-2">
                   {formData.ingredients.map((ing, index) => {
                     const ingInfo = ingredients.find((i) => i.id === ing.ingredient_id)
                     return (
                       <div key={index} className="flex justify-between items-center p-2 bg-muted rounded">
-                        <span className="text-sm">
+                        <span className="text-sm truncate">
                           {ingInfo?.name || "Không xác định"} - {ing.quantity} {ingInfo?.unit || ""}
                         </span>
                         <Button variant="ghost" size="sm" onClick={() => removeIngredient(index)}>
@@ -591,30 +619,54 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
               </div>
 
               {/* Switch */}
-              <div className="flex gap-6">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="best-seller"
-                    checked={formData.is_best_seller}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_best_seller: checked })}
-                  />
-                  <Label htmlFor="best-seller">Món bán chạy</Label>
+              <div className="flex gap-6 flex-wrap">
+                <div className="flex items-center space-x-3">
+                  <div className="flex flex-col space-y-1">
+                    <Switch
+                      id="best-seller"
+                      checked={formData.is_best_seller}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_best_seller: checked })}
+                      className="data-[state=checked]:bg-yellow-500"
+                    />
+                    <Label htmlFor="best-seller" className="text-sm font-medium text-muted-foreground">
+                      <div className="flex items-center">
+                        <Star className="h-3.5 w-3.5 mr-1.5" />
+                        Món bán chạy
+                      </div>
+                    </Label>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="seasonal"
-                    checked={formData.seasonal}
-                    onCheckedChange={(checked) => setFormData({ ...formData, seasonal: checked })}
-                  />
-                  <Label htmlFor="seasonal">Món theo mùa</Label>
+                <div className="flex items-center space-x-3">
+                  <div className="flex flex-col space-y-1">
+                    <Switch
+                      id="seasonal"
+                      checked={formData.seasonal}
+                      onCheckedChange={(checked) => setFormData({ ...formData, seasonal: checked })}
+                      className="data-[state=checked]:bg-green-500"
+                    />
+                    <Label htmlFor="seasonal" className="text-sm font-medium text-muted-foreground">
+                      <div className="flex items-center">
+                        <Leaf className="h-3.5 w-3.5 mr-1.5" />
+                        Món theo mùa
+                      </div>
+                    </Label>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="active"
-                    checked={formData.active}
-                    onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
-                  />
-                  <Label htmlFor="active">Hoạt động</Label>
+                <div className="flex items-center space-x-3">
+                  <div className="flex flex-col space-y-1">
+                    <Switch
+                      id="active"
+                      checked={formData.active}
+                      onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+                      className="data-[state=checked]:bg-blue-500"
+                    />
+                    <Label htmlFor="active" className="text-sm font-medium text-muted-foreground">
+                      <div className="flex items-center">
+                        <div className={`h-2 w-2 rounded-full mr-1.5 ${formData.active ? 'bg-blue-500' : 'bg-muted-foreground'}`} />
+                        Hoạt động
+                      </div>
+                    </Label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -778,12 +830,12 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
 
       {/* === EDIT DIALOG === */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chỉnh sửa món ăn</DialogTitle>
             <DialogDescription>Cập nhật thông tin món ăn</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 max-h-[80vh] overflow-y-auto px-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="edit-name">Tên món ăn *</Label>
@@ -798,9 +850,10 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
                 <Input
                   id="edit-price"
                   type="number"
+                  step="0.01"
                   value={formData.price || ""}
                   onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                  min={1}
+                  min={0.01}
                 />
               </div>
             </div>
@@ -825,7 +878,18 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
 
             <div className="grid gap-2">
               <Label>Hình ảnh (để trống nếu không đổi)</Label>
-              <Input type="file" accept="image/*" onChange={handleImageUpload} />
+              <div className="flex items-center gap-4">
+                <label className="border h-10 px-4 rounded-md bg-background hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
+                  Chọn ảnh
+                  <Input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleImageUpload} 
+                    className="hidden"
+                  />
+                </label>
+                {previewImage && <span className="text-sm text-muted-foreground">Đã chọn 1 ảnh</span>}
+              </div>
               {previewImage && (
                 <div className="mt-2 w-48 h-48 bg-muted rounded-lg overflow-hidden">
                   <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
@@ -833,34 +897,55 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
               )}
             </div>
 
+            {/* Nguyên liệu - Edit Dialog */}
             <div className="grid gap-2">
               <Label>Nguyên liệu *</Label>
-              <div className="flex gap-4">
-                <Select
-                  value={newIngredient.ingredient_id}
-                  onValueChange={(v) => setNewIngredient({ ...newIngredient, ingredient_id: v })}
-                >
-                  <SelectTrigger><SelectValue placeholder="Chọn nguyên liệu" /></SelectTrigger>
-                  <SelectContent>
-                    {ingredients.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="flex gap-2 items-center flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <Select
+                    value={newIngredient.ingredient_id}
+                    onValueChange={(v) => setNewIngredient({ ...newIngredient, ingredient_id: v })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Chọn nguyên liệu" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ingredients.map(i => (
+                        <SelectItem key={i.id} value={i.id}>
+                          {i.name} ({i.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Input
-                  type="number"
-                  step="any"
+                  type="text"
                   placeholder="Số lượng"
-                  value={newIngredient.quantity || ""}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, quantity: parseFloat(e.target.value) || 0 })}
-                  min={0.01}
+                  value={newIngredient.quantity}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    // Chỉ cho phép số và dấu chấm
+                    if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                      setNewIngredient({ ...newIngredient, quantity: val as any })
+                    } else {
+                      toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
+                    }
+                  }}
+                  className="w-28"
                 />
-                <Button onClick={addIngredient}>Thêm</Button>
+                {selectedNewIngredient && (
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
+                    {selectedNewIngredient.unit}
+                  </span>
+                )}
+                <Button onClick={addIngredient} size="sm" className="whitespace-nowrap">Thêm</Button>
               </div>
               <div className="mt-2 space-y-2">
                 {formData.ingredients.map((ing, idx) => {
                   const ingInfo = ingredients.find(i => i.id === ing.ingredient_id)
                   return (
                     <div key={idx} className="flex justify-between items-center p-2 bg-muted rounded">
-                      <span className="text-sm">
+                      <span className="text-sm truncate">
                         {ingInfo?.name} - {ing.quantity} {ingInfo?.unit}
                       </span>
                       <Button variant="ghost" size="sm" onClick={() => removeIngredient(idx)}>
@@ -872,30 +957,54 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
               </div>
             </div>
 
-            <div className="flex gap-6">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="edit-best"
-                  checked={formData.is_best_seller}
-                  onCheckedChange={(c) => setFormData({ ...formData, is_best_seller: c })}
-                />
-                <Label htmlFor="edit-best">Món bán chạy</Label>
+            <div className="flex gap-6 flex-wrap">
+              <div className="flex items-center space-x-3">
+                <div className="flex flex-col space-y-1">
+                  <Switch
+                    id="edit-best"
+                    checked={formData.is_best_seller}
+                    onCheckedChange={(c) => setFormData({ ...formData, is_best_seller: c })}
+                    className="data-[state=checked]:bg-yellow-500"
+                  />
+                  <Label htmlFor="edit-best" className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center">
+                      <Star className="h-3.5 w-3.5 mr-1.5" />
+                      Món bán chạy
+                    </div>
+                  </Label>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="edit-seasonal"
-                  checked={formData.seasonal}
-                  onCheckedChange={(c) => setFormData({ ...formData, seasonal: c })}
-                />
-                <Label htmlFor="edit-seasonal">Món theo mùa</Label>
+              <div className="flex items-center space-x-3">
+                <div className="flex flex-col space-y-1">
+                  <Switch
+                    id="edit-seasonal"
+                    checked={formData.seasonal}
+                    onCheckedChange={(c) => setFormData({ ...formData, seasonal: c })}
+                    className="data-[state=checked]:bg-green-500"
+                  />
+                  <Label htmlFor="edit-seasonal" className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center">
+                      <Leaf className="h-3.5 w-3.5 mr-1.5" />
+                      Món theo mùa
+                    </div>
+                  </Label>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="edit-active"
-                  checked={formData.active}
-                  onCheckedChange={(c) => setFormData({ ...formData, active: c })}
-                />
-                <Label htmlFor="edit-active">Hoạt động</Label>
+              <div className="flex items-center space-x-3">
+                <div className="flex flex-col space-y-1">
+                  <Switch
+                    id="edit-active"
+                    checked={formData.active}
+                    onCheckedChange={(c) => setFormData({ ...formData, active: c })}
+                    className="data-[state=checked]:bg-blue-500"
+                  />
+                  <Label htmlFor="edit-active" className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center">
+                      <div className={`h-2 w-2 rounded-full mr-1.5 ${formData.active ? 'bg-blue-500' : 'bg-muted-foreground'}`} />
+                      Hoạt động
+                    </div>
+                  </Label>
+                </div>
               </div>
             </div>
           </div>
@@ -907,12 +1016,12 @@ export function DishManagement({ dishes, setDishes, categories, setCategories, i
 
       {/* === VIEW DIALOG === */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chi tiết món ăn</DialogTitle>
           </DialogHeader>
           {selectedDish && (
-            <div className="space-y-6">
+            <div className="space-y-6 max-h-[80vh] overflow-y-auto px-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>

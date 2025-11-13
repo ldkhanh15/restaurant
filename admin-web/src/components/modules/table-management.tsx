@@ -1023,10 +1023,14 @@ export function TableManagement({
       {/* Create Reservation Dialog */}
       <CreateReservationDialog
         isOpen={isCreateReservationOpen}
-        onOpenChange={setIsCreateReservationOpen}
-        onCreateReservation={(data: any) => {
-          console.log("Tạo đặt chỗ mới:", data)
+        onOpenChange={(open) => {
+          setIsCreateReservationOpen(open)
+          if (!open) setSelectedTableForReservation(null)
+        }}
+        selectedTable={selectedTableForReservation}
+        onSuccess={() => {
           setIsCreateReservationOpen(false)
+          setSelectedTableForReservation(null)
           toast.success("Đã gửi thông tin đặt bàn!")
         }}
       />

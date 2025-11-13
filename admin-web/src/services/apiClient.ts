@@ -5,7 +5,8 @@ import axios from "axios";
 import { toast } from "react-toastify";
 
 const apiClient = axios.create({
-  baseURL: `${process.env.NEXT_PUBLIC_API_URL}/api` || "http://localhost:8000/api",
+  // baseURL: `${process.env.NEXT_PUBLIC_API_URL}/api` || "http://localhost:8000/api",
+  baseURL: "http://localhost:8000/api",
   timeout: parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT || "30000"),
   withCredentials: false,
 });
