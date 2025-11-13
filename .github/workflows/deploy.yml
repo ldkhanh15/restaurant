@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-southeast-1
+  AWS_REGION: ap-southeast-2
   DOCKER_BUILDKIT: 1
 
 jobs:
@@ -28,12 +28,69 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Add EC2 to known hosts
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Write SSH key
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+          # Validate SSH key format
+          if ! ssh-keygen -l -f ~/.ssh/deploy_key &> /dev/null; then
+            echo "❌ Error: Invalid SSH key format"
+            echo "SSH key should start with: -----BEGIN OPENSSH PRIVATE KEY----- or -----BEGIN RSA PRIVATE KEY-----"
+            exit 1
+          fi
+          
+          echo "✅ SSH key is valid"
+          
+          # Add EC2 to known hosts with timeout and retry
+          EC2_HOST="${{ secrets.EC2_HOST }}"
+          if [ -z "$EC2_HOST" ]; then
+            echo "❌ Error: EC2_HOST secret is not set"
+            exit 1
+          fi
+          
+          echo "🔍 Scanning host: $EC2_HOST"
+          MAX_RETRIES=3
+          RETRY=0
+          
+          while [ $RETRY -lt $MAX_RETRIES ]; do
+            if ssh-keyscan -H -T 10 "$EC2_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "✅ Successfully added $EC2_HOST to known_hosts"
+              break
+            else
+              RETRY=$((RETRY + 1))
+              if [ $RETRY -lt $MAX_RETRIES ]; then
+                echo "⚠️  Retry $RETRY/$MAX_RETRIES..."
+                sleep 2
+              else
+                echo "⚠️  Warning: Could not add to known_hosts, but continuing (will use StrictHostKeyChecking=no)"
+              fi
+            fi
+          done
+          
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.EC2_HOST }}" ]; then
+            echo "❌ Error: EC2_HOST secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_USER }}" ]; then
+            echo "❌ Error: EC2_USER secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "❌ Error: EC2_SSH_KEY secret is not set"
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+          echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
+          echo "EC2_USER: ${{ secrets.EC2_USER }}"
 
       - name: Deploy to EC2
         env:
@@ -147,13 +204,52 @@ jobs:
           exit 0
           DEPLOYSCRIPT
           
-          # Copy script to EC2 and execute
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            /tmp/deploy_remote.sh ${EC2_USER}@${EC2_HOST}:/tmp/deploy_remote.sh
-          
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          # Test SSH connection first
+          echo "🔍 Testing SSH connection..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
             ${EC2_USER}@${EC2_HOST} \
-            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${EC2_DEPLOY_PATH}' SERVER_IP='98.91.23.236' PROTOCOL='https' /tmp/deploy_remote.sh"
+            "echo '✅ SSH connection successful'" || {
+            echo "❌ SSH connection failed!"
+            echo "Please check:"
+            echo "  1. EC2_HOST is correct: ${EC2_HOST}"
+            echo "  2. EC2_USER is correct: ${EC2_USER}"
+            echo "  3. SSH key is valid and matches the public key on EC2"
+            echo "  4. Security Group allows SSH (port 22) from GitHub Actions IPs"
+            echo "  5. EC2 instance is running"
+            exit 1
+          }
+          
+          # Copy script to EC2
+          echo "📤 Copying deployment script to EC2..."
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ConnectTimeout=10 \
+            /tmp/deploy_remote.sh ${EC2_USER}@${EC2_HOST}:/tmp/deploy_remote.sh || {
+            echo "❌ Failed to copy script to EC2"
+            exit 1
+          }
+          
+          # Execute deployment script
+          echo "🚀 Executing deployment script on EC2..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ConnectTimeout=10 \
+            ${EC2_USER}@${EC2_HOST} \
+            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${EC2_DEPLOY_PATH}' SERVER_IP='98.91.23.236' PROTOCOL='https' /tmp/deploy_remote.sh" || {
+            echo "❌ Deployment script failed!"
+            echo "📋 Checking deployment script logs..."
+            ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              ${EC2_USER}@${EC2_HOST} \
+              "cat /tmp/deploy_remote.sh | head -20" || true
+            exit 1
+          }
 
       - name: Notify deployment status
         if: always()
