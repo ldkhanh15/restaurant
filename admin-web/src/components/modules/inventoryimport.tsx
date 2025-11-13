@@ -15,8 +15,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Package, Eye, Edit, Trash2 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { Package, Eye, Edit, Trash2, Camera, Barcode, Badge, Volume2 } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
 import { supplierService } from "@/services/supplierService"
 import { ingredientService } from "@/services/ingredientService"
 import { inventoryImportService } from "@/services/inventoryImportService"
@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/pagination"
 import employeeApi from "@/services/employeeService"
 import { v4 as uuidv4 } from "uuid"
+import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library"
 
 interface Employee {
   id: string
@@ -122,6 +123,22 @@ export function ImportManagement() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
 
+  // === BARCODE SCANNER MODAL ===
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false)
+  const [isCameraActive, setIsCameraActive] = useState(false) // Bắt đầu tắt
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
+  const quantityInputRef = useRef<HTMLInputElement>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+
+  // === TRẠNG THÁI QUÉT BARCODE ===
+  const [scannedIngredient, setScannedIngredient] = useState<IngredientAttributes | null>(null)
+  const [scanQuantity, setScanQuantity] = useState<string>("0") // Mặc định là 0
+  const [scanTotalPrice, setScanTotalPrice] = useState<string>("")
+  const [scannedItems, setScannedItems] = useState<InventoryImportIngredientAttributes[]>([])
+  const [totalScannedPrice, setTotalScannedPrice] = useState(0)
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [ingredients, setIngredients] = useState<IngredientAttributes[]>([])
@@ -140,12 +157,201 @@ export function ImportManagement() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [ingredientErrors, setIngredientErrors] = useState<Record<number, Record<string, string>>>({})
 
+  // === TÌM INGREDIENT THEO BARCODE ===
+  const findIngredientByBarcode = (barcode: string): IngredientAttributes | null => {
+    return ingredients.find(ing => ing.barcode?.trim() === barcode.trim()) || null
+  }
+
+  // === PHÁT ÂM THANH BEEP ===
+  const playBeep = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
+
+    try {
+      const response = await fetch("/sounds/beep.mp3")
+      const arrayBuffer = await response.arrayBuffer()
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
+      const source = audioContextRef.current.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(audioContextRef.current.destination)
+      source.start(0)
+    } catch (err) {
+      console.warn("Không thể phát âm thanh beep:", err)
+      // Fallback: dùng HTML5 Audio
+      const audio = new Audio("/sounds/beep.mp3")
+      audio.play().catch(() => {})
+    }
+  }
+
   useEffect(() => {
     loadSuppliers()
     loadIngredients()
     loadImports(1)
     loadEmployees()
+
+    // Khởi tạo ZXing reader
+    codeReaderRef.current = new BrowserMultiFormatReader()
+    return () => {
+      if (codeReaderRef.current) {
+        codeReaderRef.current.reset()
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+    }
   }, [])
+
+  // === TỰ ĐỘNG FOCUS KHI CÓ INGREDIENT ===
+  useEffect(() => {
+    if (scannedIngredient && quantityInputRef.current) {
+      quantityInputRef.current.focus()
+      quantityInputRef.current.select()
+    }
+  }, [scannedIngredient])
+
+  // === KHỞI ĐỘNG CAMERA ===
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && codeReaderRef.current) {
+      navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      })
+      .then(stream => {
+        setCameraStream(stream)
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play()
+          startContinuousBarcodeScanning()
+        }
+      })
+      .catch(err => {
+        console.error("Lỗi camera:", err)
+        toast.error("Không thể truy cập camera. Vui lòng kiểm tra quyền.")
+        setIsCameraActive(false)
+      })
+    }
+
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop())
+      }
+      if (codeReaderRef.current) {
+        codeReaderRef.current.reset()
+      }
+    }
+  }, [isCameraActive])
+
+  // === QUÉT BARCODE LIÊN TỤC ===
+  const startContinuousBarcodeScanning = () => {
+    if (!videoRef.current || !codeReaderRef.current || !isCameraActive) return
+
+    const codeReader = codeReaderRef.current
+    let lastScannedCode = ""
+    let lastScannedTime = 0
+    const DEBOUNCE_TIME = 1000 // Tránh quét trùng trong 1s
+
+    const scan = () => {
+      if (!isCameraActive || !videoRef.current) return
+
+      codeReader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+        if (result) {
+          const barcode = result.getText()
+          const now = Date.now()
+
+          if (barcode !== lastScannedCode || now - lastScannedTime > DEBOUNCE_TIME) {
+            lastScannedCode = barcode
+            lastScannedTime = now
+            handleBarcodeScanned(barcode)
+            playBeep()
+          }
+        }
+        if (err && !(err instanceof NotFoundException)) {
+          console.warn("Lỗi quét:", err)
+        }
+      })
+    }
+
+    scan()
+  }
+
+  // === XỬ LÝ KHI QUÉT ĐƯỢC BARCODE ===
+  const handleBarcodeScanned = (barcode: string) => {
+    if (!barcode) return
+
+    const ingredient = findIngredientByBarcode(barcode)
+
+    if (ingredient) {
+      setScannedIngredient(ingredient)
+      setScanQuantity("0") // Reset về 0
+      setScanTotalPrice("")
+      toast.success(`Đã quét: ${ingredient.name}`)
+    } else {
+      toast.error(`Không tìm thấy nguyên liệu với mã: ${barcode}`)
+    }
+  }
+
+  // === THÊM NGUYÊN LIỆU TỪ QUÉT ===
+  const handleAddScannedItem = () => {
+    if (!scannedIngredient) return
+
+    const quantity = parseFloat(scanQuantity) || 0
+    const totalPrice = parseFloat(scanTotalPrice) || 0
+
+    if (quantity <= 0) {
+      toast.error("Số lượng phải > 0")
+      return
+    }
+    if (totalPrice <= 0) {
+      toast.error("Thành tiền phải > 0")
+      return
+    }
+
+    const newItem: InventoryImportIngredientAttributes = {
+      id: uuidv4(),
+      ingredient_id: scannedIngredient.id,
+      quantity,
+      total_price: totalPrice,
+      ingredient: {
+        id: scannedIngredient.id,
+        name: scannedIngredient.name,
+        unit: scannedIngredient.unit
+      }
+    }
+
+    const updatedItems = [...scannedItems, newItem]
+    setScannedItems(updatedItems)
+    setTotalScannedPrice(prev => prev + totalPrice)
+
+    toast.success("Đã thêm nguyên liệu")
+    setScannedIngredient(null)
+    setScanQuantity("0")
+    setScanTotalPrice("")
+  }
+
+  // === XÓA ITEM ĐÃ QUÉT ===
+  const handleRemoveScannedItem = (index: number) => {
+    const item = scannedItems[index]
+    const updated = scannedItems.filter((_, i) => i !== index)
+    setScannedItems(updated)
+    setTotalScannedPrice(prev => prev - (item.total_price || 0))
+  }
+
+  // === CHUYỂN DỮ LIỆU SANG MODAL NHẬP HÀNG ===
+  const handleTransferToImport = () => {
+    if (scannedItems.length === 0) {
+      toast.warn("Chưa có nguyên liệu nào để chuyển")
+      return
+    }
+
+    setSelectedIngredients(prev => [...prev, ...scannedItems])
+    setTotalImportPrice(prev => prev + totalScannedPrice)
+    handleCloseBarcodeScanner()
+    setIsImportDialogOpen(true)
+  }
 
   const loadEmployees = async () => {
     try {
@@ -403,6 +609,30 @@ export function ImportManagement() {
     setIsImportDialogOpen(true)
   }
 
+  const handleOpenBarcodeScanner = () => {
+    setScannedItems([])
+    setTotalScannedPrice(0)
+    setIsCameraActive(false) // Bắt đầu ở trạng thái tắt
+    setIsBarcodeScannerOpen(true)
+  }
+
+  const handleCloseBarcodeScanner = () => {
+    setIsBarcodeScannerOpen(false)
+    setIsCameraActive(false)
+    setScannedItems([])
+    setTotalScannedPrice(0)
+    setScannedIngredient(null)
+    setScanQuantity("0")
+    setScanTotalPrice("")
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop())
+      setCameraStream(null)
+    }
+    if (codeReaderRef.current) {
+      codeReaderRef.current.reset()
+    }
+  }
+
   const updateIngredient = (index: number, field: keyof InventoryImportIngredientAttributes, value: any) => {
     const newIngredients = [...selectedIngredients]
     newIngredients[index] = { ...newIngredients[index], [field]: value }
@@ -414,7 +644,6 @@ export function ImportManagement() {
 
     setSelectedIngredients(newIngredients)
 
-    // Clear error on change
     const newIngErrors = { ...ingredientErrors }
     if (newIngErrors[index]) {
       delete newIngErrors[index][field]
@@ -427,7 +656,12 @@ export function ImportManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      {/* === NÚT QUÉT MÃ + NHẬP HÀNG === */}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={handleOpenBarcodeScanner}>
+          <Camera className="h-4 w-4 mr-2" />
+          Quét mã
+        </Button>
         <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
           <DialogTrigger asChild>
             <Button variant="outline" onClick={handleOpenImportDialog}>
@@ -435,6 +669,7 @@ export function ImportManagement() {
               Nhập hàng
             </Button>
           </DialogTrigger>
+          {/* === MODAL NHẬP HÀNG (GIỮ NGUYÊN) === */}
           <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Nhập hàng mới</DialogTitle>
@@ -495,68 +730,90 @@ export function ImportManagement() {
                     <span>Thành tiền</span>
                     <span></span>
                   </div>
-                  {selectedIngredients.map((item, index) => (
-                    <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 items-start">
-                      <div className="space-y-1">
-                        <Select
-                          value={item.ingredient_id || ""}
-                          onValueChange={(value) => updateIngredient(index, "ingredient_id", value)}
+                  {selectedIngredients.map((item, index) => {
+                    const ingredient = ingredients.find(ing => ing.id === item.ingredient_id)
+                    return (
+                      <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 items-start">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            {ingredient?.barcode && (
+                              <Badge className="text-xs">
+                                {ingredient.barcode}
+                              </Badge>
+                            )}
+                            <Select
+                              value={item.ingredient_id || ""}
+                              onValueChange={(value) => updateIngredient(index, "ingredient_id", value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn nguyên liệu" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ingredients.map((ingredient) => (
+                                  <SelectItem key={ingredient.id} value={ingredient.id}>
+                                    {ingredient.name} ({ingredient.unit})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {ingredient && (
+                            <p className="text-xs text-muted-foreground">
+                              {ingredient.unit} • Tồn kho: {ingredient.current_stock}
+                            </p>
+                          )}
+                          {ingredientErrors[index]?.ingredient && (
+                            <p className="text-sm text-red-500">{ingredientErrors[index].ingredient}</p>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <Input
+                            type="text"
+                            placeholder="Số lượng"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                                updateIngredient(index, "quantity", e.target.value as any)
+                              } else {
+                                toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
+                              }
+                            }}
+                            className="w-28"
+                          />
+                          {ingredientErrors[index]?.quantity && (
+                            <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="Tiền"
+                            value={item.total_price || ""}
+                            onChange={(e) => updateIngredient(index, "total_price", Number(e.target.value) || 0)}
+                          />
+                          {ingredientErrors[index]?.total_price && (
+                            <p className="text-sm text-red-500">{ingredientErrors[index].total_price}</p>
+                          )}
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const newIngredients = selectedIngredients.filter((_, i) => i !== index)
+                            setSelectedIngredients(newIngredients)
+                            setTotalImportPrice(newIngredients.reduce((sum, i) => sum + (i.total_price || 0), 0))
+                          }}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn nguyên liệu" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ingredients.map((ingredient) => (
-                              <SelectItem key={ingredient.id} value={ingredient.id}>
-                                {ingredient.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {ingredientErrors[index]?.ingredient && (
-                          <p className="text-sm text-red-500">{ingredientErrors[index].ingredient}</p>
-                        )}
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-
-                      <div className="space-y-1">
-                        <Input
-                          type="number"
-                          min="1"
-                          placeholder="SL"
-                          value={item.quantity || ""}
-                          onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value) || 0)}
-                        />
-                        {ingredientErrors[index]?.quantity && (
-                          <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <Input
-                          type="number"
-                          min="1"
-                          placeholder="Tiền"
-                          value={item.total_price || ""}
-                          onChange={(e) => updateIngredient(index, "total_price", Number(e.target.value) || 0)}
-                        />
-                        {ingredientErrors[index]?.total_price && (
-                          <p className="text-sm text-red-500">{ingredientErrors[index].total_price}</p>
-                        )}
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          const newIngredients = selectedIngredients.filter((_, i) => i !== index)
-                          setSelectedIngredients(newIngredients)
-                          setTotalImportPrice(newIngredients.reduce((sum, i) => sum + (i.total_price || 0), 0))
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
+                    )
+                  })}
                   <Button
                     type="button"
                     variant="outline"
@@ -583,7 +840,157 @@ export function ImportManagement() {
         </Dialog>
       </div>
 
-      {/* Detail Dialog */}
+      {/* === MODAL QUÉT BARCODE MỚI (CẢI TIẾN) === */}
+      <Dialog open={isBarcodeScannerOpen} onOpenChange={handleCloseBarcodeScanner}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Barcode className="h-5 w-5" />
+              Quét mã barcode
+            </DialogTitle>
+            <DialogDescription>
+              Bấm "Bắt đầu quét" để kích hoạt camera. Hướng vào mã vạch.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Camera View */}
+            <div className="relative">
+              <div className={`relative w-full aspect-video rounded-lg overflow-hidden border-2 ${
+                isCameraActive ? 'border-green-500' : 'border-gray-300'
+              }`}>
+                {isCameraActive ? (
+                  <>
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover"
+                      playsInline
+                      muted
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="border-2 border-green-500 rounded-lg w-64 h-32 opacity-50"></div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <Camera className="h-12 w-12 text-gray-400" />
+                    <p className="absolute bottom-4 text-sm text-gray-500">Camera tắt</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Form nhập khi quét thành công */}
+            {scannedIngredient && (
+              <div className="p-4 border rounded-lg bg-green-50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{scannedIngredient.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Tồn: {scannedIngredient.current_stock}
+                    </p>
+                  </div>
+                  <Badge>{scannedIngredient.barcode}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Số lượng</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        ref={quantityInputRef}
+                        type="text"
+                        value={scanQuantity}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                            setScanQuantity(val)
+                          }
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddScannedItem()}
+                        placeholder="0"
+                        className="w-full"
+                      />
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">
+                        {scannedIngredient.unit}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Thành tiền (đ)</Label>
+                    <Input
+                      type="number"
+                      value={scanTotalPrice}
+                      onChange={(e) => setScanTotalPrice(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <Button className="w-full" onClick={handleAddScannedItem}>
+                  Thêm vào danh sách
+                </Button>
+              </div>
+            )}
+
+            {/* Danh sách đã quét */}
+            {scannedItems.length > 0 && (
+              <div className="border rounded-lg p-3 space-y-2">
+                <Label>Danh sách đã quét ({scannedItems.length})</Label>
+                {scannedItems.map((item, index) => {
+                  const ing = ingredients.find(i => i.id === item.ingredient_id)
+                  return (
+                    <div key={item.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded">
+                      <div>
+                        <span className="font-medium">{ing?.name}</span> × {item.quantity} {ing?.unit}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{item.total_price.toLocaleString('vi-VN')}đ</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveScannedItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="text-right font-bold pt-2 border-t">
+                  Tổng: {totalScannedPrice.toLocaleString('vi-VN')}đ
+                </div>
+              </div>
+            )}
+
+            {/* Nút điều khiển */}
+            <div className="flex gap-2">
+              <Button
+                variant={isCameraActive ? "outline" : "default"}
+                className="flex-1"
+                onClick={() => setIsCameraActive(!isCameraActive)}
+              >
+                {isCameraActive ? "Dừng quét" : "Bắt đầu quét"}
+              </Button>
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={handleTransferToImport}
+                disabled={scannedItems.length === 0}
+              >
+                Chuyển ({scannedItems.length})
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={handleCloseBarcodeScanner}
+              >
+                Đóng
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+  
+      {/* Detail Dialog - giữ nguyên */}
       <Dialog open={isDetailDialogOpen && !isLoadingDetail} onOpenChange={setIsDetailDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           {isLoadingDetail ? (
@@ -659,7 +1066,7 @@ export function ImportManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Delete Dialog - giữ nguyên */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -675,7 +1082,7 @@ export function ImportManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Dialog */}
+      {/* Edit Dialog - giữ nguyên */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -732,64 +1139,93 @@ export function ImportManagement() {
                   <span>Thành tiền</span>
                   <span></span>
                 </div>
-                {selectedIngredients.map((item, index) => (
-                  <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 items-start">
-                    <div className="space-y-1">
-                      <Select
-                        value={item.ingredient_id || ""}
-                        onValueChange={(v) => updateIngredient(index, "ingredient_id", v)}
+                {selectedIngredients.map((item, index) => {
+                  const ingredient = ingredients.find(ing => ing.id === item.ingredient_id)
+                  return (
+                    <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_50px] gap-2 items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          {ingredient?.barcode && (
+                            <Badge className="text-xs">
+                              {ingredient.barcode}
+                            </Badge>
+                          )}
+                          <Select
+                            value={item.ingredient_id || ""}
+                            onValueChange={(v) => updateIngredient(index, "ingredient_id", v)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Chọn" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ingredients.map((ing) => (
+                                <SelectItem key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {ingredient && (
+                          <p className="text-xs text-muted-foreground">
+                            {ingredient.unit} • Tồn kho: {ingredient.current_stock}
+                          </p>
+                        )}
+                        {ingredientErrors[index]?.ingredient && (
+                          <p className="text-sm text-red-500">{ingredientErrors[index].ingredient}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Input
+                            type="text"
+                            placeholder="Số lượng"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                                updateIngredient(index, "quantity", e.target.value as any)
+                              } else {
+                                toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
+                              }
+                            }}
+                            className="w-28"
+                          />
+                        {/* <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity || ""}
+                          onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value) || 0)}
+                        /> */}
+                        {ingredientErrors[index]?.quantity && (
+                          <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.total_price || ""}
+                          onChange={(e) => updateIngredient(index, "total_price", Number(e.target.value) || 0)}
+                        />
+                        {ingredientErrors[index]?.total_price && (
+                          <p className="text-sm text-red-500">{ingredientErrors[index].total_price}</p>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const filtered = selectedIngredients.filter((_, i) => i !== index)
+                          setSelectedIngredients(filtered)
+                          setTotalImportPrice(filtered.reduce((s, i) => s + (i.total_price || 0), 0))
+                        }}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ingredients.map((ing) => (
-                            <SelectItem key={ing.id} value={ing.id}>{ing.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {ingredientErrors[index]?.ingredient && (
-                        <p className="text-sm text-red-500">{ingredientErrors[index].ingredient}</p>
-                      )}
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-
-                    <div className="space-y-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity || ""}
-                        onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value) || 0)}
-                      />
-                      {ingredientErrors[index]?.quantity && (
-                        <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.total_price || ""}
-                        onChange={(e) => updateIngredient(index, "total_price", Number(e.target.value) || 0)}
-                      />
-                      {ingredientErrors[index]?.total_price && (
-                        <p className="text-sm text-red-500">{ingredientErrors[index].total_price}</p>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const filtered = selectedIngredients.filter((_, i) => i !== index)
-                        setSelectedIngredients(filtered)
-                        setTotalImportPrice(filtered.reduce((s, i) => s + (i.total_price || 0), 0))
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                  )
+                })}
                 <Button
                   variant="outline"
                   size="sm"
@@ -814,7 +1250,7 @@ export function ImportManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Table */}
+      {/* Table - giữ nguyên */}
       <Card>
         <CardHeader>
           <CardTitle>Lịch sử nhập hàng</CardTitle>

@@ -85,6 +85,7 @@ export function IngredientManagement({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [editErrors, setEditErrors] = useState<Record<string, string>>({})
 
+  // === CẬP NHẬT: validateField với kiểm tra trùng barcode & rfid ===
   const validateField = (
     field: string,
     value: any,
@@ -106,18 +107,43 @@ export function IngredientManagement({
           error = "Tên nguyên liệu đã tồn tại"
         }
         break
+
       case "unit":
         if (!value) error = "Vui lòng chọn đơn vị"
         break
+
       case "barcode":
-        if (!value?.trim()) error = "Mã barcode không được để trống"
+        if (!value?.trim()) {
+          error = "Mã barcode không được để trống"
+        } else if (
+          ingredients.some(
+            (i) =>
+              i.barcode?.trim() === value.trim() &&
+              (!isEdit || i.id !== currentId)
+          )
+        ) {
+          error = "Mã barcode đã tồn tại"
+        }
         break
+
       case "rfid":
-        if (!value?.trim()) error = "Mã RFID không được để trống"
+        if (!value?.trim()) {
+          error = "Mã RFID không được để trống"
+        } else if (
+          ingredients.some(
+            (i) =>
+              i.rfid?.trim() === value.trim() &&
+              (!isEdit || i.id !== currentId)
+          )
+        ) {
+          error = "Mã RFID đã tồn tại"
+        }
         break
+
       case "current_stock":
         if (value < 0) error = "Tồn kho không được âm"
         break
+
       case "min_stock_level":
         if (value < 0) error = "Tồn kho tối thiểu không được âm"
         break
@@ -154,7 +180,7 @@ export function IngredientManagement({
     try {
       const response = await ingredientService.getAllNoPaging()
       if (!response) {
-        toast.error("Lấy nguyên liệu thất bại")
+        toast.error("书法 Lấy nguyên liệu thất bại")
         return
       }
       setIngredients(response as any)
@@ -463,6 +489,7 @@ export function IngredientManagement({
                     validateField("barcode", e.target.value)
                   }}
                   onBlur={() => validateField("barcode", newIngredient.barcode)}
+                  placeholder="Nhập mã barcode"
                 />
                 {errors.barcode && <p className="text-sm text-red-500">{errors.barcode}</p>}
               </div>
@@ -476,6 +503,7 @@ export function IngredientManagement({
                     validateField("rfid", e.target.value)
                   }}
                   onBlur={() => validateField("rfid", newIngredient.rfid)}
+                  placeholder="Nhập mã RFID"
                 />
                 {errors.rfid && <p className="text-sm text-red-500">{errors.rfid}</p>}
               </div>
@@ -700,9 +728,9 @@ export function IngredientManagement({
                   value={selectedIngredient.barcode || ""}
                   onChange={(e) => {
                     setSelectedIngredient({ ...selectedIngredient, barcode: e.target.value })
-                    validateField("barcode", e.target.value, true)
+                    validateField("barcode", e.target.value, true, selectedIngredient.id)
                   }}
-                  onBlur={() => validateField("barcode", selectedIngredient.barcode, true)}
+                  onBlur={() => validateField("barcode", selectedIngredient.barcode, true, selectedIngredient.id)}
                 />
                 {editErrors.barcode && <p className="text-sm text-red-500">{editErrors.barcode}</p>}
               </div>
@@ -713,9 +741,9 @@ export function IngredientManagement({
                   value={selectedIngredient.rfid || ""}
                   onChange={(e) => {
                     setSelectedIngredient({ ...selectedIngredient, rfid: e.target.value })
-                    validateField("rfid", e.target.value, true)
+                    validateField("rfid", e.target.value, true, selectedIngredient.id)
                   }}
-                  onBlur={() => validateField("rfid", selectedIngredient.rfid, true)}
+                  onBlur={() => validateField("rfid", selectedIngredient.rfid, true, selectedIngredient.id)}
                 />
                 {editErrors.rfid && <p className="text-sm text-red-500">{editErrors.rfid}</p>}
               </div>
