@@ -7,6 +7,7 @@ import {
   buildPaginationResult,
 } from "../utils/pagination";
 import { Op, Sequelize } from "sequelize";
+import employeeService from "../services/employeeService";
 
 export const getAllUsers = async (
   req: Request,
@@ -83,6 +84,10 @@ export const createUser = async (
 ) => {
   try {
     const newUser = await userService.create(req.body);
+    //create new employee if role is employee
+    if (newUser.role === "employee") {
+      await employeeService.create({ user_id: newUser.id });
+    }
     res.status(201).json({ status: "success", data: newUser });
   } catch (error) {
     next(error);
@@ -96,9 +101,15 @@ export const updateUser = async (
 ) => {
   try {
     const user = await User.findByPk(req.params.id);
+    
 
     if (!user) {
       throw new AppError("User not found", 404);
+    }
+
+    // if position is changed to employee, create new employee record
+    if (req.body.role === "employee" && user.role !== "employee") {
+      await employeeService.create({ user_id: user.id });
     }
 
 

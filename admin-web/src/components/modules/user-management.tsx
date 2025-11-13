@@ -193,7 +193,6 @@ export function UserManagement() {
               <SelectItem value="all">Tất cả vai trò</SelectItem>
               <SelectItem value="customer">Khách hàng</SelectItem>
               <SelectItem value="employee">Nhân viên</SelectItem>
-              <SelectItem value="admin">Quản trị</SelectItem>
             </SelectContent>
           </Select>
 

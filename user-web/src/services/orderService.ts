@@ -96,6 +96,10 @@ export const orderService = {
   getOrderById: (orderId: string): Promise<{ status: string; data: Order }> =>
     apiClient.get(`/orders/${orderId}`),
 
+  //get dish order by id
+  getDishOrderById: (orderId: string): Promise<{ status: string; data: Order }> =>
+    apiClient.get(`/orders/dish/${orderId}`),
+
   // Create new order
   createOrder: (
     data: CreateOrderData

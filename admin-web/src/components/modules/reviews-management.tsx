@@ -237,9 +237,9 @@ export function ReviewsManagement() {
                 <p className="text-gray-600 mb-2">{review.comment}</p>
                 <div className="text-sm text-gray-500">
                   <span>
-                    {review.dish?.name
+                    {review.dish_id
                       ? "Món ăn: " + review.dish?.name
-                      : "Bàn: " + review.table?.table_number}
+                      : "Tổng thể:"}
                   </span>
                   {review.order_id && (
                     <span className="ml-4">
