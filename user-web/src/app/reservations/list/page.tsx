@@ -198,9 +198,10 @@ export default function ReservationsListPage() {
         addReservation(newReservation);
         toast({
           title: "Đặt bàn mới",
-          description: `Đặt bàn ${
+          description: `Đặt bàn #${(
             reservation.id || reservation.reservationId
-          } đã được tạo`,
+          ).slice(0, 8)} đã được tạo`,
+          variant: "success",
         });
       }
     };
@@ -384,69 +385,90 @@ export default function ReservationsListPage() {
                   transition={{ delay: index * 0.05 }}
                   whileHover={{ y: -4 }}
                 >
-                  <Card className="border-2 border-accent/20 hover:border-accent/50 transition-all shadow-md hover:shadow-xl">
-                    <CardContent className="p-6">
+                  <Card className="border-2 border-accent/20 hover:border-primary/50 transition-all duration-300 shadow-lg hover:shadow-2xl bg-gradient-to-br from-white to-cream-50/50 overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <CardContent className="p-6 relative">
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         {/* Left: Info */}
-                        <div className="flex-1 space-y-3">
+                        <div className="flex-1 space-y-4">
                           <div className="flex items-center gap-4 flex-wrap">
                             <div>
-                              <h3 className="font-bold text-xl text-primary font-elegant mb-1">
-                                Đặt bàn #{reservation.id.slice(0, 8)}
+                              <h3 className="font-bold text-xl font-elegant mb-1 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                                Đặt bàn #
+                                {reservation.id.slice(0, 8).toUpperCase()}
                               </h3>
-                              <p className="text-sm text-muted-foreground font-mono">
+                              <p className="text-xs text-muted-foreground font-mono">
                                 {reservation.id}
                               </p>
                             </div>
-                            <Badge className={cn("text-xs", status.color)}>
-                              <StatusIcon className="h-3 w-3 mr-1" />
-                              {status.label}
-                            </Badge>
+                            <motion.div
+                              whileHover={{ scale: 1.1, rotate: 5 }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 400,
+                              }}
+                            >
+                              <Badge
+                                className={cn(
+                                  "text-xs px-3 py-1 font-semibold shadow-lg border-2 border-white/20",
+                                  status.color
+                                )}
+                              >
+                                <StatusIcon className="h-3 w-3 mr-1.5" />
+                                {status.label}
+                              </Badge>
+                            </motion.div>
                           </div>
 
-                          <div className="grid md:grid-cols-3 gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4 text-accent" />
-                              <span className="font-medium">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-full border border-primary/20">
+                              <Calendar className="h-4 w-4 text-primary" />
+                              <span className="font-medium text-gray-700 text-sm">
                                 {format(resDate, "EEEE, dd/MM/yyyy", {
                                   locale: vi,
                                 })}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/5 rounded-full border border-accent/20">
                               <Clock className="h-4 w-4 text-accent" />
-                              <span className="font-medium">
+                              <span className="font-medium text-gray-700 text-sm">
                                 {format(resDate, "HH:mm")}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4 text-accent" />
-                              <span>{reservation.num_people} người</span>
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full border border-blue-200">
+                              <Users className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium text-blue-700 text-sm">
+                                {reservation.num_people} người
+                              </span>
                             </div>
                             {reservation.table && (
-                              <div className="flex items-center gap-2">
-                                <MapPin className="h-4 w-4 text-accent" />
-                                <span>
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full border border-green-200">
+                                <MapPin className="h-4 w-4 text-green-600" />
+                                <span className="font-medium text-green-700 text-sm">
                                   Bàn {reservation.table.table_number}
-                                  {reservation.table.floor &&
-                                    ` • ${reservation.table.floor}`}
+                                  {reservation.table.location?.floor &&
+                                    ` • Tầng ${reservation.table.location.floor}`}
                                 </span>
                               </div>
                             )}
                             {reservation.pre_order_items &&
                               reservation.pre_order_items.length > 0 && (
-                                <div className="text-muted-foreground">
-                                  {reservation.pre_order_items.length} món đặt
-                                  trước
+                                <div className="px-3 py-1.5 bg-purple-50 rounded-full border border-purple-200">
+                                  <span className="font-medium text-purple-700 text-sm">
+                                    {reservation.pre_order_items.length} món đặt
+                                    trước
+                                  </span>
                                 </div>
                               )}
                             {reservation.deposit_amount && (
-                              <div className="font-semibold text-primary">
-                                Cọc:{" "}
-                                {reservation.deposit_amount.toLocaleString(
-                                  "vi-VN"
-                                )}
-                                đ
+                              <div className="px-3 py-1.5 bg-yellow-50 rounded-full border border-yellow-200">
+                                <span className="font-semibold text-yellow-700 text-sm">
+                                  Cọc:{" "}
+                                  {Number(
+                                    reservation.deposit_amount
+                                  ).toLocaleString("vi-VN")}
+                                  đ
+                                </span>
                               </div>
                             )}
                           </div>
@@ -455,7 +477,7 @@ export default function ReservationsListPage() {
                         {/* Right: Actions */}
                         <div className="flex flex-col gap-2">
                           <Button
-                            className="w-full bg-gradient-gold text-primary-foreground hover:opacity-90"
+                            className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-lg hover:shadow-xl transition-all"
                             onClick={() =>
                               router.push(`/reservations/${reservation.id}`)
                             }
@@ -472,21 +494,48 @@ export default function ReservationsListPage() {
             })}
           </div>
         ) : (
-          <div className="text-center py-16">
-            <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-muted-foreground text-lg">
-              Không tìm thấy đặt bàn nào
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Thử thay đổi bộ lọc hoặc tạo đặt bàn mới
-            </p>
-            <Button
-              className="mt-4 bg-gradient-gold text-primary-foreground hover:opacity-90"
-              onClick={() => router.push("/reservations")}
-            >
-              Đặt Bàn Mới
-            </Button>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-16"
+          >
+            <Card className="border-2 border-dashed border-accent/30 bg-gradient-to-br from-cream-50/50 to-white">
+              <CardContent className="p-16">
+                <motion.div
+                  animate={{
+                    scale: [1, 1.1, 1],
+                    rotate: [0, 5, -5, 0],
+                  }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                  className="mb-6"
+                >
+                  <div className="relative inline-block">
+                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
+                    <Calendar className="h-20 w-20 mx-auto text-primary/60 relative z-10" />
+                  </div>
+                </motion.div>
+                <h3 className="text-2xl font-bold text-gray-700 mb-2">
+                  Không tìm thấy đặt bàn nào
+                </h3>
+                <p className="text-muted-foreground text-base mb-6">
+                  {searchQuery || statusFilter !== "all" || dateFilter !== "all"
+                    ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm"
+                    : "Hãy tạo đặt bàn đầu tiên của bạn"}
+                </p>
+                <Button
+                  className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-lg hover:shadow-xl transition-all"
+                  onClick={() => router.push("/reservations")}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Đặt Bàn Mới
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
         )}
       </div>
     </div>

@@ -52,6 +52,7 @@ import { useOrderStore } from "@/store/orderStore";
 import { useEnsureAuthenticated } from "@/hooks/useEnsureAuthenticated";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
 import type { SelectableDish } from "@/components/shared/DishSelectionDialog";
+import InvoiceForm from "@/components/shared/InvoiceForm";
 
 const itemStatusConfig: Record<
   string,
@@ -126,7 +127,10 @@ export default function OrderDetailPage({
 }) {
   const { id } = params;
   const router = useRouter();
-  const { user, isLoading: authLoading } = useEnsureAuthenticated();
+  // Allow guest access for walk-in customers
+  const { user, isLoading: authLoading } = useEnsureAuthenticated({
+    optional: true,
+  });
   const orderSocket = useOrderSocket();
   const {
     selectedOrder,
@@ -148,15 +152,17 @@ export default function OrderDetailPage({
     null
   );
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [isViewInvoiceDialogOpen, setIsViewInvoiceDialogOpen] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<
     "vnpay" | "cash"
   >("vnpay");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [cashNote, setCashNote] = useState("");
+  const [pointsToUse, setPointsToUse] = useState(0);
 
-  // Load order on mount
+  // Load order on mount - allow guest access for walk-in customers
   useEffect(() => {
-    if (authLoading || !user?.id) {
+    if (authLoading) {
       return;
     }
 
@@ -180,6 +186,35 @@ export default function OrderDetailPage({
           err.response?.data?.message ||
           err.message ||
           "Không thể tải chi tiết đơn hàng";
+
+        // If 401 and user is not authenticated (walk-in customer), try without token
+        if (err.response?.status === 401 && !user) {
+          // This is a walk-in customer - the token might be invalid
+          // Try to clear any invalid token and retry
+          const token = localStorage.getItem("auth_token");
+          if (token) {
+            console.log(
+              "[OrderDetail] Clearing invalid token for walk-in customer"
+            );
+            localStorage.removeItem("auth_token");
+            // Retry the request
+            try {
+              const retryResponse = await orderService.getOrderById(id);
+              if (retryResponse.status === "success") {
+                const orderData = retryResponse.data;
+                setSelectedOrder(orderData);
+                const appliedVoucherCode = orderData.voucher?.code || "";
+                setVoucherCode(appliedVoucherCode);
+                setIsVoucherApplied(Boolean(appliedVoucherCode));
+                setIsVoucherProcessing(false);
+                return; // Success, exit early
+              }
+            } catch (retryErr) {
+              console.error("Retry failed:", retryErr);
+            }
+          }
+        }
+
         setDetailError(errorMessage);
         toast({
           title: "Lỗi",
@@ -199,7 +234,6 @@ export default function OrderDetailPage({
     loadOrder();
   }, [
     id,
-    user?.id,
     authLoading,
     router,
     setSelectedOrder,
@@ -264,6 +298,7 @@ export default function OrderDetailPage({
           description: `Đơn hàng đã chuyển sang "${
             orderStatusConfig[order.status]?.label || order.status
           }"`,
+          variant: "info",
         });
       }
     });
@@ -280,6 +315,36 @@ export default function OrderDetailPage({
         toast({
           title: "Thanh toán thành công",
           description: "Đơn hàng đã được thanh toán thành công",
+          variant: "success",
+        });
+      }
+    });
+
+    // Listen to payment failed
+    orderSocket.onPaymentFailed((order) => {
+      console.log("[OrderDetail] Payment failed:", order);
+      if (order.id === id) {
+        updateSelectedOrder({
+          payment_status: "failed" as any,
+          updated_at: order.updated_at,
+        });
+        toast({
+          title: "Thanh toán thất bại",
+          description: "Thanh toán không thành công. Vui lòng thử lại.",
+          variant: "destructive",
+        });
+      }
+    });
+
+    // Listen to support request confirmation
+    orderSocket.onSupportRequested((data) => {
+      console.log("[OrderDetail] Support requested:", data);
+      const orderId = (data as any).orderId || (data as any).id;
+      if (orderId === id) {
+        toast({
+          title: "Đã gửi yêu cầu hỗ trợ",
+          description: "Nhân viên đã nhận được yêu cầu của bạn",
+          variant: "info",
         });
       }
     });
@@ -332,8 +397,17 @@ export default function OrderDetailPage({
     const handleItemCreated = (data: any) => {
       console.log("[OrderDetail] Order item created:", data);
       if (data.orderId === id && data.item) {
-        // Refresh order to get updated items list
-        refreshOrder();
+        // Thêm item mới vào danh sách (không merge với item cũ)
+        updateSelectedOrder({
+          items: [
+            ...(selectedOrder?.items || []),
+            data.item, // Thêm item mới vào cuối danh sách
+          ],
+          total_amount:
+            data.order.total_amount || selectedOrder?.total_amount || 0,
+          final_amount:
+            data.order.final_amount || selectedOrder?.final_amount || 0,
+        });
         toast({
           title: "Đã thêm món",
           description: `${
@@ -391,6 +465,20 @@ export default function OrderDetailPage({
             data.order.total_amount || selectedOrder?.total_amount || 0,
           final_amount:
             data.order.final_amount || selectedOrder?.final_amount || 0,
+        });
+        const itemStatusLabels: Record<string, string> = {
+          pending: "Chờ xác nhận",
+          preparing: "Đang chuẩn bị",
+          ready: "Sẵn sàng",
+          completed: "Hoàn thành",
+          cancelled: "Đã hủy",
+        };
+        toast({
+          title: "Trạng thái món đã thay đổi",
+          description: `${data.item.dish?.name || "Món"} đã chuyển sang "${
+            itemStatusLabels[data.item.status] || data.item.status
+          }"`,
+          variant: "info",
         });
       }
     };
@@ -621,6 +709,7 @@ export default function OrderDetailPage({
   const openInvoiceDialog = () => {
     setSelectedPaymentMethod("vnpay");
     setCashNote("");
+    setPointsToUse(0);
     setIsInvoiceDialogOpen(true);
   };
 
@@ -628,6 +717,7 @@ export default function OrderDetailPage({
     if (!open) {
       setIsProcessingPayment(false);
       setCashNote("");
+      setPointsToUse(0);
     }
     setIsInvoiceDialogOpen(open);
   };
@@ -636,39 +726,64 @@ export default function OrderDetailPage({
     if (!selectedOrder) return;
     setIsProcessingPayment(true);
     try {
+      // Only allow points for authenticated users
+      const pointsUsed = user && user.points ? pointsToUse : 0;
+
       if (selectedPaymentMethod === "vnpay") {
-        const response = await orderService.requestPayment(id, "user");
-        if (response.status === "success" && response.data.redirect_url) {
-          window.location.href = response.data.redirect_url;
-          return;
+        // Check if there's a failed payment - use retry API
+        const hasFailedPayment = selectedOrder.payment_status === "failed";
+
+        if (hasFailedPayment) {
+          const response = await orderService.requestPaymentRetry(id, "vnpay", {
+            pointsUsed,
+          });
+          if (response.status === "success" && response.data.redirect_url) {
+            window.location.href = response.data.redirect_url;
+            return;
+          }
+        } else {
+          const response = await orderService.requestPayment(id, {
+            client: "user",
+            pointsUsed,
+          });
+          if (response.status === "success" && response.data.redirect_url) {
+            window.location.href = response.data.redirect_url;
+            return;
+          }
         }
+
         toast({
-          title: "Không tìm thấy liên kết thanh toán",
+          title: "Lỗi thanh toán",
           description:
             "Không thể tạo link thanh toán VNPAY. Vui lòng thử lại hoặc chọn hình thức khác.",
           variant: "destructive",
         });
       } else {
-        const payload = cashNote.trim() ? { note: cashNote.trim() } : undefined;
+        const payload: { note?: string; pointsUsed?: number } = {};
+        if (cashNote.trim()) payload.note = cashNote.trim();
+        if (pointsUsed > 0) payload.pointsUsed = pointsUsed;
+
         const response = await orderService.requestCashPayment(id, payload);
         if (response.status === "success") {
           toast({
             title: "Đã gửi yêu cầu thanh toán tiền mặt",
             description: "Nhân viên sẽ hỗ trợ bạn trong giây lát.",
+            variant: "success",
           });
           setIsInvoiceDialogOpen(false);
           setCashNote("");
+          setPointsToUse(0);
           await refreshOrder();
         }
       }
     } catch (err: any) {
       console.error("Failed to confirm payment:", err);
       toast({
-        title: "Lỗi",
+        title: "Lỗi thanh toán",
         description:
           err.response?.data?.message ||
           err.message ||
-          "Không thể gửi yêu cầu thanh toán",
+          "Không thể gửi yêu cầu thanh toán. Vui lòng thử lại.",
         variant: "destructive",
       });
     } finally {
@@ -686,7 +801,7 @@ export default function OrderDetailPage({
       0
     ) || 0;
   const outstandingAmount = Math.max(0, finalAmount - paidAmount);
-  const canSubmitPayment = true
+  const canSubmitPayment = true;
 
   if (authLoading || isLoadingDetail) {
     return (
@@ -800,7 +915,7 @@ export default function OrderDetailPage({
               open={isInvoiceDialogOpen}
               onOpenChange={handleInvoiceDialogChange}
             >
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Xác Nhận Thanh Toán</DialogTitle>
                   <DialogDescription>
@@ -809,76 +924,19 @@ export default function OrderDetailPage({
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                      Chi tiết món ăn
-                    </h4>
-                    <div className="max-h-48 overflow-y-auto border border-accent/20 rounded-md divide-y">
-                      {orderItems.length > 0 ? (
-                        orderItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between gap-4 px-4 py-2 text-sm"
-                          >
-                            <div className="flex-1">
-                              <p className="font-medium text-primary">
-                                {item.dish?.name || "Món ăn"}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {item.quantity} x{" "}
-                                {Number(
-                                  item.dish?.price ?? item.price ?? 0
-                                ).toLocaleString("vi-VN")}
-                                đ
-                              </p>
-                            </div>
-                            <span className="font-semibold">
-                              {(
-                                Number(item.quantity) *
-                                Number(item.dish?.price ?? item.price ?? 0)
-                              ).toLocaleString("vi-VN")}
-                              đ
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="p-4 text-center text-sm text-muted-foreground">
-                          Chưa có món ăn trong đơn hàng
-                        </p>
-                      )}
+                  {/* Professional Invoice Form */}
+                  {selectedOrder && (
+                    <div className="max-h-[60vh] overflow-y-auto pr-2">
+                      <InvoiceForm
+                        order={selectedOrder}
+                        vatAmount={(selectedOrder as any).vat_amount}
+                        pointsUsed={(selectedOrder as any).points_used}
+                        finalPaymentAmount={
+                          (selectedOrder as any).final_payment_amount
+                        }
+                      />
                     </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tạm tính</span>
-                      <span>{subtotal.toLocaleString("vi-VN")}đ</span>
-                    </div>
-                    {voucherDiscount > 0 && (
-                      <div className="flex justify-between text-green-600">
-                        <span>Giảm giá</span>
-                        <span>-{voucherDiscount.toLocaleString("vi-VN")}đ</span>
-                      </div>
-                    )}
-                    {paidAmount > 0 && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Đã thanh toán</span>
-                        <span>{paidAmount.toLocaleString("vi-VN")}đ</span>
-                      </div>
-                    )}
-                    {/* <Separator />
-                    <div className="flex justify-between text-base font-semibold">
-                      <span>Còn phải thanh toán</span>
-                      <span className="text-primary">
-                        {outstandingAmount.toLocaleString("vi-VN")}đ
-                      </span>
-                    </div>
-                    {!canSubmitPayment && (
-                      <p className="text-xs text-muted-foreground">
-                        Đơn hàng đã được thanh toán đầy đủ.
-                      </p>
-                    )} */}
-                  </div>
+                  )}
 
                   <div className="space-y-3">
                     <Label className="text-sm">
@@ -925,6 +983,67 @@ export default function OrderDetailPage({
                     </RadioGroup>
                   </div>
 
+                  {/* Points usage (only for authenticated users) */}
+                  {user && user.points && user.points > 0 && (
+                    <div className="space-y-2 p-4 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label
+                          htmlFor="points"
+                          className="text-sm font-semibold flex items-center gap-2"
+                        >
+                          <Star className="h-4 w-4 text-amber-600" />
+                          Sử dụng điểm tích lũy
+                        </Label>
+                        <span className="text-xs text-muted-foreground">
+                          Có {user.points.toLocaleString()} điểm (1 điểm = 1đ)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="points"
+                          type="number"
+                          min={0}
+                          max={Math.min(user.points || 0, finalAmount)}
+                          value={pointsToUse}
+                          onChange={(e) => {
+                            const value = Math.max(
+                              0,
+                              Math.min(
+                                parseInt(e.target.value) || 0,
+                                user.points || 0,
+                                finalAmount
+                              )
+                            );
+                            setPointsToUse(value);
+                          }}
+                          placeholder="0"
+                          className="border-amber-300 focus:border-amber-500"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const maxPoints = Math.min(
+                              user.points || 0,
+                              finalAmount
+                            );
+                            setPointsToUse(maxPoints);
+                          }}
+                          className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                        >
+                          Dùng tối đa
+                        </Button>
+                      </div>
+                      {pointsToUse > 0 && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Sẽ giảm {pointsToUse.toLocaleString()}đ từ tổng thanh
+                          toán
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {selectedPaymentMethod === "cash" && (
                     <div className="space-y-2">
                       <Label htmlFor="cash-note" className="text-sm">
@@ -970,6 +1089,50 @@ export default function OrderDetailPage({
                         Yêu cầu thanh toán tiền mặt
                       </>
                     )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* View Invoice Dialog */}
+            <Dialog
+              open={isViewInvoiceDialogOpen}
+              onOpenChange={setIsViewInvoiceDialogOpen}
+            >
+              <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Hóa Đơn Thanh Toán</DialogTitle>
+                  <DialogDescription>
+                    Chi tiết hóa đơn cho đơn hàng #
+                    {selectedOrder?.id.slice(0, 8).toUpperCase()}
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedOrder && (
+                  <div className="max-h-[80vh] overflow-y-auto pr-2">
+                    <InvoiceForm
+                      order={selectedOrder}
+                      vatAmount={(selectedOrder as any).vat_amount}
+                      pointsUsed={(selectedOrder as any).points_used}
+                      finalPaymentAmount={
+                        (selectedOrder as any).final_payment_amount
+                      }
+                    />
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsViewInvoiceDialogOpen(false)}
+                  >
+                    Đóng
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      window.print();
+                    }}
+                  >
+                    <Receipt className="h-4 w-4 mr-2" />
+                    In Hóa Đơn
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1314,11 +1477,11 @@ export default function OrderDetailPage({
                 )}
 
                 {/* Invoice Button */}
-                {selectedOrder.payment_status === "paid" && (
+                {selectedOrder && (
                   <Button
                     variant="outline"
                     className="w-full border-accent/20 hover:bg-accent/10"
-                    onClick={() => window.print()}
+                    onClick={() => setIsViewInvoiceDialogOpen(true)}
                   >
                     <Receipt className="h-4 w-4 mr-2" />
                     Xem Hóa Đơn

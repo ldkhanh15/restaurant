@@ -109,12 +109,19 @@ export const orderService = {
   ): Promise<{ status: string; data: Order }> =>
     apiClient.put(`/orders/${orderId}`, data),
 
-  // Add item to order
+  // Add item to order (for authenticated users)
   addItemToOrder: (
     orderId: string,
     data: { dish_id: string; quantity: number }
   ): Promise<{ status: string; data: Order }> =>
     apiClient.post(`/orders/${orderId}/items`, data),
+
+  // Add item to order by table (for walk-in customers)
+  addItemToOrderByTable: (
+    tableId: string,
+    data: { dish_id: string; quantity: number }
+  ): Promise<{ status: string; data: Order }> =>
+    apiClient.post(`/orders/tables/${tableId}/items`, data),
 
   // Update item quantity
   updateItemQuantity: (
@@ -147,19 +154,84 @@ export const orderService = {
   // Request payment
   requestPayment: (
     orderId: string,
-    client?: "admin" | "user"
+    options?: {
+      client?: "admin" | "user";
+      pointsUsed?: number;
+    }
   ): Promise<{
     status: string;
-    data: { redirect_url: string };
+    data: {
+      redirect_url?: string;
+      vat_amount?: number;
+      points_used?: number;
+      final_payment_amount?: number;
+    };
   }> =>
     apiClient.post(`/orders/${orderId}/payment/request`, {
-      client: client || "user",
+      client: options?.client || "user",
+      pointsUsed: options?.pointsUsed || 0,
     }),
 
   // Request cash payment (notify admin)
   requestCashPayment: (
     orderId: string,
-    data?: { note?: string }
-  ): Promise<{ status: string; data: { message: string } }> =>
-    apiClient.post(`/orders/${orderId}/payment/cash`, data),
+    data?: { note?: string; pointsUsed?: number }
+  ): Promise<{
+    status: string;
+    data: {
+      message: string;
+      vat_amount?: number;
+      points_used?: number;
+      final_payment_amount?: number;
+    };
+  }> =>
+    apiClient.post(`/orders/${orderId}/payment/cash`, {
+      note: data?.note,
+      pointsUsed: data?.pointsUsed || 0,
+    }),
+
+  // Request payment retry (for failed payments)
+  requestPaymentRetry: (
+    orderId: string,
+    method: "vnpay" | "cash",
+    options?: {
+      bankCode?: string;
+      pointsUsed?: number;
+      note?: string;
+    }
+  ): Promise<{
+    status: string;
+    data: {
+      redirect_url?: string;
+      vat_amount?: number;
+      points_used?: number;
+      final_payment_amount?: number;
+      message: string;
+    };
+  }> =>
+    apiClient.post(`/orders/${orderId}/payment/retry`, {
+      method,
+      bankCode: options?.bankCode,
+      pointsUsed: options?.pointsUsed || 0,
+      note: options?.note,
+    }),
+
+  // Get order by table ID (for walk-in customers)
+  getOrderByTable: (
+    tableId: string,
+    status?: string
+  ): Promise<{ status: string; data: Order | null }> => {
+    const params = status ? { status } : undefined;
+    return apiClient.get(`/orders/table/${tableId}`, { params });
+  },
+
+  // Create order from table (for walk-in customers)
+  createOrderFromTable: (
+    tableId: string,
+    items?: Array<{ dish_id: string; quantity: number; price: number }>
+  ): Promise<{ status: string; data: Order; message?: string }> => {
+    return apiClient.post(`/orders/tables/${tableId}/orders`, {
+      items: items || [],
+    });
+  },
 };

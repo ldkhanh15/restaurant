@@ -121,15 +121,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response?.status === "success" && response?.data) {
         const { user: userData, token: authToken } = response.data;
 
-        // Save token
-        localStorage.setItem("auth_token", authToken);
-        setToken(authToken);
-
-        // Get full user info
+        // Get full user info first to check role
+        let fullUser: User | null = null;
         try {
           const userInfoResponse = await authService.getCurrentUser();
           if (userInfoResponse?.data) {
-            const fullUser: User = {
+            fullUser = {
               id: userInfoResponse.data.id,
               username: userInfoResponse.data.username,
               email: userInfoResponse.data.email,
@@ -139,15 +136,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               points: userInfoResponse.data.points,
               role: userInfoResponse.data.role,
             };
-            setUser(fullUser);
-            localStorage.setItem("restaurant_user", JSON.stringify(fullUser));
-          } else {
-            // Fallback to basic user info
-            setUser(userData as User);
-            localStorage.setItem("restaurant_user", JSON.stringify(userData));
           }
         } catch (err) {
           // If getCurrentUser fails, use basic user info
+          fullUser = userData as User;
+        }
+
+        // Validate role for user-web - block admin and employee
+        const userRole = fullUser?.role || userData?.role || "";
+        const blockedRoles = ["admin", "employee", "staff"];
+        if (blockedRoles.includes(userRole)) {
+          console.warn("⚠️ Admin/Employee tried to login to user-web");
+          setIsLoading(false);
+          return false;
+        }
+
+        // Save token and user
+        localStorage.setItem("auth_token", authToken);
+        setToken(authToken);
+        
+        if (fullUser) {
+          setUser(fullUser);
+          localStorage.setItem("restaurant_user", JSON.stringify(fullUser));
+        } else {
           setUser(userData as User);
           localStorage.setItem("restaurant_user", JSON.stringify(userData));
         }

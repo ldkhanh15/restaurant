@@ -460,19 +460,83 @@ export default function ReservationDetailPage({
         toast({
           title: "Check-in thành công",
           description: "Chuyển đến trang đơn hàng",
+          variant: "success",
         });
         router.push(`/orders/${response.data.order.id}`);
       }
     } catch (err: any) {
       console.error("Failed to check-in:", err);
+      const errorMessage =
+        err?.response?.data?.message || err?.message || "Không thể check-in";
       toast({
         title: "Lỗi",
-        description: err.message || "Không thể check-in",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsCheckingIn(false);
     }
+  };
+
+  // Check if check-in is allowed based on time
+  const canCheckIn = (
+    reservation: Reservation | null
+  ): {
+    allowed: boolean;
+    message?: string;
+    earliestTime?: Date;
+    latestTime?: Date;
+  } => {
+    if (!reservation || reservation.status !== "confirmed") {
+      return { allowed: false, message: "Đặt bàn chưa được xác nhận" };
+    }
+
+    const reservationTime = new Date(reservation.reservation_time);
+    const now = new Date();
+    const minutesBefore = 5;
+    const minutesAfter = 10;
+
+    const earliestCheckIn = new Date(reservationTime);
+    earliestCheckIn.setMinutes(earliestCheckIn.getMinutes() - minutesBefore);
+
+    const latestCheckIn = new Date(reservationTime);
+    latestCheckIn.setMinutes(latestCheckIn.getMinutes() + minutesAfter);
+
+    if (now < earliestCheckIn) {
+      const minutesUntil = Math.ceil(
+        (earliestCheckIn.getTime() - now.getTime()) / (1000 * 60)
+      );
+      return {
+        allowed: false,
+        message: `Chưa đến giờ check-in. Vui lòng quay lại sau ${minutesUntil} phút nữa (từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )}).`,
+        earliestTime: earliestCheckIn,
+        latestTime: latestCheckIn,
+      };
+    }
+
+    if (now > latestCheckIn) {
+      return {
+        allowed: false,
+        message: `Đã quá thời gian check-in. Thời gian check-in hợp lệ là từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )} đến ${latestCheckIn.toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}.`,
+        earliestTime: earliestCheckIn,
+        latestTime: latestCheckIn,
+      };
+    }
+
+    return {
+      allowed: true,
+      earliestTime: earliestCheckIn,
+      latestTime: latestCheckIn,
+    };
   };
 
   if (authLoading || isLoadingDetail) {
@@ -1043,20 +1107,52 @@ export default function ReservationDetailPage({
                         <Edit className="h-4 w-4 mr-2" />
                         Chỉnh Sửa Thông Tin
                       </Button>
-                      {selectedReservation.status === "confirmed" && (
-                        <Button
-                          className="w-full bg-green-600 hover:bg-green-700 text-white"
-                          onClick={handleCheckIn}
-                          disabled={isLoading || isCheckingIn}
-                        >
-                          {isCheckingIn ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                          )}
-                          Check-in
-                        </Button>
-                      )}
+                      {selectedReservation.status === "confirmed" &&
+                        (() => {
+                          const checkInStatus = canCheckIn(selectedReservation);
+                          return (
+                            <div className="space-y-2">
+                              <Button
+                                className="w-full bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={handleCheckIn}
+                                disabled={
+                                  isLoading ||
+                                  isCheckingIn ||
+                                  !checkInStatus.allowed
+                                }
+                              >
+                                {isCheckingIn ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                )}
+                                Check-in
+                              </Button>
+                              {!checkInStatus.allowed &&
+                                checkInStatus.message && (
+                                  <p className="text-xs text-muted-foreground text-center">
+                                    {checkInStatus.message}
+                                  </p>
+                                )}
+                              {checkInStatus.allowed &&
+                                checkInStatus.earliestTime &&
+                                checkInStatus.latestTime && (
+                                  <p className="text-xs text-muted-foreground text-center">
+                                    Thời gian check-in:{" "}
+                                    {checkInStatus.earliestTime.toLocaleTimeString(
+                                      "vi-VN",
+                                      { hour: "2-digit", minute: "2-digit" }
+                                    )}{" "}
+                                    -{" "}
+                                    {checkInStatus.latestTime.toLocaleTimeString(
+                                      "vi-VN",
+                                      { hour: "2-digit", minute: "2-digit" }
+                                    )}
+                                  </p>
+                                )}
+                            </div>
+                          );
+                        })()}
                       <Button
                         className="w-full border-red-500/20 hover:bg-red-50 text-red-600"
                         variant="outline"
