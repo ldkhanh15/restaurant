@@ -29,9 +29,11 @@ export default function RootLayout({
           <AuthGate>
             <div className="flex h-screen bg-background">
               <Sidebar />
-              <div className="flex-1 flex flex-col overflow-hidden h-full">
+              <div className="flex-1 flex flex-col h-full">
                 <Header />
-                <main className="flex-1 overflow-y-auto p-6">{children}</main>
+                <main className="flex-1 overflow-y-auto p-6 overflow-x-hidden">
+                  {children}
+                </main>
               </div>
             </div>
           </AuthGate>

@@ -51,6 +51,8 @@ import { useTableSocket } from "@/hooks/useTableSocket";
 import { toast } from "@/hooks/use-toast";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import InvoiceForm from "@/components/shared/InvoiceForm";
+import { Receipt } from "lucide-react";
 
 export default function TableOrderPage() {
   const params = useParams();
@@ -70,8 +72,11 @@ export default function TableOrderPage() {
   const [voucherCode, setVoucherCode] = useState("");
   const [isVoucherProcessing, setIsVoucherProcessing] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"vnpay" | "cash">("vnpay");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<
+    "vnpay" | "cash"
+  >("vnpay");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isViewInvoiceDialogOpen, setIsViewInvoiceDialogOpen] = useState(false);
 
   // WebSocket for real-time updates
   const {
@@ -104,27 +109,26 @@ export default function TableOrderPage() {
 
         // Load dishes
         const dishesResponse = await dishService.getAll({ all: true });
-        // Handle different response formats
+        // Handle response format from getAllDishes API: { status: "success", data: { data: [...], pagination: {...} } }
         let dishesData: Dish[] = [];
-        if (dishesResponse) {
-          // Format 1: { data: { data: [...], pagination: {...} } }
+        if (dishesResponse && dishesResponse.data) {
+          // Format: { data: { data: [...], pagination: {...} } }
           if (
-            dishesResponse.data?.data &&
+            dishesResponse.data.data &&
             Array.isArray(dishesResponse.data.data)
           ) {
             dishesData = dishesResponse.data.data;
           }
-          // Format 2: { data: [...] }
+          // Fallback: { data: { items: [...] } }
+          else if (
+            dishesResponse.data.items &&
+            Array.isArray(dishesResponse.data.items)
+          ) {
+            dishesData = dishesResponse.data.items;
+          }
+          // Fallback: { data: [...] }
           else if (Array.isArray(dishesResponse.data)) {
             dishesData = dishesResponse.data;
-          }
-          // Format 3: { items: [...] }
-          else if (Array.isArray(dishesResponse.items)) {
-            dishesData = dishesResponse.items;
-          }
-          // Format 4: Direct array
-          else if (Array.isArray(dishesResponse)) {
-            dishesData = dishesResponse;
           }
         }
         setDishes(dishesData);
@@ -179,7 +183,41 @@ export default function TableOrderPage() {
   // Update current order from WebSocket
   useEffect(() => {
     if (socketOrder) {
-      setCurrentOrder(socketOrder);
+      // Merge items to avoid duplicates when order is updated
+      setCurrentOrder((prev) => {
+        if (!prev || prev.id !== socketOrder.id) {
+          // New order or different order - use socketOrder as is
+          return socketOrder;
+        }
+
+        // Same order - merge but ensure items are not duplicated
+        const prevItems =
+          prev.items && Array.isArray(prev.items) ? prev.items : [];
+        const newItems =
+          socketOrder.items && Array.isArray(socketOrder.items)
+            ? socketOrder.items
+            : [];
+
+        // If new order has items, use them (they are source of truth from server)
+        // Otherwise keep previous items
+        const mergedItems = newItems.length > 0 ? newItems : prevItems;
+
+        // Deduplicate items by id to prevent duplicates
+        const itemsMap = new Map();
+        mergedItems.forEach((item: any) => {
+          if (item.id) {
+            itemsMap.set(item.id, item);
+          }
+        });
+        const deduplicatedItems = Array.from(itemsMap.values());
+
+        return {
+          ...prev,
+          ...socketOrder,
+          items: deduplicatedItems,
+        };
+      });
+
       localStorage.setItem("current_order_id", socketOrder.id);
       localStorage.setItem("current_table_id", tableId);
     }
@@ -547,15 +585,6 @@ export default function TableOrderPage() {
                 Thêm món
               </Button>
               <Button
-                onClick={() => router.push(`/orders/${currentOrder.id}`)}
-                size="lg"
-                variant="outline"
-                className="border-2 border-primary/30 hover:bg-primary/10 hover:border-primary/50 shadow-md hover:shadow-lg transition-all"
-              >
-                <ShoppingCart className="h-5 w-5 mr-2" />
-                Xem chi tiết
-              </Button>
-              <Button
                 size="lg"
                 variant="outline"
                 onClick={handleCallWaiter}
@@ -564,6 +593,19 @@ export default function TableOrderPage() {
                 <Phone className="h-5 w-5 mr-2" />
                 Gọi nhân viên
               </Button>
+              {currentOrder &&
+                (currentOrder.payment_status === "paid" ||
+                  currentOrder.status === "paid") && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setIsViewInvoiceDialogOpen(true)}
+                    className="border-2 border-green-500/30 hover:bg-green-500/10 hover:border-green-500/50 shadow-md hover:shadow-lg transition-all"
+                  >
+                    <Receipt className="h-5 w-5 mr-2" />
+                    Xem Hóa Đơn
+                  </Button>
+                )}
             </div>
             {/* Voucher Section */}
             {currentOrder && currentOrder.status === "dining" && (
@@ -583,7 +625,11 @@ export default function TableOrderPage() {
                           {currentOrder.voucher.code}
                         </span>
                         <Badge variant="outline" className="text-xs">
-                          -{Number(currentOrder.voucher_discount_amount || 0).toLocaleString("vi-VN")}đ
+                          -
+                          {Number(
+                            currentOrder.voucher_discount_amount || 0
+                          ).toLocaleString("vi-VN")}
+                          đ
                         </Badge>
                       </div>
                       <Button
@@ -592,19 +638,23 @@ export default function TableOrderPage() {
                         onClick={async () => {
                           setIsVoucherProcessing(true);
                           try {
-                            const response = await guestOrderService.removeVoucher(tableId);
+                            const response =
+                              await guestOrderService.removeVoucher(tableId);
                             if (response.status === "success") {
                               setCurrentOrder(response.data);
                               toast({
                                 title: "Đã xóa voucher",
-                                description: "Voucher đã được xóa khỏi đơn hàng",
+                                description:
+                                  "Voucher đã được xóa khỏi đơn hàng",
                                 variant: "success",
                               });
                             }
                           } catch (error: any) {
                             toast({
                               title: "Lỗi",
-                              description: error.response?.data?.message || "Không thể xóa voucher",
+                              description:
+                                error.response?.data?.message ||
+                                "Không thể xóa voucher",
                               variant: "destructive",
                             });
                           } finally {
@@ -621,7 +671,9 @@ export default function TableOrderPage() {
                       <Input
                         placeholder="Nhập mã giảm giá"
                         value={voucherCode}
-                        onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                        onChange={(e) =>
+                          setVoucherCode(e.target.value.toUpperCase())
+                        }
                         className="flex-1"
                       />
                       <Button
@@ -636,23 +688,27 @@ export default function TableOrderPage() {
                           }
                           setIsVoucherProcessing(true);
                           try {
-                            const response = await guestOrderService.applyVoucher(
-                              tableId,
-                              voucherCode.trim()
-                            );
+                            const response =
+                              await guestOrderService.applyVoucher(
+                                tableId,
+                                voucherCode.trim()
+                              );
                             if (response.status === "success") {
                               setCurrentOrder(response.data);
                               setVoucherCode("");
                               toast({
                                 title: "Áp dụng voucher thành công",
-                                description: "Voucher đã được áp dụng vào đơn hàng",
+                                description:
+                                  "Voucher đã được áp dụng vào đơn hàng",
                                 variant: "success",
                               });
                             }
                           } catch (error: any) {
                             toast({
                               title: "Lỗi",
-                              description: error.response?.data?.message || "Không thể áp dụng voucher",
+                              description:
+                                error.response?.data?.message ||
+                                "Không thể áp dụng voucher",
                               variant: "destructive",
                             });
                           } finally {
@@ -676,20 +732,147 @@ export default function TableOrderPage() {
               </Card>
             )}
 
-            {/* Payment Button */}
-            {currentOrder && currentOrder.status === "dining" && (
-              <Button
-                onClick={() => setShowPaymentDialog(true)}
-                size="lg"
-                className="w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 text-white shadow-xl hover:shadow-2xl transition-all text-lg font-semibold py-6"
-              >
-                <CreditCard className="h-5 w-5 mr-2" />
-                Yêu cầu thanh toán
-              </Button>
+            {/* Payment Retry Button - Show when status is waiting_payment */}
+            {currentOrder && currentOrder.status === "waiting_payment" && (
+              <div className="space-y-3">
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-sm text-orange-800 font-medium mb-2">
+                    💳 Chờ thanh toán
+                  </p>
+                  <p className="text-xs text-orange-600">
+                    Đơn hàng đang chờ thanh toán. Vui lòng chọn phương thức
+                    thanh toán.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={async () => {
+                      setIsProcessingPayment(true);
+                      try {
+                        const response =
+                          await guestOrderService.requestPaymentRetry(
+                            tableId,
+                            "vnpay"
+                          );
+                        if (
+                          response.status === "success" &&
+                          response.data.redirect_url
+                        ) {
+                          window.location.href = response.data.redirect_url;
+                          return;
+                        }
+                        toast({
+                          title: "Lỗi",
+                          description:
+                            response.message ||
+                            "Không thể tạo link thanh toán VNPay",
+                          variant: "destructive",
+                        });
+                      } catch (error: any) {
+                        console.error("Payment retry error:", error);
+                        const errorMessage =
+                          error.message ||
+                          error.response?.data?.message ||
+                          "Không thể yêu cầu thanh toán lại";
+                        toast({
+                          title: "Lỗi thanh toán",
+                          description: errorMessage,
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsProcessingPayment(false);
+                      }
+                    }}
+                    disabled={isProcessingPayment}
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+                  >
+                    {isProcessingPayment ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CreditCard className="h-4 w-4 mr-2" />
+                    )}
+                    Thanh toán lại VNPay
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      setIsProcessingPayment(true);
+                      try {
+                        const response =
+                          await guestOrderService.requestPaymentRetry(
+                            tableId,
+                            "cash"
+                          );
+                        if (response.status === "success") {
+                          toast({
+                            title: "Đã gửi yêu cầu thanh toán tiền mặt",
+                            description: "Nhân viên sẽ đến bàn của bạn",
+                            variant: "success",
+                          });
+                          // Refresh order
+                          const orderResponse =
+                            await guestOrderService.getCurrentOrder(tableId);
+                          if (orderResponse.status === "success") {
+                            setCurrentOrder(orderResponse.data);
+                          }
+                        } else {
+                          toast({
+                            title: "Lỗi",
+                            description:
+                              response.message || "Không thể xử lý thanh toán",
+                            variant: "destructive",
+                          });
+                        }
+                      } catch (error: any) {
+                        console.error("Payment retry error:", error);
+                        const errorMessage =
+                          error.message ||
+                          error.response?.data?.message ||
+                          "Không thể yêu cầu thanh toán lại";
+                        toast({
+                          title: "Lỗi thanh toán",
+                          description: errorMessage,
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsProcessingPayment(false);
+                      }
+                    }}
+                    disabled={isProcessingPayment}
+                    size="lg"
+                    variant="outline"
+                    className="border-2"
+                  >
+                    {isProcessingPayment ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Wallet className="h-4 w-4 mr-2" />
+                    )}
+                    Thanh toán lại tiền mặt
+                  </Button>
+                </div>
+              </div>
             )}
 
+            {/* Payment Button */}
+            {currentOrder &&
+              currentOrder.status === "dining" &&
+              currentOrder.status !== "waiting_payment" && (
+                <Button
+                  onClick={() => setShowPaymentDialog(true)}
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 text-white shadow-xl hover:shadow-2xl transition-all text-lg font-semibold py-6"
+                >
+                  <CreditCard className="h-5 w-5 mr-2" />
+                  Yêu cầu thanh toán
+                </Button>
+              )}
+
             {/* Payment Dialog */}
-            <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+            <Dialog
+              open={showPaymentDialog}
+              onOpenChange={setShowPaymentDialog}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Chọn phương thức thanh toán</DialogTitle>
@@ -742,28 +925,53 @@ export default function TableOrderPage() {
                     onClick={async () => {
                       setIsProcessingPayment(true);
                       try {
-                        const hasFailedPayment = currentOrder?.payment_status === "failed";
                         let response;
 
                         if (selectedPaymentMethod === "vnpay") {
-                          if (hasFailedPayment) {
-                            response = await guestOrderService.requestPaymentRetry(
-                              tableId,
-                              "vnpay"
-                            );
+                          // Check if order is waiting_payment - use retry API
+                          const isWaitingPayment =
+                            currentOrder?.status === "waiting_payment";
+
+                          if (isWaitingPayment) {
+                            response =
+                              await guestOrderService.requestPaymentRetry(
+                                tableId,
+                                "vnpay"
+                              );
                           } else {
-                            response = await guestOrderService.requestPayment(tableId, {
-                              method: "vnpay",
-                            });
+                            response = await guestOrderService.requestPayment(
+                              tableId,
+                              {
+                                method: "vnpay",
+                              }
+                            );
                           }
 
-                          if (response.status === "success" && response.data.redirect_url) {
+                          if (
+                            response.status === "success" &&
+                            response.data.redirect_url
+                          ) {
                             window.location.href = response.data.redirect_url;
                             return;
                           }
                         } else {
                           // Cash payment
-                          response = await guestOrderService.requestCashPayment(tableId);
+                          // Check if order is waiting_payment - use retry API
+                          const isWaitingPayment =
+                            currentOrder?.status === "waiting_payment";
+
+                          if (isWaitingPayment) {
+                            response =
+                              await guestOrderService.requestPaymentRetry(
+                                tableId,
+                                "cash"
+                              );
+                          } else {
+                            response =
+                              await guestOrderService.requestCashPayment(
+                                tableId
+                              );
+                          }
                           if (response.status === "success") {
                             toast({
                               title: "Đã gửi yêu cầu thanh toán tiền mặt",
@@ -772,25 +980,44 @@ export default function TableOrderPage() {
                             });
                             setShowPaymentDialog(false);
                             // Refresh order
-                            const orderResponse = await guestOrderService.getCurrentOrder(tableId);
+                            const orderResponse =
+                              await guestOrderService.getCurrentOrder(tableId);
                             if (orderResponse.status === "success") {
                               setCurrentOrder(orderResponse.data);
                             }
+                            return;
+                          } else {
+                            // Handle error response
+                            toast({
+                              title: "Lỗi",
+                              description:
+                                response.message ||
+                                "Không thể xử lý thanh toán. Vui lòng thử lại.",
+                              variant: "destructive",
+                            });
                             return;
                           }
                         }
 
                         toast({
                           title: "Lỗi",
-                          description: "Không thể xử lý thanh toán. Vui lòng thử lại.",
+                          description:
+                            "Không thể xử lý thanh toán. Vui lòng thử lại.",
                           variant: "destructive",
                         });
                       } catch (error: any) {
+                        console.error("Payment error:", error);
+                        // Extract error message from different possible error structures
+                        // apiClient throws error with error.message = data.message and error.response.data = full response
+                        const errorMessage =
+                          error.message || // This is set by apiClient from data.message
+                          error.response?.data?.message ||
+                          error.response?.data?.error ||
+                          error.response?.data?.data?.message ||
+                          "Không thể yêu cầu thanh toán. Vui lòng thử lại.";
                         toast({
-                          title: "Lỗi",
-                          description:
-                            error.response?.data?.message ||
-                            "Không thể yêu cầu thanh toán",
+                          title: "Lỗi thanh toán",
+                          description: errorMessage,
                           variant: "destructive",
                         });
                       } finally {
@@ -1115,6 +1342,39 @@ export default function TableOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* View Invoice Dialog for Guest */}
+      {currentOrder && (
+        <Dialog
+          open={isViewInvoiceDialogOpen}
+          onOpenChange={setIsViewInvoiceDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Hóa Đơn Thanh Toán</DialogTitle>
+              <DialogDescription>
+                Chi tiết hóa đơn cho đơn hàng #{currentOrder.id.slice(0, 8)}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <InvoiceForm
+                order={currentOrder as any}
+                finalPaymentAmount={Number(
+                  currentOrder.final_amount || currentOrder.total_amount || 0
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsViewInvoiceDialogOpen(false)}
+              >
+                Đóng
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

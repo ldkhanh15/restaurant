@@ -19,6 +19,7 @@ export interface ReservationFilters {
   user_id?: string;
   customer_id?: string;
   event_id?: string;
+  search?: string; // Search by reservation ID, user name/email/phone, table number
   page?: number;
   limit?: number;
 }
@@ -102,16 +103,32 @@ class ReservationRepository {
       where.event_id = whereFilters.event_id;
     }
 
+    // Handle search filter
+    const includeOptions: any[] = [
+      { model: User, as: "user" },
+      { model: Table, as: "table" },
+      { model: Event, as: "event" },
+    ];
+
+    // If search is provided, add search conditions
+    if (whereFilters.search && whereFilters.search.trim()) {
+      const searchTerm = whereFilters.search.trim();
+      where[Op.or] = [
+        { id: { [Op.like]: `%${searchTerm}%` } },
+        { "$user.username$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.full_name$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.email$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.phone$": { [Op.like]: `%${searchTerm}%` } },
+        { "$table.table_number$": { [Op.like]: `%${searchTerm}%` } },
+      ];
+    }
+
     const { rows, count } = await Reservation.findAndCountAll({
       where,
       limit,
       offset,
       order: [["reservation_time", "DESC"]],
-      include: [
-        { model: User, as: "user" },
-        { model: Table, as: "table" },
-        { model: Event, as: "event" },
-      ],
+      include: includeOptions,
     });
 
     return { rows, count, page, limit };

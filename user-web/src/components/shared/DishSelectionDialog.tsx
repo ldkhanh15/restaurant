@@ -14,13 +14,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   Search,
   Star,
   Clock,
@@ -74,10 +67,11 @@ export default function DishSelectionDialog({
 
   // Fetch dishes (first page)
   const loadDishes = useCallback(async () => {
+    if (!open) return; // Don't load if dialog is closed
     try {
       setIsLoading(true);
       setPage(1);
-      const res = await dishService.search({
+      console.log("Loading dishes with params:", {
         page: 1,
         limit: 12,
         sortBy: sortBy === "price" ? "price" : "name",
@@ -85,18 +79,33 @@ export default function DishSelectionDialog({
         name: searchQuery || undefined,
         active: true,
       });
-      const data = res.data;
-      setDishes(data.items || []);
-      setTotalPages(data.totalPages || 1);
-      setPage(data.currentPage || 1);
+      const res = await dishService.getAll({
+        page: 1,
+        limit: 12,
+        sortBy: sortBy === "price" ? "price" : "name",
+        sortOrder: "ASC",
+        name: searchQuery || undefined,
+        active: true,
+      });
+      console.log("Dishes API response:", res);
+      // Handle response format: { status: "success", data: { data: [...], pagination: {...} } }
+      const responseData = res.data
+      const dishesList = responseData?.data
+      const pagination = responseData?.pagination || {};
+
+      console.log("Parsed dishes list:", dishesList);
+      setDishes(dishesList);
+      setTotalPages(pagination.totalPages || 1);
+      setPage(pagination.currentPage || 1);
     } catch (e) {
+      console.error("Error loading dishes:", e);
       setDishes([]);
       setTotalPages(1);
       setPage(1);
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, sortBy]);
+  }, [searchQuery, sortBy, open]);
 
   // Load more (next page)
   const loadMore = useCallback(async () => {
@@ -104,7 +113,7 @@ export default function DishSelectionDialog({
     try {
       setIsLoadingMore(true);
       const next = page + 1;
-      const res = await dishService.search({
+      const res = await dishService.getAll({
         page: next,
         limit: 12,
         sortBy: sortBy === "price" ? "price" : "name",
@@ -112,10 +121,14 @@ export default function DishSelectionDialog({
         name: searchQuery || undefined,
         active: true,
       });
-      const data = res.data;
-      setDishes((prev) => [...prev, ...(data.items || [])]);
-      setTotalPages(data.totalPages || totalPages);
-      setPage(data.currentPage || next);
+      // Handle response format: { status: "success", data: { data: [...], pagination: {...} } }
+      const responseData = res.data?.data || res.data;
+      const dishesList = responseData?.data || responseData?.items || [];
+      const pagination = responseData?.pagination || {};
+
+      setDishes((prev) => [...prev, ...dishesList]);
+      setTotalPages(pagination.totalPages || totalPages);
+      setPage(pagination.currentPage || next);
     } catch (e) {
       // ignore
     } finally {
@@ -123,14 +136,59 @@ export default function DishSelectionDialog({
     }
   }, [isLoadingMore, page, totalPages, searchQuery, sortBy]);
 
-  // Reset and fetch when dialog opens or filters change
+  // Fetch when dialog opens
+  useEffect(() => {
+    if (!open) {
+      // Reset state when dialog closes
+      setDishes([]);
+      setSearchQuery("");
+      setPage(1);
+      return;
+    }
+    // Load dishes when dialog opens - call directly without dependency on loadDishes
+    const fetchDishes = async () => {
+      try {
+        setIsLoading(true);
+        setPage(1);
+        console.log("Loading dishes when dialog opens");
+        const res = await dishService.getAll({
+          page: 1,
+          limit: 12,
+          sortBy: sortBy === "price" ? "price" : "name",
+          sortOrder: "ASC",
+          name: searchQuery || undefined,
+          active: true,
+        });
+        console.log("Dishes API response:", res);
+        const responseData = res.data?.data || res.data;
+        const dishesList = responseData?.data || responseData?.items || [];
+        const pagination = responseData?.pagination || {};
+
+        console.log("Parsed dishes list:", dishesList);
+        setDishes(dishesList);
+        setTotalPages(pagination.totalPages || 1);
+        setPage(pagination.currentPage || 1);
+      } catch (e) {
+        console.error("Error loading dishes:", e);
+        setDishes([]);
+        setTotalPages(1);
+        setPage(1);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchDishes();
+  }, [open, sortBy]); // Depend on open and sortBy for initial load
+
+  // Reload when search changes (only if dialog is open)
   useEffect(() => {
     if (!open) return;
-    const id = setTimeout(() => {
+    // Debounce search query changes
+    const timeoutId = setTimeout(() => {
       loadDishes();
-    }, 150);
-    return () => clearTimeout(id);
-  }, [open, loadDishes]);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, open, loadDishes]); // Include loadDishes in dependencies
 
   // Infinite scroll
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {

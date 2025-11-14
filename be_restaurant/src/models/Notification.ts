@@ -15,6 +15,7 @@ interface NotificationAttributes {
     | "reservation_updated"
     | "chat_message"
     | "support_request"
+    | "payment_requested"
     | "payment_completed"
     | "other"
     | "loyalty_points_awarded";
@@ -49,9 +50,10 @@ class Notification
     | "reservation_updated"
     | "chat_message"
     | "support_request"
+    | "payment_requested"
     | "payment_completed"
-  | "other"
-  | "loyalty_points_awarded";
+    | "other"
+    | "loyalty_points_awarded";
   public content!: string;
   public title?: string;
   public data?: any;
@@ -88,9 +90,10 @@ Notification.init(
         "reservation_updated",
         "chat_message",
         "support_request",
-          "payment_completed",
-          "other",
-          "loyalty_points_awarded"
+        "payment_requested",
+        "payment_completed",
+        "other",
+        "loyalty_points_awarded"
       ),
       defaultValue: "other",
     },

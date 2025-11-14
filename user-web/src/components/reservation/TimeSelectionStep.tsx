@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -24,11 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CalendarIcon, Clock } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CalendarIcon, Clock, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { useReservationStore } from "@/store/reservationStore";
 import { cn } from "@/lib/utils";
+import { tableService } from "@/services/tableService";
 import {
   slideInRight,
   containerVariants,
@@ -36,7 +38,13 @@ import {
   scaleInVariants,
 } from "@/lib/motion-variants";
 
-const timeSlots = [
+const defaultTimeSlots = [
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
   "11:00",
   "11:30",
   "12:00",
@@ -45,6 +53,10 @@ const timeSlots = [
   "13:30",
   "14:00",
   "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
   "17:00",
   "17:30",
   "18:00",
@@ -54,15 +66,123 @@ const timeSlots = [
   "20:00",
   "20:30",
   "21:00",
+  "21:30",
 ];
 
 export default function TimeSelectionStep() {
   const { draft, updateDraft } = useReservationStore();
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [timeValidationError, setTimeValidationError] = useState<string | null>(
+    null
+  );
 
   // Disable past dates
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const now = new Date();
+
+  // Load available time slots if table and date are selected
+  useEffect(() => {
+    const loadAvailableTimeSlots = async () => {
+      if (draft.selected_table_id && draft.date) {
+        setIsLoadingSlots(true);
+        try {
+          const dateStr =
+            draft.date instanceof Date
+              ? draft.date.toISOString().split("T")[0]
+              : new Date(draft.date).toISOString().split("T")[0];
+          const response = await tableService.getAvailableTimeSlots(
+            draft.selected_table_id,
+            {
+              date: dateStr,
+              duration_minutes: draft.duration_minutes || 60,
+            }
+          );
+          const slots = response.data?.available_time_slots || [];
+          setAvailableTimeSlots(slots.map((slot) => slot.start));
+        } catch (error) {
+          console.error("Failed to load available time slots:", error);
+          setAvailableTimeSlots([]);
+        } finally {
+          setIsLoadingSlots(false);
+        }
+      } else {
+        setAvailableTimeSlots([]);
+      }
+    };
+
+    loadAvailableTimeSlots();
+  }, [draft.selected_table_id, draft.date, draft.duration_minutes]);
+
+  // Validate selected time
+  useEffect(() => {
+    if (draft.date && draft.time) {
+      const selectedDate =
+        draft.date instanceof Date ? draft.date : new Date(draft.date);
+      const [hours, minutes] = draft.time.split(":").map(Number);
+      const selectedDateTime = new Date(selectedDate);
+      selectedDateTime.setHours(hours, minutes, 0, 0);
+
+      // Check if time is in the past
+      if (selectedDateTime < now) {
+        setTimeValidationError("Không thể chọn thời gian trong quá khứ");
+        return;
+      }
+
+      // Check if time slot is available (if table is selected)
+      if (draft.selected_table_id && availableTimeSlots.length > 0) {
+        if (!availableTimeSlots.includes(draft.time)) {
+          setTimeValidationError(
+            "Thời gian này đã được đặt. Vui lòng chọn thời gian khác."
+          );
+          return;
+        }
+      }
+
+      setTimeValidationError(null);
+    } else {
+      setTimeValidationError(null);
+    }
+  }, [
+    draft.date,
+    draft.time,
+    draft.selected_table_id,
+    availableTimeSlots,
+    now,
+  ]);
+
+  // Get time slots to display
+  const timeSlotsToShow = useMemo(() => {
+    if (draft.selected_table_id && availableTimeSlots.length > 0) {
+      return availableTimeSlots;
+    }
+    return defaultTimeSlots;
+  }, [draft.selected_table_id, availableTimeSlots]);
+
+  // Filter out past times for today
+  const filteredTimeSlots = useMemo(() => {
+    if (!draft.date) return timeSlotsToShow;
+
+    const selectedDate =
+      draft.date instanceof Date ? draft.date : new Date(draft.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isToday = selectedDate.toDateString() === today.toDateString();
+
+    if (!isToday) return timeSlotsToShow;
+
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+
+    return timeSlotsToShow.filter((time) => {
+      const [hours, minutes] = time.split(":").map(Number);
+      const timeMinutes = hours * 60 + minutes;
+      return timeMinutes > currentTimeMinutes;
+    });
+  }, [timeSlotsToShow, draft.date, now]);
 
   return (
     <motion.div
@@ -183,22 +303,57 @@ export default function TimeSelectionStep() {
               >
                 <Clock className="h-4 w-4 text-accent" />
                 Giờ *
+                {isLoadingSlots && (
+                  <span className="text-xs text-muted-foreground ml-2">
+                    (Đang tải...)
+                  </span>
+                )}
               </Label>
               <Select
                 value={draft.time}
-                onValueChange={(time) => updateDraft({ time })}
+                onValueChange={(time) => {
+                  updateDraft({ time });
+                  setTimeValidationError(null);
+                }}
+                disabled={!draft.date}
               >
                 <SelectTrigger className="border-accent/20 focus:border-accent transition-all duration-200">
-                  <SelectValue placeholder="Chọn giờ" />
+                  <SelectValue
+                    placeholder={draft.date ? "Chọn giờ" : "Chọn ngày trước"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {timeSlots.map((time) => (
-                    <SelectItem key={time} value={time}>
-                      {time}
-                    </SelectItem>
-                  ))}
+                  {filteredTimeSlots.length > 0 ? (
+                    filteredTimeSlots.map((time) => (
+                      <SelectItem key={time} value={time}>
+                        {time}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground text-center">
+                      Không có giờ khả dụng
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
+              {timeValidationError && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{timeValidationError}</AlertDescription>
+                </Alert>
+              )}
+              {draft.selected_table_id &&
+                availableTimeSlots.length === 0 &&
+                draft.date &&
+                !isLoadingSlots && (
+                  <Alert className="mt-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Bàn này không còn thời gian khả dụng cho ngày đã chọn. Vui
+                      lòng chọn ngày khác hoặc bàn khác.
+                    </AlertDescription>
+                  </Alert>
+                )}
             </motion.div>
           </motion.div>
 

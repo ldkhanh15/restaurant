@@ -254,8 +254,9 @@ export const orderEvents = {
     }
 
     // Also emit to table room for walk-in customers
+    // Pass the original order object (not serialized payload) to ensure items are included
     if (serialized.table_id) {
-      tableEvents.tableOrderUpdated(io, serialized.table_id, payload);
+      tableEvents.tableOrderUpdated(io, serialized.table_id, order);
     }
   },
 
@@ -269,6 +270,11 @@ export const orderEvents = {
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_requested", payload);
     }
+
+    // Also emit to table room for walk-in customers
+    if (payload.table_id) {
+      tableEvents.tableOrderUpdated(io, payload.table_id, order);
+    }
   },
 
   paymentCompleted: (io: Server, order: any) => {
@@ -281,6 +287,11 @@ export const orderEvents = {
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_completed", payload);
     }
+
+    // Also emit to table room for walk-in customers
+    if (payload.table_id) {
+      tableEvents.tableOrderUpdated(io, payload.table_id, order);
+    }
   },
 
   paymentFailed: (io: Server, order: any) => {
@@ -292,6 +303,11 @@ export const orderEvents = {
     const customerId = payload.user_id || payload.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:payment_failed", payload);
+    }
+
+    // Also emit to table room for walk-in customers
+    if (payload.table_id) {
+      tableEvents.tableOrderUpdated(io, payload.table_id, order);
     }
   },
 

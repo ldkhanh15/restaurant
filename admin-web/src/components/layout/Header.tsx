@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationWidget } from "@/components/shared/NotificationWidget";
+import { useAuthStore } from "@/store/authStore";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",
@@ -58,20 +59,24 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
+    <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between relative z-50">
       <div>
         <h2 className="text-2xl font-bold text-card-foreground">{title}</h2>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 relative">
         <NotificationWidget />
 
+        {token && user ? (
+          <>
             {/* Dropdown menu với thông tin user */}
-            <DropdownMenu 
-              onOpenChange={(isOpen) => console.log("Dropdown open state:", isOpen)}
+            <DropdownMenu
+              onOpenChange={(isOpen) =>
+                console.log("Dropdown open state:", isOpen)
+              }
               modal={false}
             >
-              <DropdownMenuTrigger 
+              <DropdownMenuTrigger
                 className="relative h-10 w-10 rounded-full hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex items-center justify-center border-0 bg-transparent cursor-pointer"
                 onClick={(e) => {
                   console.log("Direct trigger clicked!", e);
@@ -79,18 +84,20 @@ export function Header() {
                 }}
               >
                 <Avatar className="h-10 w-10 pointer-events-none">
-                  <AvatarImage 
-                    src="/default-avatar.png" 
-                    alt={user.username || "User"} 
+                  <AvatarImage
+                    src="/default-avatar.png"
+                    alt={user.username || "User"}
                   />
                   <AvatarFallback>
-                    {user.username ? user.username.charAt(0).toUpperCase() : "U"}
+                    {user.username
+                      ? user.username.charAt(0).toUpperCase()
+                      : "U"}
                   </AvatarFallback>
                 </Avatar>
               </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                className="w-56 z-[9999] bg-background border shadow-lg" 
-                align="end" 
+              <DropdownMenuContent
+                className="w-56 z-[9999] bg-background border shadow-lg"
+                align="end"
                 side="bottom"
                 sideOffset={8}
                 avoidCollisions={true}
@@ -107,11 +114,15 @@ export function Header() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => console.log("Profile clicked")}>
+                <DropdownMenuItem
+                  onClick={() => console.log("Profile clicked")}
+                >
                   <span className="mr-2 text-sm">👤</span>
                   <span>Hồ sơ</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => console.log("Settings clicked")}>
+                <DropdownMenuItem
+                  onClick={() => console.log("Settings clicked")}
+                >
                   <span className="mr-2 text-sm">⚙️</span>
                   <span>Cài đặt</span>
                 </DropdownMenuItem>
@@ -126,15 +137,15 @@ export function Header() {
         ) : (
           /* Hiển thị khi user chưa đăng nhập */
           <div className="flex items-center gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => router.push("/login")}
               className="h-9 px-4"
             >
               Đăng nhập
             </Button>
-            <Button 
-              variant="default" 
+            <Button
+              variant="default"
               onClick={() => router.push("/register")}
               className="h-9 px-4"
             >

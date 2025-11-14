@@ -458,14 +458,18 @@ export default function OrderDetailPage() {
 
     try {
       if (paymentMethod === "cash") {
-        // Thanh toán tiền mặt - gọi API complete payment
-        await api.orders.updateStatus(orderId, "paid");
-        toast({
-          title: "Thành công",
-          description: "Đã xác nhận thanh toán tiền mặt",
+        // Thanh toán tiền mặt - gọi API requestCashPayment (validation sẽ được xử lý ở backend)
+        const response = await api.orders.requestCashPayment(orderId, {
+          note: "",
         });
-        setShowPaymentDialog(false);
-        loadOrder();
+        if (response.status === "success") {
+          toast({
+            title: "Thành công",
+            description: "Đã xác nhận thanh toán tiền mặt",
+          });
+          setShowPaymentDialog(false);
+          loadOrder();
+        }
       } else if (paymentMethod === "vnpay") {
         // Check if there's a failed payment - use retry API
         const hasFailedPayment = order.payment_status === "failed";
@@ -496,11 +500,14 @@ export default function OrderDetailPage() {
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to request payment:", error);
       toast({
         title: "Lỗi",
-        description: "Không thể xử lý thanh toán",
+        description:
+          error.response?.data?.message ||
+          error.message ||
+          "Không thể xử lý thanh toán",
         variant: "destructive",
       });
     }

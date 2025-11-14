@@ -386,6 +386,104 @@ export const getTableQRCode = async (
   }
 };
 
+// Get available tables for reservation
+export const getAvailableTablesForReservation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const numPeople = req.query.num_people
+      ? parseInt(req.query.num_people as string)
+      : undefined;
+    const date = req.query.date ? new Date(req.query.date as string) : undefined;
+    const durationMinutes = req.query.duration_minutes
+      ? parseInt(req.query.duration_minutes as string)
+      : 60;
+
+    // Validate num_people if provided
+    if (numPeople !== undefined && numPeople <= 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Số lượng khách phải lớn hơn 0",
+      });
+    }
+
+    // Validate date if provided
+    if (date && isNaN(date.getTime())) {
+      return res.status(400).json({
+        status: "error",
+        message: "Ngày không hợp lệ",
+      });
+    }
+
+    const tables = await tableService.findAvailableTablesForReservation(
+      numPeople,
+      date,
+      durationMinutes
+    );
+
+    res.json({
+      status: "success",
+      data: tables,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get available time slots for a table
+export const getTableAvailableTimeSlots = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const tableId = req.params.id;
+    const date = req.query.date
+      ? new Date(req.query.date as string)
+      : new Date();
+    const durationMinutes = req.query.duration_minutes
+      ? parseInt(req.query.duration_minutes as string)
+      : 60;
+
+    // Validate table exists
+    const table = await tableService.findById(tableId);
+    if (!table) {
+      return res.status(404).json({
+        status: "error",
+        message: "Table not found",
+      });
+    }
+
+    // Validate date
+    if (isNaN(date.getTime())) {
+      return res.status(400).json({
+        status: "error",
+        message: "Ngày không hợp lệ",
+      });
+    }
+
+    const timeSlots = await tableService.getAvailableTimeSlots(
+      tableId,
+      date,
+      durationMinutes
+    );
+
+    res.json({
+      status: "success",
+      data: {
+        table_id: tableId,
+        date: date.toISOString().split("T")[0],
+        duration_minutes: durationMinutes,
+        available_time_slots: timeSlots,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Create order from table (for guest customers - no auth required)
 export const createOrderFromTable = async (
   req: Request,

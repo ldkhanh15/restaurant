@@ -112,7 +112,7 @@ export function TableQRGenerator({
     process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") ||
     "http://localhost:3000";
 
-  const fullUrl = qrCodeUrl || `${frontendUrl}/table/${tableId}`;
+  const fullUrl = qrCodeUrl || `${frontendUrl}/tables/${tableId}`;
 
   return (
     <Card className="w-full max-w-md mx-auto">

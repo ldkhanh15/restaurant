@@ -92,18 +92,19 @@ class PaymentService extends BaseService<Payment> {
     params.vnp_ReturnUrl = returnUrl.trim();
     params.vnp_CreateDate = this.formatLocalDateYYYYMMDDHHmmss(new Date());
 
-    // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
-    // (see VNPay docs). Include it before signing so that the signing string
-    // excludes it but the final query contains it as required.
-    params.vnp_SecureHashType = "HMACSHA512";
-
     if (params.vnp_IpAddr === "::1") params.vnp_IpAddr = "127.0.0.1";
 
-    // ⚠️ KHÔNG encode trước khi sign
-    const sortedParams = this.sortObject(params);
+    // ⚠️ VNPay: vnp_SecureHashType và vnp_SecureHash KHÔNG được include trong signing string
+    // Tạo copy của params để sign (loại bỏ vnp_SecureHashType)
+    const paramsForSign = { ...params };
+    delete (paramsForSign as any).vnp_SecureHashType;
+    delete (paramsForSign as any).vnp_SecureHash;
 
+    // Sort và encode params để sign
+    const sortedParams = this.sortObject(paramsForSign);
     const signData = qs.stringify(sortedParams, { encode: false });
 
+    // Tính hash
     const secureHash = crypto
       .createHmac(
         "sha512",
@@ -112,10 +113,13 @@ class PaymentService extends BaseService<Payment> {
       .update(signData, "utf-8")
       .digest("hex");
 
-    // ✅ Theo sample: không encode thêm khi build URL (đã encoded ở sortObject)
-    const queryString = qs.stringify(sortedParams, { encode: false });
+    // Build query string từ params gốc (bao gồm vnp_SecureHashType)
+    const paramsForQuery = { ...params };
+    paramsForQuery.vnp_SecureHashType = "HMACSHA512";
+    const sortedParamsForQuery = this.sortObject(paramsForQuery);
+    const queryString = qs.stringify(sortedParamsForQuery, { encode: false });
 
-    // Add hash type per VNPay recommendation
+    // Thêm hash vào cuối
     return `${baseUrl}?${queryString}&vnp_SecureHash=${secureHash}`;
   }
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,7 @@ import {
   UserX,
 } from "lucide-react";
 import { api, Order, OrderFilters } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "react-toastify";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/providers/WebSocketProvider";
 import { exportService } from "@/services/exportService";
@@ -107,12 +108,12 @@ export function OrderManagementEnhanced({
   className,
 }: OrderManagementEnhancedProps) {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -165,7 +166,13 @@ export function OrderManagementEnhanced({
   useEffect(() => {
     loadOrders();
     loadStats();
-  }, [currentPage, statusFilter, dateFilter, tableIdFilter]);
+  }, [
+    currentPage,
+    statusFilter,
+    dateFilter,
+    tableIdFilter,
+    debouncedSearchTerm,
+  ]);
 
   // Load tables when open create dialog
   useEffect(() => {
@@ -192,14 +199,10 @@ export function OrderManagementEnhanced({
       setShowCreateDialog(false);
       setSelectedTableId("");
       await loadOrders();
-      toast({ title: "Thành công", description: "Tạo đơn hàng thành công" });
+      toast.success("Tạo đơn hàng thành công");
     } catch (error) {
       console.error(error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tạo đơn hàng",
-        variant: "destructive",
-      });
+      toast.error("Không thể tạo đơn hàng");
     } finally {
       setIsCreatingOrder(false);
     }
@@ -209,10 +212,7 @@ export function OrderManagementEnhanced({
   useEffect(() => {
     onOrderCreated((newOrder) => {
       setOrders((prev) => [newOrder, ...prev]);
-      toast({
-        title: "Đơn hàng mới",
-        description: `Đơn hàng #${newOrder.id.slice(0, 8)} đã được tạo`,
-      });
+      toast.info(`Đơn hàng mới: #${newOrder.id.slice(0, 8)} đã được tạo`);
     });
 
     onOrderUpdated((updatedOrder) => {
@@ -229,12 +229,11 @@ export function OrderManagementEnhanced({
           o.id === order.id ? { ...o, status: order.status } : o
         )
       );
-      toast({
-        title: "Trạng thái đơn hàng thay đổi",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã chuyển sang ${
+      toast.info(
+        `Trạng thái đơn hàng #${order.id.slice(0, 8)} đã chuyển sang ${
           order.status
-        }`,
-      });
+        }`
+      );
     });
 
     onPaymentRequested((order) => {
@@ -244,93 +243,74 @@ export function OrderManagementEnhanced({
         : "";
       const amount = order.final_amount || order.total_amount || 0;
 
-      toast({
-        title: "Yêu cầu thanh toán",
-        description: `Đơn hàng #${order.id.slice(0, 8)} yêu cầu thanh toán ${
+      toast.warning(
+        `Yêu cầu thanh toán: Đơn hàng #${order.id.slice(0, 8)} - ${
           paymentMethod === "cash" ? "tiền mặt" : "online"
-        }. Số tiền: ${Number(amount).toLocaleString("vi-VN")}đ${paymentNote}`,
-        variant: paymentMethod === "cash" ? "default" : "default",
-      });
+        } - ${Number(amount).toLocaleString("vi-VN")}đ${paymentNote}`
+      );
     });
 
     onPaymentCompleted((order) => {
-      toast({
-        title: "Thanh toán hoàn tất",
-        description: `Đơn hàng #${order.id.slice(
+      toast.success(
+        `Thanh toán hoàn tất: Đơn hàng #${order.id.slice(
           0,
           8
-        )} đã thanh toán thành công`,
-        variant: "default",
-      });
+        )} đã thanh toán thành công`
+      );
     });
 
     onSupportRequested((order) => {
-      toast({
-        title: "Yêu cầu hỗ trợ",
-        description: `Đơn hàng #${order.id.slice(0, 8)} cần hỗ trợ`,
-        variant: "destructive",
-      });
+      toast.warning(
+        `Yêu cầu hỗ trợ: Đơn hàng #${order.id.slice(0, 8)} cần hỗ trợ`
+      );
     });
 
     onPaymentFailed((order) => {
-      toast({
-        title: "Thanh toán thất bại",
-        description: `Đơn hàng #${order.id.slice(0, 8)} thanh toán thất bại`,
-        variant: "destructive",
-      });
+      toast.error(
+        `Thanh toán thất bại: Đơn hàng #${order.id.slice(
+          0,
+          8
+        )} thanh toán thất bại`
+      );
     });
 
     onVoucherApplied((order) => {
-      toast({
-        title: "Áp dụng voucher",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã áp dụng voucher`,
-        variant: "default",
-      });
+      toast.info(
+        `Áp dụng voucher: Đơn hàng #${order.id.slice(0, 8)} đã áp dụng voucher`
+      );
     });
 
     onVoucherRemoved((order) => {
-      toast({
-        title: "Hủy voucher",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã hủy voucher`,
-        variant: "default",
-      });
+      toast.info(
+        `Hủy voucher: Đơn hàng #${order.id.slice(0, 8)} đã hủy voucher`
+      );
     });
 
     onOrderMerged((order) => {
-      toast({
-        title: "Gộp đơn hàng",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã được gộp`,
-        variant: "default",
-      });
+      toast.info(`Gộp đơn hàng: Đơn hàng #${order.id.slice(0, 8)} đã được gộp`);
     });
 
     // Listen to order item events
     onOrderItemCreated((data) => {
-      toast({
-        title: "Món mới được thêm",
-        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+      toast.info(
+        `Món mới: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
           data.item?.dish?.name || "Món mới"
-        }`,
-        variant: "info",
-      });
+        }`
+      );
     });
 
     onOrderItemQuantityChanged((data) => {
-      toast({
-        title: "Số lượng món đã thay đổi",
-        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
-          data.item?.dish?.name || "Món"
-        }`,
-        variant: "info",
-      });
+      toast.info(
+        `Số lượng món thay đổi: Đơn hàng #${
+          data.orderId?.slice(0, 8) || "N/A"
+        } - ${data.item?.dish?.name || "Món"}`
+      );
     });
 
     onOrderItemDeleted((data) => {
-      toast({
-        title: "Món đã được xóa",
-        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"}`,
-        variant: "warning",
-      });
+      toast.warning(
+        `Món đã xóa: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"}`
+      );
     });
 
     onOrderItemStatusChanged((data) => {
@@ -341,13 +321,11 @@ export function OrderManagementEnhanced({
         completed: "Hoàn thành",
         cancelled: "Đã hủy",
       };
-      toast({
-        title: "Trạng thái món đã thay đổi",
-        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+      toast.info(
+        `Trạng thái món: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
           data.item?.dish?.name || "Món"
-        } → ${statusLabels[data.item?.status] || data.item?.status}`,
-        variant: "info",
-      });
+        } → ${statusLabels[data.item?.status] || data.item?.status}`
+      );
     });
 
     // Listen to table order events (for guest/walk-in customers)
@@ -359,11 +337,12 @@ export function OrderManagementEnhanced({
         if (exists) return prev;
         return [order, ...prev];
       });
-      toast({
-        title: "Đơn hàng mới từ bàn",
-        description: `Bàn ${data.table_id} - Đơn hàng #${order.id.slice(0, 8)}`,
-        variant: "info",
-      });
+      toast.info(
+        `Đơn hàng mới từ bàn: Bàn ${data.table_id} - Đơn hàng #${order.id.slice(
+          0,
+          8
+        )}`
+      );
     });
 
     onTableOrderUpdated((data) => {
@@ -374,11 +353,7 @@ export function OrderManagementEnhanced({
     });
 
     onTableGuestJoined((data) => {
-      toast({
-        title: "Khách vãng lai",
-        description: `Khách đã tham gia bàn ${data.table_id}`,
-        variant: "info",
-      });
+      toast.info(`Khách vãng lai: Khách đã tham gia bàn ${data.table_id}`);
     });
 
     return () => {
@@ -406,28 +381,10 @@ export function OrderManagementEnhanced({
     toast,
   ]);
 
-  // Filter orders locally (for search only, other filters are handled by API)
+  // Filter orders locally (only for display, search is now handled by API)
   useEffect(() => {
-    let filtered = orders;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (order) =>
-          order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.user?.username
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          order.user?.full_name
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          order.table?.table_number
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredOrders(filtered);
-  }, [orders, searchTerm]);
+    setFilteredOrders(orders);
+  }, [orders]);
 
   // Export handlers
   const handleExportRevenue = async () => {
@@ -614,6 +571,11 @@ export function OrderManagementEnhanced({
 
       if (tableIdFilter) {
         filters.table_id = tableIdFilter;
+      }
+
+      // Add search parameter if provided
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        filters.search = debouncedSearchTerm.trim();
       }
 
       const response = await api.orders.getAll(filters);

@@ -104,12 +104,55 @@ export function useTableSocket(tableId: string | null) {
 
     socket.on("table:order_updated", (data) => {
       console.log("[Table Socket] Order updated:", data);
-      setCurrentOrder(data.order);
+
+      // Merge order data while preserving existing items if new order doesn't have items
+      setCurrentOrder((prev) => {
+        if (!prev || prev.id !== data.orderId) {
+          // If no previous order or different order, use new data
+          return data.order;
+        }
+
+        // Merge: preserve items if new order doesn't have items or has empty items
+        const newOrder = data.order || {};
+        const hasItems =
+          newOrder.items &&
+          Array.isArray(newOrder.items) &&
+          newOrder.items.length > 0;
+        const prevItems =
+          prev.items && Array.isArray(prev.items) ? prev.items : [];
+
+        // If new order has items, use them but deduplicate by id
+        let mergedItems = prevItems;
+        if (hasItems) {
+          // Deduplicate items by id to prevent duplicates
+          const itemsMap = new Map();
+          // First add previous items
+          prevItems.forEach((item: any) => {
+            if (item.id) {
+              itemsMap.set(item.id, item);
+            }
+          });
+          // Then update/add with new items (new items take priority)
+          newOrder.items.forEach((item: any) => {
+            if (item.id) {
+              itemsMap.set(item.id, item);
+            }
+          });
+          mergedItems = Array.from(itemsMap.values());
+        }
+
+        return {
+          ...prev,
+          ...newOrder,
+          // Use merged items (deduplicated by id)
+          items: mergedItems,
+        };
+      });
 
       toast({
         title: "Đơn hàng đã được cập nhật",
         description: `Trạng thái đơn hàng: ${getOrderStatusLabel(
-          data.order.status
+          data.order?.status || "unknown"
         )}`,
         variant: "default",
       });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -97,9 +98,10 @@ export default function OrdersPage() {
   } = useOrderStore();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  // Load orders on mount - support both authenticated and guest users
+  // Load orders on mount and when filters change - support both authenticated and guest users
   useEffect(() => {
     if (authLoading) {
       return;
@@ -114,10 +116,22 @@ export default function OrdersPage() {
 
         if (user?.id) {
           // Load orders for authenticated user
-          const response = await orderService.getMyOrders({
+          const params: any = {
             page: 1,
             limit: 50,
-          });
+          };
+
+          // Add search parameter if provided
+          if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+            params.search = debouncedSearchQuery.trim();
+          }
+
+          // Add status filter if provided
+          if (statusFilter !== "all") {
+            params.status = statusFilter;
+          }
+
+          const response = await orderService.getMyOrders(params);
 
           if (response.status === "success") {
             ordersData = Array.isArray(response.data.data)
@@ -162,7 +176,15 @@ export default function OrdersPage() {
     };
 
     loadOrders();
-  }, [user?.id, authLoading, setOrders, setLoading, setError]);
+  }, [
+    user?.id,
+    authLoading,
+    debouncedSearchQuery,
+    statusFilter,
+    setOrders,
+    setLoading,
+    setError,
+  ]);
 
   // Listen to real-time order updates
   useEffect(() => {
@@ -372,17 +394,21 @@ export default function OrdersPage() {
     setOrders,
   ]);
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.table?.table_number &&
-        order.table.table_number
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()));
-    const matchesStatus =
-      statusFilter === "all" || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Filter orders locally (only for guest users, authenticated users use API search)
+  const filteredOrders = user?.id
+    ? orders // For authenticated users, API already filters
+    : orders.filter((order) => {
+        const matchesSearch =
+          !debouncedSearchQuery ||
+          order.id.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          (order.table?.table_number &&
+            order.table.table_number
+              .toLowerCase()
+              .includes(debouncedSearchQuery.toLowerCase()));
+        const matchesStatus =
+          statusFilter === "all" || order.status === statusFilter;
+        return matchesSearch && matchesStatus;
+      });
 
   if (authLoading || isLoading) {
     return (

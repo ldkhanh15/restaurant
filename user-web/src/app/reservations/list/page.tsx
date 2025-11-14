@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,6 +102,7 @@ export default function ReservationsListPage() {
   } = useReservationListStore();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all"); // all, today, upcoming, past
 
@@ -114,10 +116,40 @@ export default function ReservationsListPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await reservationService.getMyReservations({
+
+        const params: any = {
           page: 1,
           limit: 100,
-        });
+        };
+
+        // Add search parameter if provided
+        if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+          params.search = debouncedSearchQuery.trim();
+        }
+
+        // Add status filter if provided
+        if (statusFilter !== "all") {
+          params.status = statusFilter;
+        }
+
+        // Add date filter if provided
+        if (dateFilter !== "all") {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          if (dateFilter === "today") {
+            params.start_date = today.toISOString();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            params.end_date = tomorrow.toISOString();
+          } else if (dateFilter === "upcoming") {
+            params.start_date = today.toISOString();
+          } else if (dateFilter === "past") {
+            params.end_date = today.toISOString();
+          }
+        }
+
+        const response = await reservationService.getMyReservations(params);
         if (response.status === "success" && response.data?.data) {
           setReservations(response.data.data);
         }
@@ -135,7 +167,16 @@ export default function ReservationsListPage() {
     };
 
     loadReservations();
-  }, [user?.id, authLoading, setReservations, setLoading, setError]);
+  }, [
+    user?.id,
+    authLoading,
+    debouncedSearchQuery,
+    statusFilter,
+    dateFilter,
+    setReservations,
+    setLoading,
+    setError,
+  ]);
 
   // Update reservation in list helper
   const updateReservation = useCallback(
@@ -224,57 +265,17 @@ export default function ReservationsListPage() {
     toast,
   ]);
 
+  // Filter reservations locally (only for display, search/filter is now handled by API)
   const filteredReservations = useMemo(() => {
-    let filtered = [...reservations];
-
-    // Filter by status
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((res) => res.status === statusFilter);
-    }
-
-    // Filter by date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (dateFilter === "today") {
-      filtered = filtered.filter((res) => {
-        const resDate = new Date(res.reservation_time);
-        resDate.setHours(0, 0, 0, 0);
-        return resDate.getTime() === today.getTime();
-      });
-    } else if (dateFilter === "upcoming") {
-      filtered = filtered.filter((res) => {
-        const resDate = new Date(res.reservation_time);
-        return resDate >= today;
-      });
-    } else if (dateFilter === "past") {
-      filtered = filtered.filter((res) => {
-        const resDate = new Date(res.reservation_time);
-        resDate.setHours(0, 0, 0, 0);
-        return resDate < today;
-      });
-    }
-
-    // Filter by search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (res) =>
-          res.id.toLowerCase().includes(query) ||
-          res.table?.table_number?.toLowerCase().includes(query) ||
-          (res.user?.full_name &&
-            res.user.full_name.toLowerCase().includes(query))
-      );
-    }
-
     // Sort: upcoming first, then by date
-    filtered.sort((a, b) => {
+    const sorted = [...reservations].sort((a, b) => {
       const dateA = new Date(a.reservation_time);
       const dateB = new Date(b.reservation_time);
       return dateB.getTime() - dateA.getTime();
     });
 
-    return filtered;
-  }, [reservations, searchQuery, statusFilter, dateFilter]);
+    return sorted;
+  }, [reservations]);
 
   if (authLoading || isLoading) {
     return (

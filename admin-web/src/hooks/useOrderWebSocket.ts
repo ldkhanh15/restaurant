@@ -139,8 +139,9 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
   const onOrderCreated = useCallback(
     (callback: (order: any) => void) => {
       if (socket) {
-        socket.on("order:created", callback);
+        socket.on("admin:order:created", callback);
         // Legacy support
+        socket.on("order:created", callback);
         socket.on("orderCreated", callback);
       }
     },

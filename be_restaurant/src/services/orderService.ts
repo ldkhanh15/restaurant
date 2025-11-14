@@ -303,15 +303,34 @@ class OrderService {
       }
     }
 
+    // Get full order with items for WebSocket events
+    const fullOrder = await orderRepository.findById(id);
+
     // Send notification and WebSocket event
-    await notificationService.notifyOrderStatusChanged(updatedOrder, oldStatus);
+    await notificationService.notifyOrderStatusChanged(
+      fullOrder || updatedOrder,
+      oldStatus
+    );
     try {
-      orderEvents.orderStatusChanged(getIO(), updatedOrder);
+      const io = getIO();
+      if (fullOrder) {
+        // Emit orderStatusChanged with full order data
+        orderEvents.orderStatusChanged(io, fullOrder);
+        // Also emit orderUpdated to ensure table rooms get the update
+        orderEvents.orderUpdated(io, fullOrder);
+        // Emit to table room if order has table_id
+        if (fullOrder.table_id) {
+          const { tableEvents } = await import("../sockets/tableSocket");
+          tableEvents.tableOrderUpdated(io, fullOrder.table_id, fullOrder);
+        }
+      } else {
+        orderEvents.orderStatusChanged(io, updatedOrder);
+      }
     } catch (error) {
       console.error("Failed to emit order status changed event:", error);
     }
 
-    return updatedOrder;
+    return fullOrder || updatedOrder;
   }
 
   async addItemToOrder(orderId: string, data: AddItemData) {
@@ -723,12 +742,29 @@ class OrderService {
       );
     }
 
-    // Calculate payment amount: final_amount + 10% VAT
-    const baseAmount = Number(order.final_amount ?? order.total_amount ?? 0);
-    const vatRate = 0.1; // 10% VAT
-    const vatAmount = baseAmount * vatRate;
-    const subtotal = baseAmount;
-    const totalBeforePoints = subtotal + vatAmount;
+    // Calculate payment amount from scratch according to new formula
+    // Subtotal from items
+    const subtotal = orderItems.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      return sum + price * quantity;
+    }, 0);
+
+    const eventFee = Number(order.event_fee) || 0;
+    const deposit = Number(order.deposit_amount) || 0;
+    const discount = Number(order.voucher_discount_amount) || 0;
+
+    // VAT = 10% of (subtotal + event_fee)
+    const vatBase = subtotal + eventFee;
+    const vatAmount = vatBase * 0.1;
+
+    // Final amount = (subtotal + event_fee - deposit - discount) + VAT
+    const totalBeforeDiscount = subtotal + eventFee;
+    const amountAfterDiscount = Math.max(
+      0,
+      totalBeforeDiscount - deposit - discount
+    );
+    const totalBeforePoints = amountAfterDiscount + vatAmount;
 
     // Apply points if provided (1 point = 1 VND)
     let pointsToUse = 0;
@@ -832,12 +868,29 @@ class OrderService {
       );
     }
 
-    // Calculate payment amount: final_amount + 10% VAT
-    const baseAmount = Number(order.final_amount ?? order.total_amount ?? 0);
-    const vatRate = 0.1; // 10% VAT
-    const vatAmount = baseAmount * vatRate;
-    const subtotal = baseAmount;
-    const totalBeforePoints = subtotal + vatAmount;
+    // Calculate payment amount from scratch according to new formula
+    // Subtotal from items
+    const subtotal = orderItems.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      return sum + price * quantity;
+    }, 0);
+
+    const eventFee = Number(order.event_fee) || 0;
+    const deposit = Number(order.deposit_amount) || 0;
+    const discount = Number(order.voucher_discount_amount) || 0;
+
+    // VAT = 10% of (subtotal + event_fee)
+    const vatBase = subtotal + eventFee;
+    const vatAmount = vatBase * 0.1;
+
+    // Final amount = (subtotal + event_fee - deposit - discount) + VAT
+    const totalBeforeDiscount = subtotal + eventFee;
+    const amountAfterDiscount = Math.max(
+      0,
+      totalBeforeDiscount - deposit - discount
+    );
+    const totalBeforePoints = amountAfterDiscount + vatAmount;
 
     // Apply points if provided (1 point = 1 VND)
     let pointsToUse = 0;
@@ -958,7 +1011,14 @@ class OrderService {
     // Send notification and WebSocket event
     await notificationService.notifyPaymentCompleted(updatedOrder);
     try {
-      orderEvents.paymentCompleted(getIO(), updatedOrder);
+      const io = getIO();
+      orderEvents.paymentCompleted(io, updatedOrder);
+      orderEvents.orderStatusChanged(io, updatedOrder);
+      // Also emit to table room if order has table_id
+      if (updatedOrder.table_id) {
+        const { tableEvents } = await import("../sockets/tableSocket");
+        tableEvents.tableOrderUpdated(io, updatedOrder.table_id, updatedOrder);
+      }
     } catch (error) {
       console.error("Failed to emit payment completed event:", error);
     }
@@ -988,7 +1048,14 @@ class OrderService {
     });
 
     try {
-      orderEvents.paymentFailed(getIO(), updatedOrder);
+      const io = getIO();
+      orderEvents.paymentFailed(io, updatedOrder);
+      orderEvents.orderStatusChanged(io, updatedOrder);
+      // Also emit to table room if order has table_id
+      if (updatedOrder.table_id) {
+        const { tableEvents } = await import("../sockets/tableSocket");
+        tableEvents.tableOrderUpdated(io, updatedOrder.table_id, updatedOrder);
+      }
     } catch (error) {
       console.error("Failed to emit payment failed event:", error);
     }
@@ -1066,7 +1133,17 @@ class OrderService {
     const discount = Number(order.voucher_discount_amount) || 0;
 
     const totalAmount = subtotal + eventFee;
-    const finalAmount = Math.max(0, totalAmount - deposit - discount);
+    const vatBase = subtotal + eventFee;
+    const vatAmount = vatBase * 0.1;
+    const amountAfterDiscount = Math.max(
+      0,
+      totalAmount - deposit - discount + vatAmount
+    );
+
+    // VAT = 10% of (subtotal + event_fee), not amountAfterDiscount
+
+    const finalAmount = amountAfterDiscount;
+
     await order.update({
       total_amount: totalAmount,
       final_amount: finalAmount,

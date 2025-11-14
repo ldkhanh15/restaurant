@@ -19,6 +19,7 @@ export interface OrderFilters {
   customer_id?: string;
   table_id?: string;
   table_group_id?: string;
+  search?: string; // Search by order ID, user name/email/phone, table number
   page?: number;
   limit?: number;
 }
@@ -101,17 +102,33 @@ class OrderRepository {
       where.table_group_id = whereFilters.table_group_id;
     }
 
+    // Handle search filter
+    const includeOptions: any[] = [
+      { model: User, as: "user" },
+      { model: Table, as: "table" },
+      { model: Reservation, as: "reservation" },
+      { model: Voucher, as: "voucher" },
+    ];
+
+    // If search is provided, add search conditions
+    if (whereFilters.search && whereFilters.search.trim()) {
+      const searchTerm = whereFilters.search.trim();
+      where[Op.or] = [
+        { id: { [Op.like]: `%${searchTerm}%` } },
+        { "$user.username$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.full_name$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.email$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.phone$": { [Op.like]: `%${searchTerm}%` } },
+        { "$table.table_number$": { [Op.like]: `%${searchTerm}%` } },
+      ];
+    }
+
     const { rows, count } = await Order.findAndCountAll({
       where,
       limit,
       offset,
       order: [["created_at", "DESC"]],
-      include: [
-        { model: User, as: "user" },
-        { model: Table, as: "table" },
-        { model: Reservation, as: "reservation" },
-        { model: Voucher, as: "voucher" },
-      ],
+      include: includeOptions,
     });
 
     return { rows, count, page, limit };

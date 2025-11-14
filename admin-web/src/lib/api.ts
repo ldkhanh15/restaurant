@@ -624,6 +624,17 @@ export const api = {
       data: { method: string; amount: number; client?: string }
     ): Promise<ApiResponse<{ redirect_url: string }>> =>
       apiClient.post(`/orders/${id}/payment/request`, data),
+    requestCashPayment: (
+      id: string,
+      data?: { note?: string; pointsUsed?: number }
+    ): Promise<
+      ApiResponse<{
+        message: string;
+        vat_amount?: number;
+        points_used?: number;
+        final_payment_amount?: number;
+      }>
+    > => apiClient.post(`/orders/${id}/payment/cash`, data || {}),
     getRevenueStats: (filters?: {
       start_date?: string;
       end_date?: string;

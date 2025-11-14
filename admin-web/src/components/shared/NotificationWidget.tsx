@@ -15,6 +15,7 @@ import {
   Bell,
   BellRing,
   CheckCircle,
+  CheckCheck,
   Clock,
   Wifi,
   WifiOff,
@@ -61,7 +62,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "🛒",
     route: (data: any) => {
       const orderId = data?.order_id;
-      return orderId ? `/orders/${orderId}` : null;
+      return orderId ? `/orders/${orderId}` : "/orders";
     },
   },
   order_updated: {
@@ -70,7 +71,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "🛒",
     route: (data: any) => {
       const orderId = data?.order_id;
-      return orderId ? `/orders/${orderId}` : null;
+      return orderId ? `/orders/${orderId}` : "/orders";
     },
   },
   order_status_changed: {
@@ -79,7 +80,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "🛒",
     route: (data: any) => {
       const orderId = data?.order_id;
-      return orderId ? `/orders/${orderId}` : null;
+      return orderId ? `/orders/${orderId}` : "/orders";
     },
   },
   reservation_created: {
@@ -88,7 +89,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "📅",
     route: (data: any) => {
       const reservationId = data?.reservation_id;
-      return reservationId ? `/reservations/${reservationId}` : null;
+      return reservationId ? `/reservations/${reservationId}` : "/reservations";
     },
   },
   reservation_updated: {
@@ -97,7 +98,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "📅",
     route: (data: any) => {
       const reservationId = data?.reservation_id;
-      return reservationId ? `/reservations/${reservationId}` : null;
+      return reservationId ? `/reservations/${reservationId}` : "/reservations";
     },
   },
   payment_completed: {
@@ -106,7 +107,34 @@ const NOTIFICATION_TYPES: Record<
     icon: "💳",
     route: (data: any) => {
       const orderId = data?.order_id;
-      return orderId ? `/orders/${orderId}` : null;
+      return orderId ? `/orders/${orderId}` : "/orders";
+    },
+  },
+  payment_requested: {
+    label: "Yêu cầu thanh toán",
+    color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+    icon: "💳",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : "/orders";
+    },
+  },
+  payment_failed: {
+    label: "Thanh toán thất bại",
+    color: "bg-red-100 text-red-800 border-red-300",
+    icon: "❌",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : "/orders";
+    },
+  },
+  reservation_confirm: {
+    label: "Xác nhận đặt bàn",
+    color: "bg-green-100 text-green-800 border-green-300",
+    icon: "✅",
+    route: (data: any) => {
+      const reservationId = data?.reservation_id;
+      return reservationId ? `/reservations/${reservationId}` : "/reservations";
     },
   },
   chat_message: {
@@ -123,7 +151,7 @@ const NOTIFICATION_TYPES: Record<
     icon: "🆘",
     route: (data: any) => {
       const orderId = data?.order_id;
-      return orderId ? `/orders/${orderId}` : null;
+      return orderId ? `/orders/${orderId}` : "/orders";
     },
   },
   system: {
@@ -245,9 +273,6 @@ export function NotificationWidget() {
           notification.type.includes("support") ||
           notification.type.includes("urgent"), // Keep visible for urgent notifications
         silent: false, // Allow sound
-        timestamp: notification.sent_at
-          ? new Date(notification.sent_at).getTime()
-          : Date.now(),
         data: notification.data,
       };
 
@@ -370,9 +395,8 @@ export function NotificationWidget() {
         sortBy: "created_at",
         sortOrder: "DESC",
       });
-
-      if (response.data?.data?.data) {
-        const notifs = response.data.data.data;
+      if (response.data) {
+        const notifs = response.data;
         setNotifications(notifs);
         setUnreadCount(notifs.filter((n: Notification) => !n.is_read).length);
 
@@ -442,15 +466,36 @@ export function NotificationWidget() {
     // Get route based on notification type and data
     const typeConfig =
       NOTIFICATION_TYPES[notification.type] || NOTIFICATION_TYPES.system;
-    if (typeConfig.route && notification.data) {
+
+    // If notification has a route function, use it
+    if (typeConfig.route) {
       try {
-        const route = typeConfig.route(notification.data);
+        const route = typeConfig.route(notification.data || {});
         if (route && route !== "/") {
           setIsOpen(false);
           router.push(route);
+          return;
         }
       } catch (error) {
         console.error("Failed to navigate to notification route:", error);
+      }
+    }
+
+    // Fallback: Try to extract order_id or reservation_id from data
+    if (notification.data) {
+      const orderId = notification.data.order_id;
+      const reservationId = notification.data.reservation_id;
+
+      if (orderId) {
+        setIsOpen(false);
+        router.push(`/orders/${orderId}`);
+        return;
+      }
+
+      if (reservationId) {
+        setIsOpen(false);
+        router.push(`/reservations/${reservationId}`);
+        return;
       }
     }
   };
@@ -476,15 +521,83 @@ export function NotificationWidget() {
     }
   };
 
-  const unreadNotifications = notifications.filter((n) => !n.is_read);
-  const displayNotifications = isOpen
-    ? notifications.slice(0, 10)
-    : unreadNotifications.slice(0, 5);
+  // Fix popover positioning when it opens
+  useEffect(() => {
+    if (!isOpen || typeof document === "undefined") return;
+
+    // Use requestAnimationFrame and setTimeout to ensure DOM is fully updated
+    const fixPosition = () => {
+      // Find the popover wrapper - use a more specific selector
+      const popoverContent = document.querySelector(
+        '[data-slot="popover-content"][data-state="open"]'
+      );
+      if (!popoverContent) return;
+
+      const wrapper = popoverContent.closest(
+        "[data-radix-popper-content-wrapper]"
+      ) as HTMLElement;
+      if (!wrapper) return;
+
+      const rect = wrapper.getBoundingClientRect();
+      const button = document.querySelector(
+        '[aria-label="Notifications"]'
+      ) as HTMLElement;
+
+      if (!button) return;
+
+      const buttonRect = button.getBoundingClientRect();
+
+      // Check if popover is outside viewport or has invalid transform
+      const isOutsideViewport =
+        rect.top < 0 ||
+        rect.left < 0 ||
+        rect.top > window.innerHeight ||
+        rect.left > window.innerWidth;
+
+      const hasInvalidTransform =
+        wrapper.style.transform?.includes("-200%") || rect.top < 0;
+
+      if (isOutsideViewport || hasInvalidTransform) {
+        // Calculate position: below button, aligned to right
+        const top = buttonRect.bottom + 8;
+        const right = window.innerWidth - buttonRect.right;
+
+        // Apply position directly to wrapper, removing auto values
+        wrapper.style.setProperty("position", "fixed", "important");
+        wrapper.style.setProperty("top", `${top}px`, "important");
+        wrapper.style.setProperty("right", `${right}px`, "important");
+        wrapper.style.setProperty("left", "auto", "important");
+        wrapper.style.setProperty("bottom", "auto", "important");
+        wrapper.style.setProperty("transform", "none", "important");
+        wrapper.style.setProperty("z-index", "9999", "important");
+      }
+    };
+
+    // Try multiple times to catch the popover after Radix updates
+    const timeout1 = setTimeout(fixPosition, 0);
+    const timeout2 = setTimeout(fixPosition, 10);
+    const timeout3 = setTimeout(fixPosition, 50);
+    const raf = requestAnimationFrame(() => {
+      setTimeout(fixPosition, 0);
+    });
+
+    return () => {
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
+      cancelAnimationFrame(raf);
+    };
+  }, [isOpen]);
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-10 w-10">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-10 w-10"
+          aria-label="Notifications"
+        >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge
@@ -496,7 +609,17 @@ export function NotificationWidget() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96 p-0" align="end">
+      <PopoverContent
+        className="w-80 sm:w-96 p-0"
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        avoidCollisions={true}
+        collisionPadding={8}
+        sticky="partial"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        style={{ zIndex: 9999 }}
+      >
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-lg">Thông báo</h3>
@@ -536,6 +659,7 @@ export function NotificationWidget() {
                 onClick={markAllAsRead}
                 className="h-7 text-xs"
               >
+                <CheckCheck className="h-4 w-4 mr-1" />
                 Đánh dấu tất cả đã đọc
               </Button>
             </div>
@@ -544,21 +668,17 @@ export function NotificationWidget() {
 
         <ScrollArea className="h-[400px]">
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="p-4 text-center text-muted-foreground">
+              Đang tải...
             </div>
-          ) : displayNotifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <BellRing className="h-12 w-12 text-muted-foreground opacity-50 mb-2" />
-              <p className="text-sm text-muted-foreground">
-                {isOpen
-                  ? "Không có thông báo nào"
-                  : "Không có thông báo chưa đọc"}
-              </p>
+          ) : notifications.length === 0 ? (
+            <div className="p-8 text-center">
+              <Bell className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">Không có thông báo nào</p>
             </div>
           ) : (
             <div className="divide-y">
-              {displayNotifications.map((notification) => {
+              {notifications.slice(0, 50).map((notification) => {
                 const typeConfig = getTypeConfig(notification.type);
                 const message =
                   notification.message || notification.content || "";
@@ -567,58 +687,29 @@ export function NotificationWidget() {
                     key={notification.id}
                     className={cn(
                       "p-4 hover:bg-muted/50 transition-colors cursor-pointer",
-                      !notification.is_read && "bg-blue-50/50"
+                      !notification.is_read && "bg-muted/30"
                     )}
                     onClick={() => handleNotificationClick(notification)}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <span className="text-xl">{typeConfig.icon}</span>
-                      </div>
+                    <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            variant="outline"
-                            className={cn("text-xs", typeConfig.color)}
-                          >
-                            {typeConfig.label}
-                          </Badge>
-                          {!notification.is_read && (
-                            <div className="h-2 w-2 rounded-full bg-blue-500" />
-                          )}
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {formatRelativeTime(
-                              notification.created_at || notification.sent_at
-                            )}
-                          </span>
-                        </div>
-                        <h4
-                          className={cn(
-                            "font-semibold text-sm mb-1",
-                            !notification.is_read
-                              ? "text-gray-900"
-                              : "text-gray-600"
-                          )}
-                        >
-                          {notification.title || "Thông báo"}
-                        </h4>
-                        <p
-                          className={cn(
-                            "text-sm line-clamp-2",
-                            !notification.is_read
-                              ? "text-gray-700"
-                              : "text-gray-500"
-                          )}
-                        >
+                        {notification.title && (
+                          <h4 className="font-semibold text-sm mb-1">
+                            {notification.title}
+                          </h4>
+                        )}
+                        <p className="text-sm text-muted-foreground line-clamp-2">
                           {message}
                         </p>
-                        {typeConfig.route && notification.data && (
-                          <div className="flex items-center gap-1 mt-2 text-xs text-primary">
-                            <span>Xem chi tiết</span>
-                            <ArrowRight className="h-3 w-3" />
-                          </div>
-                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatRelativeTime(
+                            notification.created_at || notification.sent_at
+                          )}
+                        </p>
                       </div>
+                      {!notification.is_read && (
+                        <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                      )}
                     </div>
                   </div>
                 );

@@ -1,270 +1,91 @@
-name: Deploy to Azure VM
+name: Deploy Restaurant System to Azure VM
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 env:
   DOCKER_BUILDKIT: 1
+  COMPOSE_FILE: docker-compose.prod.yml
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Setup SSH
+      - name: Prepare SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
-          # Write SSH key
           echo "${{ secrets.AZURE_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          
-          # Validate SSH key format
-          if ! ssh-keygen -l -f ~/.ssh/deploy_key &> /dev/null; then
-            echo "❌ Error: Invalid SSH key format"
-            echo "SSH key should start with: -----BEGIN OPENSSH PRIVATE KEY----- or -----BEGIN RSA PRIVATE KEY-----"
-            exit 1
-          fi
-          
-          echo "✅ SSH key is valid"
-          
-          # Add Azure VM to known hosts with timeout and retry
-          AZURE_HOST="${{ secrets.AZURE_VM_HOST }}"
-          if [ -z "$AZURE_HOST" ]; then
-            echo "❌ Error: AZURE_VM_HOST secret is not set"
-            exit 1
-          fi
-          
-          echo "🔍 Scanning host: $AZURE_HOST"
-          MAX_RETRIES=3
-          RETRY=0
-          
-          while [ $RETRY -lt $MAX_RETRIES ]; do
-            if ssh-keyscan -H -T 10 "$AZURE_HOST" >> ~/.ssh/known_hosts 2>&1; then
-              echo "✅ Successfully added $AZURE_HOST to known_hosts"
-              break
-            else
-              RETRY=$((RETRY + 1))
-              if [ $RETRY -lt $MAX_RETRIES ]; then
-                echo "⚠️  Retry $RETRY/$MAX_RETRIES..."
-                sleep 2
-              else
-                echo "⚠️  Warning: Could not add to known_hosts, but continuing (will use StrictHostKeyChecking=no)"
-              fi
-            fi
-          done
-          
-          chmod 644 ~/.ssh/known_hosts
 
-      - name: Validate secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_VM_HOST }}" ]; then
-            echo "❌ Error: AZURE_VM_HOST secret is not set"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_VM_USER }}" ]; then
-            echo "❌ Error: AZURE_VM_USER secret is not set"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_SSH_KEY }}" ]; then
-            echo "❌ Error: AZURE_SSH_KEY secret is not set"
-            exit 1
-          fi
-          echo "✅ All required secrets are set"
-          echo "AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}"
-          echo "AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}"
+          ssh-keyscan -H ${{ secrets.AZURE_VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy to Azure VM
-        env:
-          AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}
-          AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}
-          AZURE_DEPLOY_PATH: ${{ secrets.AZURE_DEPLOY_PATH || '/home/azureuser/restaurant' }}
+      - name: Test SSH Connection
         run: |
-          # Create deployment script
-          cat > /tmp/deploy_remote.sh << 'DEPLOYSCRIPT'
-          #!/bin/bash
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} \
+            "echo 'SSH OK'"
+
+      - name: Upload project to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./ \
+            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }}:${{ secrets.AZURE_DEPLOY_PATH }}
+
+      - name: Execute deploy script on server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'EOF'
+            
           set -e
-          
-          # Use provided DEPLOY_PATH or default based on user
-          DEPLOY_PATH="${DEPLOY_PATH:-/home/azureuser/restaurant}"
-          COMPOSE_FILE="docker-compose.prod.yml"
-          SERVER_IP="${SERVER_IP}"
-          PROTOCOL="${PROTOCOL:-https}"
-          
-          # Navigate to deployment directory
-          cd "$DEPLOY_PATH" || exit 1
-          
-          # Pull latest code
-          echo "📥 Pulling latest code..."
-          git fetch origin
-          CURRENT_BRANCH=$(git branch --show-current || echo "main")
-          git reset --hard "origin/$CURRENT_BRANCH"
-          
-          # Make scripts executable
-          chmod +x start-restaurant-system-prod.sh fix-mysql-volume-prod.sh 2>/dev/null || true
-          
-          # Create .env file if not exists
-          if [ ! -f .env ]; then
-            echo "📝 Creating .env file from example..."
-            cp env.example .env || true
+          cd ${{ secrets.AZURE_DEPLOY_PATH }}
+
+          echo "Using docker compose version:"
+          docker compose version || docker-compose version
+
+          # Select the right compose command
+          if docker compose version >/dev/null 2>&1; then
+            CMD="docker compose"
+          else
+            CMD="docker-compose"
           fi
-          
-          # Create backend .env if not exists
-          if [ ! -f be_restaurant/.env ]; then
-            echo "📝 Creating backend .env file..."
-            cp be_restaurant/env.example be_restaurant/.env || true
-          fi
-          
-          # Use docker compose (v2) if available, otherwise docker-compose (v1)
-          COMPOSE_CMD="docker-compose"
-          if docker compose version &> /dev/null; then
-            COMPOSE_CMD="docker compose"
-          fi
-          
-          # Stop existing containers
-          echo "🛑 Stopping existing containers..."
-          $COMPOSE_CMD -f $COMPOSE_FILE down || true
-          
-          # Remove old images to save space (t3.micro has limited storage)
-          echo "🧹 Cleaning up old Docker images..."
+
+          echo "Stopping old containers..."
+          $CMD -f docker-compose.prod.yml down || true
+
+          echo "Pruning old images..."
           docker image prune -af --filter "until=24h" || true
-          
-          # Build services with BuildKit for cache optimization
-          echo "🔨 Building Docker images (with BuildKit cache)..."
-          export DOCKER_BUILDKIT=1
-          export COMPOSE_DOCKER_CLI_BUILD=1
-          $COMPOSE_CMD -f $COMPOSE_FILE build
-          
-          # Use production startup script if available, otherwise manual start
-          if [ -f start-restaurant-system-prod.sh ]; then
-            echo "🚀 Starting services using production script..."
-            SERVER_IP="$SERVER_IP" PROTOCOL="$PROTOCOL" ./start-restaurant-system-prod.sh
-          else
-            echo "🚀 Starting services manually..."
-            $COMPOSE_CMD -f $COMPOSE_FILE up -d
-            
-            # Wait for services to be healthy
-            echo "⏳ Waiting for services to be healthy..."
-            sleep 60
-            
-            # Check service status
-            echo "📊 Service status:"
-            $COMPOSE_CMD -f $COMPOSE_FILE ps
-            
-            # Health check
-            echo "🏥 Running health checks..."
-            MAX_RETRIES=20
-            RETRY_COUNT=0
-            
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              if curl -f http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ Backend is healthy!"
-                break
-              fi
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "⏳ Waiting for backend... ($RETRY_COUNT/$MAX_RETRIES)"
-              sleep 10
-            done
-            
-            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-              echo "❌ Backend health check failed!"
-              $COMPOSE_CMD -f $COMPOSE_FILE logs backend --tail 50
-              exit 1
-            fi
-          fi
-          
-          # Final status
-          echo "📊 Final Service Status:"
-          $COMPOSE_CMD -f $COMPOSE_FILE ps
-          
-          echo "🌐 Access URLs:"
-          echo "   Backend:  $PROTOCOL://$SERVER_IP:8000"
-          echo "   User Web: $PROTOCOL://$SERVER_IP:3000"
-          echo "   Admin Web: $PROTOCOL://$SERVER_IP:3001"
-          echo "   Health Check: $PROTOCOL://$SERVER_IP:8000/health"
-          
-          exit 0
-          DEPLOYSCRIPT
-          
-          # Get Azure VM public IP from hostname if needed
-          AZURE_VM_HOST="${{ secrets.AZURE_VM_HOST }}"
-          AZURE_VM_USER="${{ secrets.AZURE_VM_USER }}"
-          AZURE_DEPLOY_PATH="${{ secrets.AZURE_DEPLOY_PATH || '/home/azureuser/restaurant' }}"
-          
-          # Test SSH connection first
-          echo "🔍 Testing SSH connection..."
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            ${AZURE_VM_USER}@${AZURE_VM_HOST} \
-            "echo '✅ SSH connection successful'" || {
-            echo "❌ SSH connection failed!"
-            echo "Please check:"
-            echo "  1. AZURE_VM_HOST is correct: ${AZURE_VM_HOST}"
-            echo "  2. AZURE_VM_USER is correct: ${AZURE_VM_USER}"
-            echo "  3. SSH key is valid and matches the public key on Azure VM"
-            echo "  4. Network Security Group (NSG) allows SSH (port 22) from GitHub Actions IPs"
-            echo "  5. Azure VM is running"
-            exit 1
-          }
-          
-          # Get server IP from Azure VM (use hostname if it's an IP, otherwise get public IP)
-          if [[ "$AZURE_VM_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            SERVER_IP="$AZURE_VM_HOST"
-          else
-            SERVER_IP=$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${AZURE_VM_USER}@${AZURE_VM_HOST} 'curl -s ifconfig.me 2>/dev/null || echo ""')
-            if [ -z "$SERVER_IP" ]; then
-              SERVER_IP="$AZURE_VM_HOST"
-            fi
-          fi
-          echo "🌐 Server IP: ${SERVER_IP}"
-          
-          # Copy script to Azure VM
-          echo "📤 Copying deployment script to Azure VM..."
-          scp -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o ConnectTimeout=10 \
-            /tmp/deploy_remote.sh ${AZURE_VM_USER}@${AZURE_VM_HOST}:/tmp/deploy_remote.sh || {
-            echo "❌ Failed to copy script to Azure VM"
-            exit 1
-          }
-          
-          # Execute deployment script
-          echo "🚀 Executing deployment script on Azure VM..."
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o ConnectTimeout=10 \
-            ${AZURE_VM_USER}@${AZURE_VM_HOST} \
-            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${AZURE_DEPLOY_PATH}' SERVER_IP='${SERVER_IP}' PROTOCOL='https' /tmp/deploy_remote.sh" || {
-            echo "❌ Deployment script failed!"
-            echo "📋 Checking deployment script logs..."
-            ssh -i ~/.ssh/deploy_key \
-              -o StrictHostKeyChecking=no \
-              ${AZURE_VM_USER}@${AZURE_VM_HOST} \
-              "cat /tmp/deploy_remote.sh | head -20" || true
-            exit 1
-          }
 
-      - name: Notify deployment status
+          echo "Rebuilding images..."
+          DOCKER_BUILDKIT=1 $CMD -f docker-compose.prod.yml build
+
+          echo "Starting services..."
+          $CMD -f docker-compose.prod.yml up -d
+
+          echo "Waiting for backend health..."
+          for i in {1..20}; do
+            if curl -f http://localhost:8000/health >/dev/null 2>&1; then
+              echo "Backend is healthy!"
+              exit 0
+            fi
+            echo "Retry $i..."
+            sleep 6
+          done
+
+          echo "Health check failed!"
+          exit 1
+
+          EOF
+
+      - name: Deployment Result
         if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment successful!"
-          else
-            echo "❌ Deployment failed!"
-          fi
-
+        run: echo "Job Status: ${{ job.status }}"

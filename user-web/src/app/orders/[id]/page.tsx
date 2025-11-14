@@ -730,10 +730,10 @@ export default function OrderDetailPage({
       const pointsUsed = user && user.points ? pointsToUse : 0;
 
       if (selectedPaymentMethod === "vnpay") {
-        // Check if there's a failed payment - use retry API
-        const hasFailedPayment = selectedOrder.payment_status === "failed";
+        // Check if order is waiting_payment - use retry API
+        const isWaitingPayment = selectedOrder.status === "waiting_payment";
 
-        if (hasFailedPayment) {
+        if (isWaitingPayment) {
           const response = await orderService.requestPaymentRetry(id, "vnpay", {
             pointsUsed,
           });
@@ -759,11 +759,25 @@ export default function OrderDetailPage({
           variant: "destructive",
         });
       } else {
+        // Cash payment
         const payload: { note?: string; pointsUsed?: number } = {};
         if (cashNote.trim()) payload.note = cashNote.trim();
         if (pointsUsed > 0) payload.pointsUsed = pointsUsed;
 
-        const response = await orderService.requestCashPayment(id, payload);
+        // Check if order is waiting_payment - use retry API
+        const isWaitingPayment = selectedOrder.status === "waiting_payment";
+
+        let response;
+        if (isWaitingPayment) {
+          response = await orderService.requestPaymentRetry(
+            id,
+            "cash",
+            payload
+          );
+        } else {
+          response = await orderService.requestCashPayment(id, payload);
+        }
+
         if (response.status === "success") {
           toast({
             title: "Đã gửi yêu cầu thanh toán tiền mặt",
@@ -774,6 +788,15 @@ export default function OrderDetailPage({
           setCashNote("");
           setPointsToUse(0);
           await refreshOrder();
+        } else {
+          // Handle error response
+          toast({
+            title: "Lỗi",
+            description:
+              response.message ||
+              "Không thể xử lý thanh toán. Vui lòng thử lại.",
+            variant: "destructive",
+          });
         }
       }
     } catch (err: any) {
@@ -1128,14 +1151,6 @@ export default function OrderDetailPage({
                   >
                     Đóng
                   </Button>
-                  <Button
-                    onClick={() => {
-                      window.print();
-                    }}
-                  >
-                    <Receipt className="h-4 w-4 mr-2" />
-                    In Hóa Đơn
-                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -1345,15 +1360,96 @@ export default function OrderDetailPage({
                   <MessageCircle className="h-4 w-4 mr-2" />
                   Khiếu Nại / Góp Ý
                 </Button>
-                {canRequestPayment && (
-                  <Button
-                    className="bg-gradient-gold text-primary-foreground hover:opacity-90"
-                    onClick={openInvoiceDialog}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Yêu Cầu Thanh Toán
-                  </Button>
+                {/* Payment Retry Button - Show when status is waiting_payment */}
+                {selectedOrder.status === "waiting_payment" && (
+                  <div className="space-y-3 w-full">
+                    <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                      <p className="text-sm text-orange-800 font-medium mb-2">
+                        💳 Chờ thanh toán
+                      </p>
+                      <p className="text-xs text-orange-600">
+                        Đơn hàng đang chờ thanh toán. Vui lòng chọn phương thức
+                        thanh toán.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        onClick={async () => {
+                          setIsProcessingPayment(true);
+                          try {
+                            const response =
+                              await orderService.requestPaymentRetry(
+                                id,
+                                "vnpay",
+                                {
+                                  pointsUsed:
+                                    user && user.points ? pointsToUse : 0,
+                                }
+                              );
+                            if (
+                              response.status === "success" &&
+                              response.data.redirect_url
+                            ) {
+                              window.location.href = response.data.redirect_url;
+                              return;
+                            }
+                            toast({
+                              title: "Lỗi",
+                              description:
+                                response.message ||
+                                "Không thể tạo link thanh toán VNPay",
+                              variant: "destructive",
+                            });
+                          } catch (error: any) {
+                            console.error("Payment retry error:", error);
+                            const errorMessage =
+                              error.message ||
+                              error.response?.data?.message ||
+                              "Không thể yêu cầu thanh toán lại";
+                            toast({
+                              title: "Lỗi thanh toán",
+                              description: errorMessage,
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setIsProcessingPayment(false);
+                          }
+                        }}
+                        disabled={isProcessingPayment}
+                        className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+                      >
+                        {isProcessingPayment ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <CreditCard className="h-4 w-4 mr-2" />
+                        )}
+                        Thanh toán lại VNPay
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          // Open invoice dialog for cash payment to allow note and points
+                          setSelectedPaymentMethod("cash");
+                          setIsInvoiceDialogOpen(true);
+                        }}
+                        variant="outline"
+                        className="border-2"
+                      >
+                        <Wallet className="h-4 w-4 mr-2" />
+                        Thanh toán lại tiền mặt
+                      </Button>
+                    </div>
+                  </div>
                 )}
+                {canRequestPayment &&
+                  selectedOrder.status !== "waiting_payment" && (
+                    <Button
+                      className="bg-gradient-gold text-primary-foreground hover:opacity-90"
+                      onClick={openInvoiceDialog}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Yêu Cầu Thanh Toán
+                    </Button>
+                  )}
                 {selectedOrder.payment_status === "paid" &&
                   orderItems.every(
                     (i) => i.status === "completed" || i.status === "ready"

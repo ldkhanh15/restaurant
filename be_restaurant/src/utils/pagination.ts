@@ -4,6 +4,8 @@ export interface PaginationParams {
   sortBy?: string;
   sortOrder?: "ASC" | "DESC";
   status?: string;
+  search?: string;
+  [key: string]: any; // Allow other filter parameters
 }
 
 export interface PaginationResult<T> {
@@ -24,7 +26,28 @@ export const getPaginationParams = (query: any): PaginationParams => {
     query.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC"
   ) as "ASC" | "DESC";
 
-  return { page, limit, sortBy, sortOrder };
+  const params: PaginationParams = { page, limit, sortBy, sortOrder };
+
+  // Extract search parameter
+  if (query.search) {
+    params.search = query.search;
+  }
+
+  // Extract status parameter
+  if (query.status) {
+    params.status = query.status;
+  }
+
+  // Extract other common filter parameters
+  if (query.start_date) params.start_date = query.start_date;
+  if (query.end_date) params.end_date = query.end_date;
+  if (query.date) params.date = query.date;
+  if (query.table_id) params.table_id = query.table_id;
+  if (query.user_id) params.user_id = query.user_id;
+  if (query.customer_id) params.customer_id = query.customer_id;
+  if (query.event_id) params.event_id = query.event_id;
+
+  return params;
 };
 
 export const buildPaginationResult = <T>(

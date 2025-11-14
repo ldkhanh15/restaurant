@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { api, Reservation, ReservationFilters } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "react-toastify";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/providers/WebSocketProvider";
 
@@ -108,7 +109,6 @@ export function ReservationManagementEnhanced({
   className,
 }: ReservationManagementEnhancedProps) {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<
@@ -116,6 +116,7 @@ export function ReservationManagementEnhanced({
   >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [selectedReservation, setSelectedReservation] =
@@ -170,7 +171,7 @@ export function ReservationManagementEnhanced({
   useEffect(() => {
     loadReservations();
     loadStats();
-  }, [currentPage, statusFilter, dateFilter]);
+  }, [currentPage, statusFilter, dateFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     if (!showCreateDialog) return;
@@ -192,7 +193,7 @@ export function ReservationManagementEnhanced({
 
   const handleCreateReservation = async () => {
     if (!selectedTableId || !reservationTime) {
-      toast({ title: "Thiếu thông tin", description: "Chọn bàn và thời gian" });
+      toast.warning("Thiếu thông tin: Chọn bàn và thời gian");
       return;
     }
     try {
@@ -227,14 +228,10 @@ export function ReservationManagementEnhanced({
       setNotes("");
       setPreOrderItems([]);
       await loadReservations();
-      toast({ title: "Thành công", description: "Tạo đặt bàn thành công" });
+      toast.success("Tạo đặt bàn thành công");
     } catch (error) {
       console.error(error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tạo đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể tạo đặt bàn");
     } finally {
       setIsCreatingReservation(false);
     }
@@ -279,10 +276,7 @@ export function ReservationManagementEnhanced({
     onReservationCreated((newReservation) => {
       console.log("newReservation", newReservation);
       setReservations((prev) => [newReservation, ...prev]);
-      toast({
-        title: "Đặt bàn mới",
-        description: `Đặt bàn #${newReservation.id} đã được tạo`,
-      });
+      toast.info(`Đặt bàn mới: #${newReservation.id} đã được tạo`);
     });
 
     onReservationUpdated((updatedReservation) => {
@@ -301,10 +295,9 @@ export function ReservationManagementEnhanced({
           r.id === reservation.id ? { ...r, status: reservation.status } : r
         )
       );
-      toast({
-        title: "Trạng thái đặt bàn thay đổi",
-        description: `Đặt bàn #${reservation.id} đã chuyển sang ${reservation.status}`,
-      });
+      toast.info(
+        `Trạng thái đặt bàn: #${reservation.id} đã chuyển sang ${reservation.status}`
+      );
     });
 
     onReservationCheckedIn((data) => {
@@ -314,36 +307,28 @@ export function ReservationManagementEnhanced({
           r.id === reservation.id ? { ...r, status: "checked_in" } : r
         )
       );
-      toast({
-        title: "Check-in thành công",
-        description: `Đặt bàn #${reservation.id} đã check-in`,
-        variant: "default",
-      });
+      toast.success(
+        `Check-in thành công: Đặt bàn #${reservation.id} đã check-in`
+      );
     });
 
     onDepositPaymentRequested((data) => {
       const { reservation, payment_url } = data;
-      toast({
-        title: "Yêu cầu thanh toán cọc",
-        description: `Đặt bàn #${reservation.id} cần thanh toán cọc`,
-        variant: "default",
-      });
+      toast.warning(
+        `Yêu cầu thanh toán cọc: Đặt bàn #${reservation.id} cần thanh toán cọc`
+      );
     });
 
     onDepositPaymentCompleted((reservation) => {
-      toast({
-        title: "Thanh toán cọc hoàn tất",
-        description: `Đặt bàn #${reservation.id} đã thanh toán cọc`,
-        variant: "default",
-      });
+      toast.success(
+        `Thanh toán cọc hoàn tất: Đặt bàn #${reservation.id} đã thanh toán cọc`
+      );
     });
 
     onDepositPaymentFailed((reservation) => {
-      toast({
-        title: "Thanh toán cọc thất bại",
-        description: `Đặt bàn #${reservation.id} thanh toán cọc thất bại`,
-        variant: "destructive",
-      });
+      toast.error(
+        `Thanh toán cọc thất bại: Đặt bàn #${reservation.id} thanh toán cọc thất bại`
+      );
     });
 
     onTableAssigned((data: any) => {
@@ -354,11 +339,9 @@ export function ReservationManagementEnhanced({
         setReservations((prev) =>
           prev.map((r) => (r.id === reservationId ? { ...r, table } : r))
         );
-        toast({
-          title: "Bàn đã được chỉ định",
-          description: `Đặt bàn #${reservationId} đã được chỉ định bàn`,
-          variant: "default",
-        });
+        toast.info(
+          `Bàn đã được chỉ định: Đặt bàn #${reservationId} đã được chỉ định bàn`
+        );
       }
     });
 
@@ -366,11 +349,9 @@ export function ReservationManagementEnhanced({
       const reservationId =
         data.reservationId || data.reservation_id || data.id;
       if (reservationId) {
-        toast({
-          title: "Ghi chú đã được thêm",
-          description: `Đã thêm ghi chú cho đặt bàn #${reservationId}`,
-          variant: "default",
-        });
+        toast.info(
+          `Ghi chú đã được thêm: Đã thêm ghi chú cho đặt bàn #${reservationId}`
+        );
       }
     });
 
@@ -391,26 +372,10 @@ export function ReservationManagementEnhanced({
     toast,
   ]);
 
-  // Filter reservations locally (for search only, other filters are handled by API)
+  // Filter reservations locally (only for display, search is now handled by API)
   useEffect(() => {
-    let filtered = reservations;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (reservation) =>
-          reservation.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          reservation.user?.username
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          reservation.user?.phone?.includes(searchTerm) ||
-          reservation.table?.table_number
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredReservations(filtered);
-  }, [reservations, searchTerm]);
+    setFilteredReservations(reservations);
+  }, [reservations]);
 
   const loadReservations = async () => {
     setIsLoading(true);
@@ -448,6 +413,11 @@ export function ReservationManagementEnhanced({
         filters.end_date = weekLater.toISOString();
       }
 
+      // Add search parameter if provided
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        filters.search = debouncedSearchTerm.trim();
+      }
+
       const response = await api.reservations.getAll(filters);
       setReservations(Array.isArray(response.data) ? response.data : []);
 
@@ -457,11 +427,7 @@ export function ReservationManagementEnhanced({
       }
     } catch (error) {
       console.error("Failed to load reservations:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách đặt bàn");
     } finally {
       setIsLoading(false);
     }
@@ -499,17 +465,10 @@ export function ReservationManagementEnhanced({
             : reservation
         )
       );
-      toast({
-        title: "Thành công",
-        description: "Cập nhật trạng thái đặt bàn thành công",
-      });
+      toast.success("Cập nhật trạng thái đặt bàn thành công");
     } catch (error) {
       console.error("Failed to update reservation status:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật trạng thái đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật trạng thái đặt bàn");
     }
   };
 
@@ -517,22 +476,14 @@ export function ReservationManagementEnhanced({
     try {
       await api.reservations.checkIn(reservationId);
       await loadReservations(); // Reload to get updated data
-      toast({
-        title: "Thành công",
-        description: "Check-in đặt bàn thành công",
-        variant: "success",
-      });
+      toast.success("Check-in đặt bàn thành công");
     } catch (error: any) {
       console.error("Failed to check in reservation:", error);
       const errorMessage =
         error?.response?.data?.message ||
         error?.message ||
         "Không thể check-in đặt bàn";
-      toast({
-        title: "Lỗi",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast.error(errorMessage);
     }
   };
 
@@ -548,17 +499,10 @@ export function ReservationManagementEnhanced({
       await api.reservations.delete(reservationToDelete.id);
       setShowDeleteDialog(false);
       setReservationToDelete(null);
-      toast({
-        title: "Thành công",
-        description: "Xóa đặt bàn thành công",
-      });
+      toast.success("Xóa đặt bàn thành công");
     } catch (error) {
       console.error("Failed to delete reservation:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa đặt bàn");
     }
   };
 

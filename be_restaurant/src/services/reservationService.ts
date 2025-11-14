@@ -148,6 +148,18 @@ class ReservationService {
   }
 
   async createReservation(data: CreateReservationData) {
+    // Validate num_people
+    if (!data.num_people || data.num_people <= 0) {
+      throw new AppError("Số lượng khách phải lớn hơn 0", 400);
+    }
+
+    // Validate reservation time is not in the past
+    const now = new Date();
+    const reservationTime = new Date(data.reservation_time);
+    if (reservationTime < now) {
+      throw new AppError("Không thể đặt bàn trong quá khứ. Vui lòng chọn thời gian trong tương lai", 400);
+    }
+
     // Check table/table group availability
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
@@ -155,7 +167,10 @@ class ReservationService {
         throw new AppError("Table not found", 404);
       }
       if (data.num_people > table.capacity) {
-        throw new AppError("Number of people exceeds table capacity", 400);
+        throw new AppError(
+          `Số lượng khách (${data.num_people}) vượt quá sức chứa của bàn (${table.capacity} người)`,
+          400
+        );
       }
 
       // Validate reservation time overlap - this will check for existing reservations

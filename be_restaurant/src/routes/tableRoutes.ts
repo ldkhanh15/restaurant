@@ -12,7 +12,9 @@ router.put("/table-group/:id", tableController.doUpdateTableGroup);
 router.delete("/table-group/:id", tableController.ungroupTables);
 
 router.get("/status/:status", tableController.getTablesByStatus);
+router.get("/available", tableController.getAvailableTablesForReservation);
 router.get("/", tableController.getAllTables);
+router.get("/:id/available-time-slots", tableController.getTableAvailableTimeSlots);
 router.get("/:id", tableController.getTableById);
 router.post("/", upload.array("panorama_files"), tableController.createTable);
 router.put("/:id", upload.array("panorama_files"), tableController.updateTable);

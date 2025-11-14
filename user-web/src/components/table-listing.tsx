@@ -297,6 +297,26 @@ export default function TableListing() {
     alert(`Đã đặt bàn ${selectedTableForBooking?.table_number} thành công!`);
   };
 
+  // Handle quick reservation - save to sessionStorage and redirect
+  const handleQuickReserve = (table: Table, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    
+    // Save temporary reservation data to sessionStorage
+    const tempReservationData = {
+      table_id: table.id,
+      table_number: table.table_number,
+      capacity: table.capacity,
+      timestamp: Date.now(),
+    };
+    
+    sessionStorage.setItem("temp_reservation_data", JSON.stringify(tempReservationData));
+    
+    // Redirect to reservations page
+    router.push("/reservations");
+  };
+
   const renderAmenity = (key: string, value: boolean) => {
     if (!value) return null;
     const config = amenityConfig[key];
@@ -564,17 +584,28 @@ export default function TableListing() {
                                 </div>
                               </div>
 
-                              <Button
-                                variant="outline"
-                                className="w-full mt-4"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTableSelect(table.id);
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-2" /> Xem Chi Tiết
-                              </Button>
+                              <div className="flex gap-2 mt-4">
+                                <Button
+                                  variant="outline"
+                                  className="flex-1"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTableSelect(table.id);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" /> Xem Chi Tiết
+                                </Button>
+                                {isAvailable && (
+                                  <Button
+                                    className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+                                    size="sm"
+                                    onClick={(e) => handleQuickReserve(table, e)}
+                                  >
+                                    <Calendar className="h-4 w-4 mr-2" /> Đặt ngay
+                                  </Button>
+                                )}
+                              </div>
                             </CardContent>
                           </Card>
                         </motion.div>

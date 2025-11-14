@@ -186,6 +186,7 @@ services:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
         NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_USER_WEB_URL: http://localhost:3000
         BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_admin_web
     restart: unless-stopped

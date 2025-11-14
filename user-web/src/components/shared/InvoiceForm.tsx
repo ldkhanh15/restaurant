@@ -45,19 +45,33 @@ export default function InvoiceForm({
   storeInfo = {},
 }: InvoiceFormProps) {
   const invoiceRef = useRef<HTMLDivElement>(null);
-  const subtotal = Number(order.total_amount || 0);
+
+  // Calculate subtotal from order items
+  const subtotal =
+    order.items && order.items.length > 0
+      ? order.items.reduce((sum: number, item: any) => {
+          const price = Number(item.price || item.dish?.price || 0);
+          const quantity = Number(item.quantity || 1);
+          return sum + price * quantity;
+        }, 0)
+      : Number(order.total_amount || 0);
+
   const voucherDiscount = Number(order.voucher_discount_amount || 0);
   const eventFee = Number(order.event_fee || 0);
   const depositAmount = Number(order.deposit_amount || 0);
-  const calculatedVat = vatAmount || subtotal * 0.1; // 10% VAT
+
+  // VAT = 10% of (subtotal + event_fee)
+  const vatBase = subtotal + eventFee;
+  const calculatedVat = vatAmount || vatBase * 0.1;
+
+  // Final amount = (subtotal + event_fee - deposit - discount) + VAT - points
+  const totalBeforeDiscount = subtotal + eventFee;
+  const amountAfterDiscount = Math.max(
+    0,
+    totalBeforeDiscount - depositAmount - voucherDiscount + calculatedVat
+  );
   const calculatedFinalAmount =
-    finalPaymentAmount ||
-    subtotal +
-      calculatedVat -
-      voucherDiscount +
-      eventFee -
-      depositAmount -
-      pointsUsed;
+    finalPaymentAmount || amountAfterDiscount - pointsUsed;
 
   const storeName = storeInfo.name || "Nhà Hàng Fine Dining";
   const storeAddress = storeInfo.address || "123 Đường ABC, Quận XYZ, TP.HCM";
@@ -219,13 +233,13 @@ export default function InvoiceForm({
 
   return (
     <div className="space-y-6">
-      {/* Print Button */}
+      {/* Print Button
       <div className="flex justify-end no-print">
         <Button onClick={handlePrint} className="gap-2">
           <Printer className="h-4 w-4" />
           In Hóa Đơn
         </Button>
-      </div>
+      </div> */}
 
       {/* Invoice Content */}
       <div ref={invoiceRef} className="invoice-print-content">
@@ -417,14 +431,12 @@ export default function InvoiceForm({
               </span>
             </div>
 
-            {eventFee > 0 && (
-              <div className="flex justify-between text-sm py-2 border-b border-gray-200">
-                <span className="text-gray-700">Phí sự kiện:</span>
-                <span className="font-semibold text-blue-600">
-                  +{eventFee.toLocaleString("vi-VN")}đ
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between text-sm py-2 border-b border-gray-200">
+              <span className="text-gray-700">Tổng tiền event:</span>
+              <span className="font-semibold text-blue-600">
+                +{eventFee.toLocaleString("vi-VN")}đ
+              </span>
+            </div>
 
             {voucherDiscount > 0 && (
               <div className="flex justify-between text-sm py-2 border-b border-gray-200">
@@ -445,7 +457,9 @@ export default function InvoiceForm({
             )}
 
             <div className="flex justify-between text-sm py-2 border-b border-gray-200">
-              <span className="text-gray-700">VAT (10%):</span>
+              <span className="text-gray-700">
+                VAT (10% của tổng tiền món + phí sự kiện):
+              </span>
               <span className="font-semibold">
                 +{calculatedVat.toLocaleString("vi-VN")}đ
               </span>
