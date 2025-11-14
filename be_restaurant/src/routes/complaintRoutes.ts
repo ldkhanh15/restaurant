@@ -18,10 +18,13 @@ router.post(
   "/",
   [
     body("description").notEmpty().withMessage("description is required"),
-    body("order_id").optional().isUUID().withMessage("order_id must be UUID"),
+    body("order_id")
+      .optional({ nullable: true })
+      .isString()
+      .withMessage("order_id must be UUID"),
     body("order_item_id")
-      .optional()
-      .isUUID()
+      .optional({ nullable: true })
+      .isString()
       .withMessage("order_item_id must be UUID"),
     validate,
   ],
