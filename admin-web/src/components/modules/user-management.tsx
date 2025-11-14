@@ -40,6 +40,7 @@ import {
 import { Search, Plus, Edit, Trash2, Eye, Filter } from "lucide-react";
 import { toast } from "react-toastify";
 import { userRoles } from "@/lib/constants";
+import mailService from "../../services/mailService";
 
 interface User {
   id: number;
@@ -99,13 +100,53 @@ export function UserManagement() {
   const handleCreateUser = async (newUser: Partial<User>) => {
     try {
       console.log("Creating user:", newUser);
-      await userApi.createUser(newUser);
-      toast.success("Create user successfully");
+      
+      // Tạo user trong database
+      const response = await userApi.createUser(newUser);
+      const createdUser = response.data;
+      
+      toast.success("Tạo người dùng thành công");
+      
+      // Gửi email thông báo tài khoản mới
+      if (newUser.email && newUser.username) {
+        try {
+          console.log("Gửi email thông báo tài khoản đến:", newUser.email);
+          
+          await mailService.sendAccountEmail(
+            newUser.email, 
+            newUser.username, 
+            "123456" // Mật khẩu mặc định
+          );
+          
+          toast.success(
+            `✅ Đã gửi thông tin tài khoản đến email: ${newUser.email}`,
+            { autoClose: 5000 }
+          );
+        } catch (emailError) {
+          console.error("Lỗi gửi email:", emailError);
+          
+          // Hiển thị cảnh báo nhưng vẫn coi như tạo user thành công
+          const errorMessage = emailError instanceof Error 
+            ? emailError.message 
+            : "Không thể gửi email thông báo";
+            
+          toast.warn(
+            `⚠️ Tạo user thành công nhưng ${errorMessage}. Vui lòng thông báo thông tin đăng nhập cho người dùng thủ công.`,
+            { autoClose: 8000 }
+          );
+        }
+      } else {
+        toast.warn("⚠️ Thiếu email hoặc username. Không thể gửi thông báo tài khoản.");
+      }
+      
+      // Refresh danh sách users
       fetchUsers();
       setIsEditDialogOpen(false);
       setIsCreateDialogOpen(false);
+      
     } catch (error) {
-      console.error("Error creating user:", error);
+      console.error("Lỗi tạo người dùng:", error);
+      toast.error("Không thể tạo người dùng. Vui lòng thử lại.");
     }
   };
 
@@ -262,9 +303,28 @@ export function UserManagement() {
                 </DialogTitle>
                 <DialogDescription>
                   {isCreateDialogOpen
-                    ? "Tạo tài khoản người dùng mới trong hệ thống"
+                    ? "Tạo tài khoản người dùng mới trong hệ thống. Mật khẩu mặc định sẽ được gửi qua email."
                     : "Chỉnh sửa thông tin người dùng"}
                 </DialogDescription>
+                
+                {/* Thông báo mật khẩu mặc định khi tạo user mới */}
+                {isCreateDialogOpen && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+                    <div className="flex items-start gap-2">
+                      <div className="text-blue-500 mt-0.5">
+                        ℹ️
+                      </div>
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium mb-1">Thông tin tài khoản:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li>Mật khẩu mặc định: <strong>123456</strong></li>
+                          <li>Thông tin đăng nhập sẽ được gửi qua email</li>
+                          <li>Người dùng nên đổi mật khẩu sau lần đăng nhập đầu tiên</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">

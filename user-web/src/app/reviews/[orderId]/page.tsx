@@ -12,7 +12,8 @@ import { orderService } from "@/services/orderService";
 import type { Order, OrderItem } from "@/services/orderService";
 import { reviewService } from "@/services/reviewService";
 import type { Review, CreateReviewData } from "@/services/reviewService";
-import { toast } from "sonner";
+// import { toast } from "";
+import { toast } from "react-toastify";
 
 interface DishReview {
   dish_id: string;
@@ -28,7 +29,7 @@ export default function ReviewPage({
 }) {
   const { orderId } = params;
   const router = useRouter();
-  
+
   // Data states
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,9 @@ export default function ReviewPage({
   // Review states
   const [overallRating, setOverallRating] = useState(0);
   const [overallComment, setOverallComment] = useState("");
-  const [dishReviews, setDishReviews] = useState<Record<string, DishReview>>({});
+  const [dishReviews, setDishReviews] = useState<Record<string, DishReview>>(
+    {}
+  );
 
   // Fetch order data
   useEffect(() => {
@@ -46,16 +49,16 @@ export default function ReviewPage({
       try {
         setLoading(true);
         setError(null);
-        
+
         const response = await orderService.getOrderById(orderId);
         const orderData = response.data;
-        
+
         if (!orderData) {
           throw new Error("Không tìm thấy đơn hàng");
         }
 
         setOrder(orderData);
-        
+
         // Initialize dish reviews for each order item
         if (orderData.items && orderData.items.length > 0) {
           const initialDishReviews: Record<string, DishReview> = {};
@@ -73,7 +76,11 @@ export default function ReviewPage({
         }
       } catch (err) {
         console.error("Error fetching order:", err);
-        setError(err instanceof Error ? err.message : "Không thể tải thông tin đơn hàng");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Không thể tải thông tin đơn hàng"
+        );
       } finally {
         setLoading(false);
       }
@@ -88,7 +95,7 @@ export default function ReviewPage({
   const StarRating = ({
     rating,
     onRatingChange,
-    size = "medium"
+    size = "medium",
   }: {
     rating: number;
     onRatingChange: (rating: number) => void;
@@ -96,8 +103,8 @@ export default function ReviewPage({
   }) => {
     const sizeClasses = {
       small: "h-5 w-5",
-      medium: "h-6 w-6", 
-      large: "h-8 w-8"
+      medium: "h-6 w-6",
+      large: "h-8 w-8",
     };
 
     return (
@@ -125,13 +132,17 @@ export default function ReviewPage({
   };
 
   // Update dish review
-  const updateDishReview = (itemId: string, field: 'rating' | 'comment', value: number | string) => {
-    setDishReviews(prev => ({
+  const updateDishReview = (
+    itemId: string,
+    field: "rating" | "comment",
+    value: number | string
+  ) => {
+    setDishReviews((prev) => ({
       ...prev,
       [itemId]: {
         ...prev[itemId],
-        [field]: value
-      }
+        [field]: value,
+      },
     }));
   };
 
@@ -139,7 +150,7 @@ export default function ReviewPage({
   const handleSubmitReviews = async () => {
     try {
       setSubmitting(true);
-      
+
       // Validate overall rating
       if (overallRating === 0) {
         toast.error("Vui lòng đánh giá tổng thể cho đơn hàng");
@@ -159,7 +170,8 @@ export default function ReviewPage({
 
       // Add individual dish reviews
       Object.values(dishReviews).forEach((dishReview) => {
-        if (dishReview.rating > 0) { // Only submit reviews that have ratings
+        if (dishReview.rating > 0) {
+          // Only submit reviews that have ratings
           reviewsToCreate.push({
             order_id: orderId,
             order_item_id: dishReview.order_item_id,
@@ -177,22 +189,21 @@ export default function ReviewPage({
       }
 
       // Submit all reviews
-      const promises = reviewsToCreate.map(reviewData => 
+      const promises = reviewsToCreate.map((reviewData) =>
         reviewService.create(reviewData)
       );
 
       await Promise.all(promises);
-      
+
       toast.success("Gửi đánh giá thành công!");
       console.log("Submitted reviews:", reviewsToCreate);
-      
+
       // Navigate back to orders
       setTimeout(() => {
         router.push("/orders");
       }, 1000);
-
     } catch (err) {
-      console.error('Error submitting reviews:', err);
+      console.error("Error submitting reviews:", err);
       console.error("Error submitting reviews:", err);
       toast.error("Không thể gửi đánh giá. Vui lòng thử lại.");
     } finally {
@@ -208,7 +219,9 @@ export default function ReviewPage({
       <div className="min-h-screen bg-background py-8 px-4 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-accent" />
-          <p className="text-muted-foreground">Đang tải thông tin đơn hàng...</p>
+          <p className="text-muted-foreground">
+            Đang tải thông tin đơn hàng...
+          </p>
         </div>
       </div>
     );
@@ -224,9 +237,7 @@ export default function ReviewPage({
             <Button onClick={() => router.push("/orders")} variant="outline">
               Quay lại danh sách đơn hàng
             </Button>
-            <Button onClick={() => window.location.reload()}>
-              Thử lại
-            </Button>
+            <Button onClick={() => window.location.reload()}>Thử lại</Button>
           </div>
         </div>
       </div>
@@ -239,8 +250,8 @@ export default function ReviewPage({
         <div className="text-center">
           <AlertCircle className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground">Không tìm thấy đơn hàng</p>
-          <Button 
-            onClick={() => router.push("/orders")} 
+          <Button
+            onClick={() => router.push("/orders")}
             className="mt-4"
             variant="outline"
           >
@@ -271,9 +282,12 @@ export default function ReviewPage({
               Quay lại
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-primary">Đánh Giá Bữa Ăn</h1>
+              <h1 className="text-3xl font-bold text-primary">
+                Đánh Giá Bữa Ăn
+              </h1>
               <p className="text-muted-foreground">
-                Đơn hàng #{orderId.slice(0, 8)} • Bàn {order.table?.table_number || "N/A"}
+                Đơn hàng #{orderId.slice(0, 8)} • Bàn{" "}
+                {order.table?.table_number || "N/A"}
               </p>
             </div>
           </div>
@@ -318,9 +332,12 @@ export default function ReviewPage({
                     </p>
                   )}
                 </div>
-                
+
                 <div>
-                  <Label htmlFor="overall-comment" className="text-base font-medium mb-3 block">
+                  <Label
+                    htmlFor="overall-comment"
+                    className="text-base font-medium mb-3 block"
+                  >
                     Nhận xét tổng thể
                   </Label>
                   <Textarea
@@ -352,80 +369,96 @@ export default function ReviewPage({
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-6">
-                    {order.items.map((item, index) => (
-                      item.dish && (
-                        <motion.div
-                          key={item.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.3 + index * 0.1 }}
-                          className="p-4 border border-border rounded-lg bg-card/50"
-                        >
-                          <div className="flex items-start gap-4">
-                            {/* Dish Image */}
-                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                              {item.dish.media_urls && item.dish.media_urls.length > 0 ? (
-                                <img
-                                  src={item.dish.media_urls[0]}
-                                  alt={item.dish.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs">
-                                  No Image
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex-1 space-y-4">
-                              {/* Dish Info */}
-                              <div>
-                                <h4 className="font-semibold text-lg">{item.dish.name}</h4>
-                                <p className="text-sm text-muted-foreground">
-                                  Số lượng: {item.quantity} • 
-                                  Giá: {item.price.toLocaleString('vi-VN')}đ
-                                </p>
-                                {item.dish.description && (
-                                  <p className="text-sm text-muted-foreground mt-1">
-                                    {item.dish.description}
-                                  </p>
+                    {order.items.map(
+                      (item, index) =>
+                        item.dish && (
+                          <motion.div
+                            key={item.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.3 + index * 0.1 }}
+                            className="p-4 border border-border rounded-lg bg-card/50"
+                          >
+                            <div className="flex items-start gap-4">
+                              {/* Dish Image */}
+                              <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                                {item.dish.media_urls &&
+                                item.dish.media_urls.length > 0 ? (
+                                  <img
+                                    src={item.dish.media_urls[0]}
+                                    alt={item.dish.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs">
+                                    No Image
+                                  </div>
                                 )}
                               </div>
 
-                              {/* Rating */}
-                              <div>
-                                <Label className="text-sm font-medium mb-2 block">
-                                  Đánh giá món này
-                                </Label>
-                                <StarRating
-                                  rating={dishReviews[item.id]?.rating || 0}
-                                  onRatingChange={(rating) => updateDishReview(item.id, 'rating', rating)}
-                                  size="medium"
-                                />
-                              </div>
+                              <div className="flex-1 space-y-4">
+                                {/* Dish Info */}
+                                <div>
+                                  <h4 className="font-semibold text-lg">
+                                    {item.dish.name}
+                                  </h4>
+                                  <p className="text-sm text-muted-foreground">
+                                    Số lượng: {item.quantity} • Giá:{" "}
+                                    {item.price.toLocaleString("vi-VN")}đ
+                                  </p>
+                                  {item.dish.description && (
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                      {item.dish.description}
+                                    </p>
+                                  )}
+                                </div>
 
-                              {/* Comment */}
-                              <div>
-                                <Label 
-                                  htmlFor={`comment-${item.id}`}
-                                  className="text-sm font-medium mb-2 block"
-                                >
-                                  Nhận xét về món này
-                                </Label>
-                                <Textarea
-                                  id={`comment-${item.id}`}
-                                  value={dishReviews[item.id]?.comment || ""}
-                                  onChange={(e) => updateDishReview(item.id, 'comment', e.target.value)}
-                                  placeholder="Chia sẻ cảm nhận về vị, hình thức, nhiệt độ..."
-                                  rows={3}
-                                  className="resize-none text-sm border-accent/20 focus:border-accent"
-                                />
+                                {/* Rating */}
+                                <div>
+                                  <Label className="text-sm font-medium mb-2 block">
+                                    Đánh giá món này
+                                  </Label>
+                                  <StarRating
+                                    rating={dishReviews[item.id]?.rating || 0}
+                                    onRatingChange={(rating) =>
+                                      updateDishReview(
+                                        item.id,
+                                        "rating",
+                                        rating
+                                      )
+                                    }
+                                    size="medium"
+                                  />
+                                </div>
+
+                                {/* Comment */}
+                                <div>
+                                  <Label
+                                    htmlFor={`comment-${item.id}`}
+                                    className="text-sm font-medium mb-2 block"
+                                  >
+                                    Nhận xét về món này
+                                  </Label>
+                                  <Textarea
+                                    id={`comment-${item.id}`}
+                                    value={dishReviews[item.id]?.comment || ""}
+                                    onChange={(e) =>
+                                      updateDishReview(
+                                        item.id,
+                                        "comment",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Chia sẻ cảm nhận về vị, hình thức, nhiệt độ..."
+                                    rows={3}
+                                    className="resize-none text-sm border-accent/20 focus:border-accent"
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </motion.div>
-                      )
-                    ))}
+                          </motion.div>
+                        )
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -456,7 +489,7 @@ export default function ReviewPage({
                 </>
               )}
             </Button>
-            
+
             {!isFormValid && (
               <p className="text-sm text-muted-foreground mt-3">
                 * Vui lòng đánh giá tổng thể để có thể gửi

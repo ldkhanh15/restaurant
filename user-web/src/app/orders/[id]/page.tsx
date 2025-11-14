@@ -1354,7 +1354,7 @@ export default function OrderDetailPage({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => router.push(`/complaints?orderId=${id}`)}
+                  onClick={() => router.push(`/complaints/${id}`)}
                   className="border-accent/20 hover:bg-accent/10"
                 >
                   <MessageCircle className="h-4 w-4 mr-2" />
