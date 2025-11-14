@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NotificationWidget } from "@/components/shared/NotificationWidget";
 import { useAuthStore } from "@/store/authStore";
-import { useAuthStore } from "@/store/authStore";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",

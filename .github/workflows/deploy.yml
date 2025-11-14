@@ -1,4 +1,4 @@
-name: Deploy Restaurant System to Azure VM
+name: Deploy Restaurant System to AWS EC2
 
 on:
   push:
@@ -21,16 +21,16 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.AZURE_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          ssh-keyscan -H ${{ secrets.AZURE_VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Test SSH Connection
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
             "echo 'SSH OK'"
 
       - name: Upload project to server
@@ -38,54 +38,48 @@ jobs:
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             ./ \
-            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }}:${{ secrets.AZURE_DEPLOY_PATH }}
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_DEPLOY_PATH }}
 
       - name: Execute deploy script on server
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.AZURE_VM_USER }}@${{ secrets.AZURE_VM_HOST }} << 'EOF'
-            
-          set -e
-          cd ${{ secrets.AZURE_DEPLOY_PATH }}
-
-          echo "Using docker compose version:"
-          docker compose version || docker-compose version
-
-          # Select the right compose command
-          if docker compose version >/dev/null 2>&1; then
-            CMD="docker compose"
-          else
-            CMD="docker-compose"
-          fi
-
-          echo "Stopping old containers..."
-          $CMD -f docker-compose.prod.yml down || true
-
-          echo "Pruning old images..."
-          docker image prune -af --filter "until=24h" || true
-
-          echo "Rebuilding images..."
-          DOCKER_BUILDKIT=1 $CMD -f docker-compose.prod.yml build
-
-          echo "Starting services..."
-          $CMD -f docker-compose.prod.yml up -d
-
-          echo "Waiting for backend health..."
-          for i in {1..20}; do
-            if curl -f http://localhost:8000/health >/dev/null 2>&1; then
-              echo "Backend is healthy!"
-              exit 0
-            fi
-            echo "Retry $i..."
-            sleep 6
-          done
-
-          echo "Health check failed!"
-          exit 1
-
-          EOF
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            'set -e && \
+            cd ${{ secrets.EC2_DEPLOY_PATH }} && \
+            echo "==========================================" && \
+            echo "Starting Deployment Process" && \
+            echo "==========================================" && \
+            echo "Using docker compose version:" && \
+            docker compose version || docker-compose version && \
+            if docker compose version >/dev/null 2>&1; then CMD="docker compose"; else CMD="docker-compose"; fi && \
+            echo "Stopping old containers..." && \
+            $CMD -f docker-compose.prod.yml down || true && \
+            echo "Pruning old images and containers..." && \
+            docker image prune -af --filter "until=24h" || true && \
+            docker container prune -f || true && \
+            echo "Rebuilding images with BuildKit..." && \
+            DOCKER_BUILDKIT=1 $CMD -f docker-compose.prod.yml build --no-cache && \
+            echo "Starting services..." && \
+            $CMD -f docker-compose.prod.yml up -d && \
+            echo "Waiting for services to be healthy..." && \
+            echo "Checking MySQL..." && \
+            for i in {1..30}; do if docker exec restaurant_mysql mysqladmin ping -h localhost --silent 2>/dev/null; then echo "MySQL is healthy!"; break; fi; echo "MySQL retry $i/30..."; sleep 2; done && \
+            echo "Checking Chatbot..." && \
+            for i in {1..20}; do if curl -f http://localhost:7860/api/health >/dev/null 2>&1; then echo "Chatbot is healthy!"; break; fi; echo "Chatbot retry $i/20..."; sleep 3; done && \
+            echo "Checking Backend..." && \
+            for i in {1..30}; do if curl -f http://localhost:8000/health >/dev/null 2>&1; then echo "Backend is healthy!"; break; fi; echo "Backend retry $i/30..."; sleep 4; done && \
+            echo "Checking Admin Web..." && \
+            for i in {1..20}; do if curl -f http://localhost:3001 >/dev/null 2>&1; then echo "Admin Web is healthy!"; break; fi; echo "Admin Web retry $i/20..."; sleep 3; done && \
+            echo "Checking User Web..." && \
+            for i in {1..20}; do if curl -f http://localhost:3000 >/dev/null 2>&1; then echo "User Web is healthy!"; break; fi; echo "User Web retry $i/20..."; sleep 3; done && \
+            echo "==========================================" && \
+            echo "Deployment completed successfully!" && \
+            echo "==========================================" && \
+            echo "Service Status:" && \
+            $CMD -f docker-compose.prod.yml ps'
 
       - name: Deployment Result
         if: always()
-        run: echo "Job Status: ${{ job.status }}"
+        run: |
+          echo "Job Status: ${{ job.status }}"

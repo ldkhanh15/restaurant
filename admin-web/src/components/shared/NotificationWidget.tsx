@@ -203,21 +203,10 @@ export function NotificationWidget() {
     } catch (e) {
       console.error("Failed to load cached notifications:", e);
     }
-
     // Then load fresh data from API
     loadNotifications();
 
-    // Auto-refresh notifications every 30 seconds
-    const refreshInterval = setInterval(() => {
-      if (!isOpen) {
-        // Only refresh when popover is closed to avoid disrupting user interaction
-        loadNotifications();
-      }
-    }, 30000);
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
+    // Auto-refresh notifications every 30 second
   }, [isOpen]);
 
   // Play notification sound

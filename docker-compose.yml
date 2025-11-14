@@ -43,33 +43,33 @@ services:
           "-e",
           "SELECT 1",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 90s
+      retries: 3
+      start_period: 60s
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --innodb-buffer-pool-size=128M
-      - --innodb-log-file-size=32M
-      - --max-connections=50
-      - --table-open-cache=200
-      - --thread-cache-size=8
-      - --tmp-table-size=16M
-      - --max-heap-table-size=16M
-      - --sort-buffer-size=2M
-      - --read-buffer-size=1M
-      - --read-rnd-buffer-size=1M
-      - --join-buffer-size=2M
-      - --key-buffer-size=8M
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-file-size=16M
+      - --max-connections=30
+      - --table-open-cache=100
+      - --thread-cache-size=4
+      - --tmp-table-size=8M
+      - --max-heap-table-size=8M
+      - --sort-buffer-size=1M
+      - --read-buffer-size=512K
+      - --read-rnd-buffer-size=512K
+      - --join-buffer-size=1M
+      - --key-buffer-size=4M
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.5"
+          memory: 192M
+          cpus: "0.4"
         reservations:
-          memory: 128M
-          cpus: "0.25"
+          memory: 96M
+          cpus: "0.2"
 
   # ============================================
   # Chatbot Service (Python FastAPI)
@@ -78,8 +78,6 @@ services:
     build:
       context: ./chatbot
       dockerfile: Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_chatbot
     restart: unless-stopped
     # No ports exposed - only accessible within Docker network
@@ -103,17 +101,17 @@ services:
           "-c",
           "import requests; requests.get('http://localhost:7860/api/health', timeout=5)",
         ]
-      interval: 30s
+      interval: 60s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 2
+      start_period: 30s
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.3"
+          memory: 192M
+          cpus: "0.25"
         reservations:
-          memory: 128M
+          memory: 96M
           cpus: "0.1"
 
   # ============================================
@@ -123,8 +121,6 @@ services:
     build:
       context: ./be_restaurant
       dockerfile: Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_backend
     restart: unless-stopped
     ports:
@@ -162,18 +158,18 @@ services:
           "-e",
           "require('http').get('http://localhost:8000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
         ]
-      interval: 30s
+      interval: 45s
       timeout: 10s
-      retries: 3
-      start_period: 120s
+      retries: 2
+      start_period: 90s
     deploy:
       resources:
         limits:
-          memory: 384M
-          cpus: "0.5"
+          memory: 320M
+          cpus: "0.4"
         reservations:
-          memory: 256M
-          cpus: "0.25"
+          memory: 192M
+          cpus: "0.2"
 
   # ============================================
   # Admin Web Frontend Service
@@ -187,7 +183,6 @@ services:
         # For Docker network, use backend service name
         NEXT_PUBLIC_API_URL: http://localhost:8000
         NEXT_PUBLIC_USER_WEB_URL: http://localhost:3000
-        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_admin_web
     restart: unless-stopped
     ports:
@@ -204,10 +199,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
-          cpus: "0.2"
+          memory: 96M
+          cpus: "0.15"
         reservations:
-          memory: 64M
+          memory: 48M
           cpus: "0.1"
 
   # ============================================
@@ -221,7 +216,6 @@ services:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
         NEXT_PUBLIC_API_URL: http://localhost:8000
-        BUILDKIT_INLINE_CACHE: 1
     container_name: restaurant_user_web
     restart: unless-stopped
     ports:
@@ -238,10 +232,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
-          cpus: "0.2"
+          memory: 96M
+          cpus: "0.15"
         reservations:
-          memory: 64M
+          memory: 48M
           cpus: "0.1"
 
 # ============================================

@@ -101,10 +101,12 @@ describe("Order Routes", () => {
     jest.clearAllMocks();
 
     // Default mock for authenticate middleware
-    mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-      req.user = mockUser;
-      next();
-    });
+    mockAuthenticate.mockImplementation(
+      async (req: any, res: any, next: any) => {
+        req.user = mockUser;
+        next();
+      }
+    );
 
     // Default mock for authorize middleware
     mockAuthorize.mockImplementation(() => {
@@ -193,10 +195,12 @@ describe("Order Routes", () => {
     });
 
     it("Kiểm tra lấy danh sách đơn hàng thất bại khi không có token", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        const error = new AppError("Unauthorized", 401);
-        next(error);
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          const error = new AppError("Unauthorized", 401);
+          next(error);
+        }
+      );
 
       const response = await request(app).get("/api/orders/my-orders");
 
@@ -206,10 +210,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/", () => {
     it("Kiểm tra lấy tất cả đơn hàng thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockOrders = {
         rows: [
@@ -276,7 +282,9 @@ describe("Order Routes", () => {
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("success");
-      expect(response.body.data.id).toBe("550e8400-e29b-41d4-a716-446655440000");
+      expect(response.body.data.id).toBe(
+        "550e8400-e29b-41d4-a716-446655440000"
+      );
     });
 
     it("Kiểm tra lấy đơn hàng thất bại khi không tìm thấy", async () => {
@@ -358,7 +366,9 @@ describe("Order Routes", () => {
 
       expect(response.status).toBe(201);
       expect(response.body.status).toBe("success");
-      expect(response.body.data.table_id).toBe("770e8400-e29b-41d4-a716-446655440000");
+      expect(response.body.data.table_id).toBe(
+        "770e8400-e29b-41d4-a716-446655440000"
+      );
     });
 
     it("Kiểm tra tạo đơn hàng thất bại khi thiếu table_id", async () => {
@@ -419,10 +429,12 @@ describe("Order Routes", () => {
 
   describe("PATCH /api/orders/:id/status", () => {
     it("Kiểm tra cập nhật trạng thái đơn hàng thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockOrder = {
         id: "550e8400-e29b-41d4-a716-446655440000",
@@ -448,10 +460,12 @@ describe("Order Routes", () => {
     });
 
     it("Kiểm tra cập nhật trạng thái thất bại khi status không hợp lệ", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const response = await request(app)
         .patch("/api/orders/550e8400-e29b-41d4-a716-446655440000/status")
@@ -466,7 +480,9 @@ describe("Order Routes", () => {
     it("Kiểm tra thêm món vào đơn hàng thành công", async () => {
       const mockOrder = {
         id: "550e8400-e29b-41d4-a716-446655440000",
-        items: [{ dish_id: "660e8400-e29b-41d4-a716-446655440000", quantity: 2 }],
+        items: [
+          { dish_id: "660e8400-e29b-41d4-a716-446655440000", quantity: 2 },
+        ],
       };
 
       (orderController.addItemToOrder as jest.Mock).mockImplementation(
@@ -523,7 +539,9 @@ describe("Order Routes", () => {
       );
 
       const response = await request(app)
-        .patch("/api/orders/items/880e8400-e29b-41d4-a716-446655440000/quantity")
+        .patch(
+          "/api/orders/items/880e8400-e29b-41d4-a716-446655440000/quantity"
+        )
         .send({ quantity: 3 })
         .set("Authorization", "Bearer valid-token");
 
@@ -533,7 +551,9 @@ describe("Order Routes", () => {
 
     it("Kiểm tra cập nhật số lượng thất bại khi quantity < 0", async () => {
       const response = await request(app)
-        .patch("/api/orders/items/880e8400-e29b-41d4-a716-446655440000/quantity")
+        .patch(
+          "/api/orders/items/880e8400-e29b-41d4-a716-446655440000/quantity"
+        )
         .send({ quantity: -1 })
         .set("Authorization", "Bearer valid-token");
 
@@ -543,10 +563,12 @@ describe("Order Routes", () => {
 
   describe("PATCH /api/orders/items/:itemId/status", () => {
     it("Kiểm tra cập nhật trạng thái món thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockItem = {
         id: "880e8400-e29b-41d4-a716-446655440000",
@@ -572,10 +594,12 @@ describe("Order Routes", () => {
     });
 
     it("Kiểm tra cập nhật trạng thái thất bại khi status không hợp lệ", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const response = await request(app)
         .patch("/api/orders/items/880e8400-e29b-41d4-a716-446655440000/status")
@@ -673,10 +697,12 @@ describe("Order Routes", () => {
 
   describe("POST /api/orders/merge", () => {
     it("Kiểm tra gộp đơn hàng thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockOrder = {
         id: "aa0e8400-e29b-41d4-a716-446655440000",
@@ -705,10 +731,12 @@ describe("Order Routes", () => {
     });
 
     it("Kiểm tra gộp đơn hàng thất bại khi thiếu source_order_id", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const response = await request(app)
         .post("/api/orders/merge")
@@ -761,7 +789,9 @@ describe("Order Routes", () => {
       );
 
       const response = await request(app)
-        .post("/api/orders/550e8400-e29b-41d4-a716-446655440000/payment/request")
+        .post(
+          "/api/orders/550e8400-e29b-41d4-a716-446655440000/payment/request"
+        )
         .set("Authorization", "Bearer valid-token");
 
       expect(response.status).toBe(200);
@@ -796,10 +826,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/stats/revenue", () => {
     it("Kiểm tra lấy thống kê doanh thu thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockStats = {
         total_revenue: 10000000,
@@ -826,10 +858,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/stats/monthly", () => {
     it("Kiểm tra lấy thống kê theo tháng thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockStats = [
         { month: "2024-01", revenue: 1000000, orders: 10 },
@@ -856,10 +890,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/stats/hourly", () => {
     it("Kiểm tra lấy thống kê theo giờ thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockStats = [
         { hour: 0, revenue: 100000, orders: 5 },
@@ -886,10 +922,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/stats/customers", () => {
     it("Kiểm tra lấy thống kê khách hàng thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockStats = {
         registered: 50,
@@ -916,10 +954,12 @@ describe("Order Routes", () => {
 
   describe("GET /api/orders/stats/today", () => {
     it("Kiểm tra lấy thống kê hôm nay thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockStats = {
         revenue: 500000,

@@ -16,7 +16,8 @@ COPY tsconfig.json ./
 
 # Install dependencies with cache mount (BuildKit feature)
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production=false --prefer-offline --no-audit
+    npm ci --only=production=false --prefer-offline --no-audit || \
+    npm install --prefer-offline --no-audit
 
 # Copy source code
 COPY src ./src
@@ -41,8 +42,7 @@ COPY package*.json ./
 
 # Install only production dependencies with cache mount
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production --prefer-offline --no-audit && \
-    npm cache clean --force
+    npm ci --only=production --prefer-offline --no-audit
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
@@ -63,8 +63,8 @@ USER nodejs
 # Expose port
 EXPOSE 8000
 
-# Set Node.js memory limit for production (256MB heap for backend)
-ENV NODE_OPTIONS="--max-old-space-size=256"
+# Set Node.js memory limit for production (192MB heap for backend - optimized)
+ENV NODE_OPTIONS="--max-old-space-size=192"
 
 # Health check - increased start_period for database sync
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \

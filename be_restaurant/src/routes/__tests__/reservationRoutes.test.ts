@@ -77,10 +77,12 @@ describe("Reservation Routes", () => {
     jest.clearAllMocks();
 
     // Default mock for authenticate middleware
-    mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-      req.user = mockUser;
-      next();
-    });
+    mockAuthenticate.mockImplementation(
+      async (req: any, res: any, next: any) => {
+        req.user = mockUser;
+        next();
+      }
+    );
 
     // Default mock for authorize middleware
     mockAuthorize.mockImplementation((...roles: string[]) => {
@@ -190,10 +192,12 @@ describe("Reservation Routes", () => {
     });
 
     it("Kiểm tra lấy danh sách đặt bàn thất bại khi không có token", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        const error = new AppError("Unauthorized", 401);
-        next(error);
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          const error = new AppError("Unauthorized", 401);
+          next(error);
+        }
+      );
 
       const response = await request(app).get(
         "/api/reservations/my-reservations"
@@ -205,10 +209,12 @@ describe("Reservation Routes", () => {
 
   describe("GET /api/reservations/", () => {
     it("Kiểm tra lấy tất cả đặt bàn thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockReservations = {
         rows: [
@@ -463,10 +469,12 @@ describe("Reservation Routes", () => {
 
   describe("PATCH /api/reservations/:id/status", () => {
     it("Kiểm tra cập nhật trạng thái đặt bàn thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockReservation = {
         id: "reservation-123",
@@ -492,10 +500,12 @@ describe("Reservation Routes", () => {
     });
 
     it("Kiểm tra cập nhật trạng thái thất bại khi status không hợp lệ", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const response = await request(app)
         .patch("/api/reservations/550e8400-e29b-41d4-a716-446655440000/status")
@@ -567,10 +577,12 @@ describe("Reservation Routes", () => {
     });
 
     it("Kiểm tra hủy đặt bàn thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockReservation = {
         id: "reservation-123",

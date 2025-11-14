@@ -212,10 +212,12 @@ describe("Auth Routes", () => {
         role: "customer",
       };
 
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockUser;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockUser;
+          next();
+        }
+      );
 
       (authController.validateToken as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
@@ -238,10 +240,12 @@ describe("Auth Routes", () => {
     });
 
     it("Kiểm tra validate token thất bại khi không có token", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        const error = new AppError("No token provided", 401);
-        next(error);
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          const error = new AppError("No token provided", 401);
+          next(error);
+        }
+      );
 
       const response = await request(app).get("/api/auth/validate");
 
@@ -263,14 +267,16 @@ describe("Auth Routes", () => {
         points: 100,
       };
 
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = {
-          id: "user-123",
-          email: "test@example.com",
-          role: "customer",
-        };
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = {
+            id: "user-123",
+            email: "test@example.com",
+            role: "customer",
+          };
+          next();
+        }
+      );
 
       (authController.getCurrentUser as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
@@ -291,10 +297,12 @@ describe("Auth Routes", () => {
     });
 
     it("Kiểm tra lấy thông tin user thất bại khi không có token", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        const error = new AppError("Unauthorized", 401);
-        next(error);
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          const error = new AppError("Unauthorized", 401);
+          next(error);
+        }
+      );
 
       const response = await request(app).get("/api/auth/me");
 

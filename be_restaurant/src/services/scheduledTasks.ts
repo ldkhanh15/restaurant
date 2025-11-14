@@ -49,11 +49,7 @@ export async function cancelLateReservations() {
 
         // Emit WebSocket event
         try {
-          reservationEvents.reservationStatusChanged(
-            getIO(),
-            reservation,
-            "cancelled"
-          );
+          reservationEvents.reservationStatusChanged(getIO(), reservation);
         } catch (error) {
           logger.error(
             `Failed to emit reservation status changed event for ${reservation.id}:`,
@@ -113,7 +109,7 @@ export async function checkAndBanUsersWithFailedReservations() {
         {
           model: User,
           as: "user",
-          attributes: ["id", "username", "email", "deleted_at"],
+          attributes: ["id", "username", "email", "deleted_at", "role"],
           required: true,
         },
       ],
@@ -122,10 +118,11 @@ export async function checkAndBanUsersWithFailedReservations() {
     // Group by user_id and count (only for customer users)
     const userFailureCounts = new Map<string, number>();
     for (const reservation of failedReservations) {
+      const reservationWithUser = reservation as any;
       if (
         reservation.user_id &&
-        reservation.user &&
-        reservation.user.role === "customer"
+        reservationWithUser.user &&
+        reservationWithUser.user.role === "customer"
       ) {
         const count = userFailureCounts.get(reservation.user_id) || 0;
         userFailureCounts.set(reservation.user_id, count + 1);

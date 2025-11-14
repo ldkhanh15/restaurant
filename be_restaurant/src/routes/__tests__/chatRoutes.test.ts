@@ -85,10 +85,12 @@ describe("Chat Routes", () => {
     jest.clearAllMocks();
 
     // Default mock for authenticate middleware
-    mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-      req.user = mockUser;
-      next();
-    });
+    mockAuthenticate.mockImplementation(
+      async (req: any, res: any, next: any) => {
+        req.user = mockUser;
+        next();
+      }
+    );
 
     // Default mock for authorize middleware - it's a function that returns a middleware
     mockAuthorize.mockImplementation((...roles: string[]) => {
@@ -142,10 +144,12 @@ describe("Chat Routes", () => {
     });
 
     it("Kiểm tra tạo session chat thất bại khi không có token", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        const error = new AppError("Unauthorized", 401);
-        next(error);
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          const error = new AppError("Unauthorized", 401);
+          next(error);
+        }
+      );
 
       const response = await request(app).post("/api/chat/session");
 
@@ -200,10 +204,12 @@ describe("Chat Routes", () => {
     });
 
     it("Kiểm tra lấy danh sách session thất bại khi không có user id", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = null;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = null;
+          next();
+        }
+      );
 
       (chatController.getSessions as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
@@ -250,10 +256,12 @@ describe("Chat Routes", () => {
     });
 
     it("Kiểm tra lấy session active thất bại khi không có user id", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = null;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = null;
+          next();
+        }
+      );
 
       (chatController.getActiveUserSession as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
@@ -291,10 +299,12 @@ describe("Chat Routes", () => {
 
   describe("GET /api/chat/sessions/all", () => {
     it("Kiểm tra lấy tất cả session thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockSessions = {
         rows: [
@@ -588,10 +598,12 @@ describe("Chat Routes", () => {
 
   describe("POST /api/chat/sessions/:id/close", () => {
     it("Kiểm tra đóng session thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockSession = {
         id: "session-123",
@@ -632,10 +644,12 @@ describe("Chat Routes", () => {
     });
 
     it("Kiểm tra đóng session thất bại khi không tìm thấy session", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       (chatController.closeSessionById as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
@@ -656,10 +670,12 @@ describe("Chat Routes", () => {
 
   describe("POST /api/chat/sessions/:id/reopen", () => {
     it("Kiểm tra mở lại session thành công (admin)", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       const mockSession = {
         id: "session-123",
@@ -686,10 +702,12 @@ describe("Chat Routes", () => {
 
     it("Kiểm tra mở lại session thất bại khi không có quyền admin", async () => {
       // Set user to customer (not admin)
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockUser; // customer role
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockUser; // customer role
+          next();
+        }
+      );
 
       const response = await request(app)
         .post("/api/chat/sessions/session-123/reopen")
@@ -699,10 +717,12 @@ describe("Chat Routes", () => {
     });
 
     it("Kiểm tra mở lại session thất bại khi không tìm thấy session", async () => {
-      mockAuthenticate.mockImplementation((req: any, res: any, next: any) => {
-        req.user = mockAdmin;
-        next();
-      });
+      mockAuthenticate.mockImplementation(
+        async (req: any, res: any, next: any) => {
+          req.user = mockAdmin;
+          next();
+        }
+      );
 
       (chatController.reopenSessionById as jest.Mock).mockImplementation(
         async (req: any, res: any) => {
