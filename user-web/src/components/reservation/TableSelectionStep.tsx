@@ -86,7 +86,7 @@ export default function TableSelectionStep() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await tableService.getAll({ all: true });
+      const response = await tableService.getAllNoPagination({ all: true });
       const payload = (response as any)?.data ?? response;
       const rawTables: Table[] = Array.isArray(payload)
         ? payload
