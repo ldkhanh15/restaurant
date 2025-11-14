@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationWidget } from "@/components/shared/NotificationWidget";
+import { useAuthStore } from "@/store/authStore";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",
@@ -66,6 +67,8 @@ export function Header() {
       <div className="flex items-center gap-4">
         <NotificationWidget />
 
+        {user ? (
+          <>
             {/* Dropdown menu với thông tin user */}
             <DropdownMenu 
               onOpenChange={(isOpen) => console.log("Dropdown open state:", isOpen)}
