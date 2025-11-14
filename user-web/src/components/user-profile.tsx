@@ -48,7 +48,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { Voucher } from "@/types/Voucher";
+import { Voucher } from "@/type/Voucher";
 import { voucherService } from "@/services/voucherService";
 
 // Mock data
