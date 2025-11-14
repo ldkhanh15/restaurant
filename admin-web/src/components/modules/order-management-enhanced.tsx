@@ -49,11 +49,22 @@ import {
   MapPin,
   TrendingUp,
   AlertCircle,
+  Download,
+  FileSpreadsheet,
+  UserX,
 } from "lucide-react";
 import { api, Order, OrderFilters } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/providers/WebSocketProvider";
+import { exportService } from "@/services/exportService";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 const ORDER_STATUSES = [
   {
@@ -123,6 +134,8 @@ export function OrderManagementEnhanced({
   const [availableTables, setAvailableTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>("");
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
 
   // WebSocket integration
   const { orderSocket } = useWebSocketContext();
@@ -138,6 +151,13 @@ export function OrderManagementEnhanced({
     onVoucherApplied,
     onVoucherRemoved,
     onOrderMerged,
+    onTableOrderCreated,
+    onTableOrderUpdated,
+    onTableGuestJoined,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
+    onOrderItemStatusChanged,
     removeListeners,
   } = orderSocket;
 
@@ -284,6 +304,83 @@ export function OrderManagementEnhanced({
       });
     });
 
+    // Listen to order item events
+    onOrderItemCreated((data) => {
+      toast({
+        title: "Món mới được thêm",
+        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+          data.item?.dish?.name || "Món mới"
+        }`,
+        variant: "info",
+      });
+    });
+
+    onOrderItemQuantityChanged((data) => {
+      toast({
+        title: "Số lượng món đã thay đổi",
+        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+          data.item?.dish?.name || "Món"
+        }`,
+        variant: "info",
+      });
+    });
+
+    onOrderItemDeleted((data) => {
+      toast({
+        title: "Món đã được xóa",
+        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"}`,
+        variant: "warning",
+      });
+    });
+
+    onOrderItemStatusChanged((data) => {
+      const statusLabels: Record<string, string> = {
+        pending: "Chờ xác nhận",
+        preparing: "Đang chuẩn bị",
+        ready: "Sẵn sàng",
+        completed: "Hoàn thành",
+        cancelled: "Đã hủy",
+      };
+      toast({
+        title: "Trạng thái món đã thay đổi",
+        description: `Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+          data.item?.dish?.name || "Món"
+        } → ${statusLabels[data.item?.status] || data.item?.status}`,
+        variant: "info",
+      });
+    });
+
+    // Listen to table order events (for guest/walk-in customers)
+    onTableOrderCreated((data) => {
+      const order = data.order;
+      setOrders((prev) => {
+        // Check if order already exists
+        const exists = prev.find((o) => o.id === order.id);
+        if (exists) return prev;
+        return [order, ...prev];
+      });
+      toast({
+        title: "Đơn hàng mới từ bàn",
+        description: `Bàn ${data.table_id} - Đơn hàng #${order.id.slice(0, 8)}`,
+        variant: "info",
+      });
+    });
+
+    onTableOrderUpdated((data) => {
+      const order = data.order || data;
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, ...order } : o))
+      );
+    });
+
+    onTableGuestJoined((data) => {
+      toast({
+        title: "Khách vãng lai",
+        description: `Khách đã tham gia bàn ${data.table_id}`,
+        variant: "info",
+      });
+    });
+
     return () => {
       removeListeners();
     };
@@ -298,6 +395,13 @@ export function OrderManagementEnhanced({
     onVoucherApplied,
     onVoucherRemoved,
     onOrderMerged,
+    onTableOrderCreated,
+    onTableOrderUpdated,
+    onTableGuestJoined,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
+    onOrderItemStatusChanged,
     removeListeners,
     toast,
   ]);
@@ -324,6 +428,150 @@ export function OrderManagementEnhanced({
 
     setFilteredOrders(filtered);
   }, [orders, searchTerm]);
+
+  // Export handlers
+  const handleExportRevenue = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      if (statusFilter !== "all") {
+        filters.status = statusFilter;
+      }
+
+      if (tableIdFilter) {
+        filters.table_id = tableIdFilter;
+      }
+
+      const result = await exportService.exportOrderRevenue(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPopularDishes = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      const result = await exportService.exportPopularDishes(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportTopCustomers = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      const result = await exportService.exportTopCustomers(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const loadOrders = async () => {
     setIsLoading(true);
@@ -672,6 +920,36 @@ export function OrderManagementEnhanced({
               />
               Làm mới
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  disabled={isExporting}
+                  className="border-green-300 hover:bg-green-50 hover:text-green-900 shadow-sm"
+                >
+                  <Download
+                    className={`h-4 w-4 mr-2 ${
+                      isExporting ? "animate-spin" : ""
+                    }`}
+                  />
+                  Xuất Excel
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={handleExportRevenue}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất doanh thu đơn hàng
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPopularDishes}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất món đặt nhiều
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportTopCustomers}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất khách hàng thân thiết
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
@@ -722,72 +1000,125 @@ export function OrderManagementEnhanced({
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Số đơn hàng</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Bàn</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Tổng tiền</TableHead>
-                    <TableHead>Thời gian</TableHead>
-                    <TableHead>Thao tác</TableHead>
+                  <TableRow className="bg-gradient-to-r from-amber-50/50 to-white border-b-2 border-amber-200">
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số đơn hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Khách hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Trạng thái
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Tổng tiền
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thời gian
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thao tác
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => {
                     const StatusIcon = getStatusIcon(order.status);
                     return (
-                      <TableRow key={order.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">
-                          <div>
-                            <p className="font-semibold">#{order.id}</p>
-                            <p className="text-xs text-muted-foreground">
+                      <TableRow
+                        key={order.id}
+                        className="hover:bg-gradient-to-r hover:from-amber-50/50 hover:to-white transition-all duration-200 border-b border-gray-100 group"
+                      >
+                        <TableCell className="font-medium py-4">
+                          <div className="space-y-1">
+                            <p className="font-bold text-base bg-gradient-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
+                              #{order.id.slice(0, 8).toUpperCase()}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-medium">
                               {getRelativeTime(order.created_at)}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              {order.user?.username || "Khách vãng lai"}
-                            </span>
+                            {order.user_id ? (
+                              <>
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md">
+                                  <Users className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="font-medium text-gray-700">
+                                  {order.user?.username ||
+                                    order.user?.full_name ||
+                                    "Khách hàng"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-md">
+                                  <UserX className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="font-semibold text-orange-700">
+                                  Khách vãng lai
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 border-orange-300 text-orange-700 bg-orange-50 text-xs font-semibold shadow-sm"
+                                >
+                                  Walk-in
+                                </Badge>
+                              </>
+                            )}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span>
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+                              <MapPin className="h-3.5 w-3.5 text-green-700" />
+                            </div>
+                            <span className="font-semibold text-gray-700">
                               {order.table?.table_number || "Chưa chọn bàn"}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <StatusIcon className="h-4 w-4" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                              <StatusIcon className="h-3.5 w-3.5 text-purple-700" />
+                            </div>
                             <Badge
                               className={`status-badge ${getStatusColor(
                                 order.status
-                              )}`}
+                              )} font-semibold px-3 py-1 shadow-sm`}
                             >
                               {getStatusLabel(order.status)}
                             </Badge>
                           </div>
                         </TableCell>
-                        <TableCell className="font-semibold gold-text">
-                          {formatCurrency(order.total_amount)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p>{formatDateTime(order.created_at)}</p>
+                        <TableCell className="py-4">
+                          <div className="font-bold text-lg bg-gradient-to-r from-emerald-600 to-emerald-800 bg-clip-text text-transparent">
+                            {formatCurrency(order.total_amount)}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
+                          <div className="text-sm space-y-0.5">
+                            <p className="font-medium text-gray-700">
+                              {formatDateTime(order.created_at)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {getRelativeTime(order.created_at)}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => router.push(`/orders/${order.id}`)}
-                              className="luxury-focus"
+                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm hover:shadow-md transition-all"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

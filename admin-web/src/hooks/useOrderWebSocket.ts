@@ -284,6 +284,40 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
     [socket]
   );
 
+  // Table order events (for guest/walk-in customers)
+  const onTableOrderCreated = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:table:order_created", callback);
+      }
+    },
+    [socket]
+  );
+
+  const onTableOrderUpdated = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:table:order_updated", callback);
+        // Also listen to regular order:updated for table orders
+        socket.on("admin:order:updated", (order: any) => {
+          if (order.table_id) {
+            callback({ table_id: order.table_id, order });
+          }
+        });
+      }
+    },
+    [socket]
+  );
+
+  const onTableGuestJoined = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on("admin:table:guest_joined", callback);
+      }
+    },
+    [socket]
+  );
+
   const onOrderNoteAdded = useCallback(
     (callback: (data: OrderNote) => void) => {
       if (socket) {
@@ -356,6 +390,9 @@ export function useOrderWebSocket(): UseOrderWebSocketReturn {
     onOrderItemCreated,
     onOrderItemQuantityChanged,
     onOrderItemDeleted,
+    onTableOrderCreated,
+    onTableOrderUpdated,
+    onTableGuestJoined,
     removeListeners,
   };
 }

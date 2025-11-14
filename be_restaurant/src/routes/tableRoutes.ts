@@ -1,24 +1,22 @@
-import { Router } from "express"
-import * as tableController from "../controllers/tableController"
-import { authenticate, authorize } from "../middlewares/auth"
-import upload from "../middlewares/upload"
+import { Router } from "express";
+import * as tableController from "../controllers/tableController";
+import { authenticate, authorize } from "../middlewares/auth";
+import upload from "../middlewares/upload";
 
-const router = Router()
+const router = Router();
 
-router.get("/table-group", tableController.getTableGroup)
-router.get("/table-group/:id", tableController.getTableGroupById)
-router.post("/table-group", tableController.doGroupTables)
-router.put("/table-group/:id", tableController.doUpdateTableGroup)
-router.delete("/table-group/:id", tableController.ungroupTables)
+router.get("/table-group", tableController.getTableGroup);
+router.get("/table-group/:id", tableController.getTableGroupById);
+router.post("/table-group", tableController.doGroupTables);
+router.put("/table-group/:id", tableController.doUpdateTableGroup);
+router.delete("/table-group/:id", tableController.ungroupTables);
 
-router.get("/status/:status", tableController.getTablesByStatus)
-router.get("/", tableController.getAllTables)
-router.get("/:id", tableController.getTableById)
-router.post("/", upload.array("panorama_files"), tableController.createTable)
-router.put("/:id", upload.array("panorama_files"), tableController.updateTable)
-router.delete("/:id", tableController.deleteTable)
-
-
+router.get("/status/:status", tableController.getTablesByStatus);
+router.get("/", tableController.getAllTables);
+router.get("/:id", tableController.getTableById);
+router.post("/", upload.array("panorama_files"), tableController.createTable);
+router.put("/:id", upload.array("panorama_files"), tableController.updateTable);
+router.delete("/:id", tableController.deleteTable);
 
 // router.use(authenticate)
 
@@ -30,9 +28,12 @@ router.delete("/:id", tableController.deleteTable)
 
 // QR check-in to create dining order directly for table
 router.post(
-    "/:id/checkin",
-    authorize("customer", "employee", "admin"),
-    tableController.checkinTableCreateOrder,
-)
+  "/:id/checkin",
+  authorize("customer", "employee", "admin"),
+  tableController.checkinTableCreateOrder
+);
 
-export default router
+// Get QR code URL for table (public - no auth required)
+router.get("/:id/qr-code", tableController.getTableQRCode);
+
+export default router;

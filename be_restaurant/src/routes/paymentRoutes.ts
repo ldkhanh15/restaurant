@@ -6,7 +6,6 @@ import * as paymentController from "../controllers/paymentController";
 
 const router = Router();
 
-
 // VNPay return URL (redirect from VNPay)
 router.get("/vnpay/return", paymentController.vnpayCallback);
 
@@ -233,6 +232,20 @@ router.get(
     validate,
   ],
   paymentController.getDashboardOverview
+);
+
+// Retry payment (for failed payments)
+router.post(
+  "/:id/retry",
+  authenticate,
+  [
+    body("method")
+      .isIn(["vnpay", "cash"])
+      .withMessage("Method must be vnpay or cash"),
+    body("bankCode").optional().isString(),
+    validate,
+  ],
+  paymentController.retryPayment
 );
 
 export default router;

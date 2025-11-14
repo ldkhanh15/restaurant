@@ -420,7 +420,7 @@ export function ReservationManagementEnhanced({
         limit: pageSize,
       };
 
-    if (statusFilter !== "all") {
+      if (statusFilter !== "all") {
         filters.status = statusFilter;
       }
 
@@ -428,8 +428,8 @@ export function ReservationManagementEnhanced({
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         filters.start_date = today.toISOString();
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
         filters.end_date = tomorrow.toISOString();
       } else if (dateFilter === "tomorrow") {
         const tomorrow = new Date();
@@ -516,22 +516,21 @@ export function ReservationManagementEnhanced({
   const checkInReservation = async (reservationId: string) => {
     try {
       await api.reservations.checkIn(reservationId);
-      setReservations((prev) =>
-        prev.map((reservation) =>
-          reservation.id === reservationId
-            ? { ...reservation, status: "checked_in" as any }
-            : reservation
-        )
-      );
+      await loadReservations(); // Reload to get updated data
       toast({
         title: "Thành công",
         description: "Check-in đặt bàn thành công",
+        variant: "success",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to check in reservation:", error);
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Không thể check-in đặt bàn";
       toast({
         title: "Lỗi",
-        description: "Không thể check-in đặt bàn",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -914,18 +913,18 @@ export function ReservationManagementEnhanced({
                   <WifiOff className="h-5 w-5 text-red-600" />
                 </div>
               )}
-            <div>
+              <div>
                 <p className="text-sm font-medium text-gray-600">
                   Trạng thái kết nối
-              </p>
+                </p>
                 <p className="text-base font-bold">
-                {isWebSocketConnected ? (
+                  {isWebSocketConnected ? (
                     <span className="text-emerald-600">Đang hoạt động</span>
-                ) : (
-                  <span className="text-red-600">Mất kết nối</span>
-                )}
-              </p>
-            </div>
+                  ) : (
+                    <span className="text-red-600">Mất kết nối</span>
+                  )}
+                </p>
+              </div>
             </div>
             {isWebSocketConnected && (
               <Badge className="bg-emerald-500 text-white px-3 py-1 text-xs">
@@ -1056,14 +1055,28 @@ export function ReservationManagementEnhanced({
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Số đặt bàn</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Bàn</TableHead>
-                    <TableHead>Số người</TableHead>
-                    <TableHead>Ngày giờ</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Thao tác</TableHead>
+                  <TableRow className="bg-gradient-to-r from-amber-50/50 to-white border-b-2 border-amber-200">
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số đặt bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Khách hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số người
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Ngày giờ
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Trạng thái
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thao tác
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1076,14 +1089,14 @@ export function ReservationManagementEnhanced({
                     return (
                       <TableRow
                         key={reservation.id}
-                        className="hover:bg-amber-50/50 transition-colors border-b border-gray-100"
+                        className="hover:bg-gradient-to-r hover:from-amber-50/50 hover:to-white transition-all duration-200 border-b border-gray-100 group"
                       >
                         <TableCell className="font-medium py-4">
-                          <div>
-                            <p className="font-bold text-amber-900">
-                              #{reservation.id}
+                          <div className="space-y-1">
+                            <p className="font-bold text-base bg-gradient-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
+                              #{reservation.id.slice(0, 8).toUpperCase()}
                             </p>
-                            <p className="text-xs text-amber-600 font-medium mt-0.5">
+                            <p className="text-xs text-amber-600 font-medium">
                               {getRelativeTime(reservation.reservation_time)}
                             </p>
                           </div>
@@ -1091,26 +1104,28 @@ export function ReservationManagementEnhanced({
                         <TableCell className="py-4">
                           <div className="space-y-1.5">
                             <div className="flex items-center gap-2">
-                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
-                                <User className="h-4 w-4 text-amber-700" />
+                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md">
+                                <User className="h-4 w-4 text-white" />
                               </div>
                               <span className="font-semibold text-gray-900">
                                 {reservation.user?.username || "Khách vãng lai"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 ml-10">
-                              <Phone className="h-3 w-3 text-amber-500" />
-                              <span className="text-sm text-gray-600">
+                              <Phone className="h-3 w-3 text-amber-600" />
+                              <span className="text-sm text-gray-600 font-medium">
                                 {reservation.user?.phone || "N/A"}
                               </span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+                              <MapPin className="h-3.5 w-3.5 text-green-700" />
+                            </div>
                             <div>
-                              <p className="font-medium">
+                              <p className="font-semibold text-gray-700">
                                 {reservation.table?.table_number || "N/A"}
                               </p>
                               <p className="text-xs text-muted-foreground">
@@ -1120,33 +1135,37 @@ export function ReservationManagementEnhanced({
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {reservation.num_people}
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                              <Users className="h-3.5 w-3.5 text-purple-700" />
+                            </div>
+                            <span className="font-semibold text-gray-700">
+                              {reservation.num_people} người
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="font-medium">
+                        <TableCell className="py-4">
+                          <div className="text-sm space-y-0.5">
+                            <p className="font-semibold text-gray-700">
                               {formatDateTime(reservation.reservation_time)}
                             </p>
                             {isUpcomingReservation && (
-                              <p className="text-xs text-green-600">Sắp tới</p>
+                              <Badge className="bg-green-100 text-green-700 border-green-300 text-xs font-semibold px-2 py-0.5">
+                                Sắp tới
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
-                              <StatusIcon className="h-4 w-4 text-blue-700" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center">
+                              <StatusIcon className="h-3.5 w-3.5 text-indigo-700" />
                             </div>
                             <Badge
                               className={`status-badge ${getStatusColor(
                                 reservation.status
-                              )} font-medium px-3 py-1`}
+                              )} font-semibold px-3 py-1 shadow-sm`}
                             >
                               {getStatusLabel(reservation.status)}
                             </Badge>
@@ -1160,7 +1179,7 @@ export function ReservationManagementEnhanced({
                               onClick={() =>
                                 router.push(`/reservations/${reservation.id}`)
                               }
-                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
+                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm hover:shadow-md transition-all"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

@@ -11,6 +11,7 @@ import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
 import dishRoutes from "./routes/dishRoutes";
 import orderRoutes from "./routes/orderRoutes";
+import guestOrderRoutes from "./routes/guestOrderRoutes";
 import employeeRoutes from "./routes/employeeRoutes";
 import categoryDishRoutes from "./routes/categoryDishRoutes";
 import ingredientRoutes from "./routes/ingredientRoutes";
@@ -237,12 +238,10 @@ if (process.env.NODE_ENV !== "production") {
         const sp = new URLSearchParams(payload.query);
         for (const [k, v] of sp.entries()) params[k] = v;
       } else {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "Provide url or query in JSON body",
-          });
+        return res.status(400).json({
+          status: "error",
+          message: "Provide url or query in JSON body",
+        });
       }
 
       const provided = String(params.vnp_SecureHash || "");
@@ -267,6 +266,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dishes", dishRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/guest/order", guestOrderRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/categories", categoryDishRoutes);
 app.use("/api/ingredients", ingredientRoutes);

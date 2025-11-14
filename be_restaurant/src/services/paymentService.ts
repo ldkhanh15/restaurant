@@ -69,20 +69,33 @@ class PaymentService extends BaseService<Payment> {
   }
 
   private buildVnpUrl(params: Record<string, any>, returnUrl: string) {
+    // Validate return URL - must not be empty
+    if (!returnUrl || returnUrl.trim() === "") {
+      throw new Error(
+        "VNPay return URL is required. Please set VNP_RETURN_URL_ORDER, VNP_RETURN_URL, or CLIENT_URL environment variable."
+      );
+    }
+
     const baseUrl = process.env.VNP_URL || (process.env as any).vnp_Url;
+    if (!baseUrl) {
+      throw new Error(
+        "VNPay base URL is required. Please set VNP_URL environment variable."
+      );
+    }
+
     params.vnp_Version = "2.1.0";
     params.vnp_Command = "pay";
     params.vnp_TmnCode =
       process.env.VNP_TMN_CODE || (process.env as any).vnp_TmnCode;
     params.vnp_CurrCode = "VND";
     params.vnp_Locale = "vn";
-    params.vnp_ReturnUrl = returnUrl;
+    params.vnp_ReturnUrl = returnUrl.trim();
     params.vnp_CreateDate = this.formatLocalDateYYYYMMDDHHmmss(new Date());
 
-  // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
-  // (see VNPay docs). Include it before signing so that the signing string
-  // excludes it but the final query contains it as required.
-  params.vnp_SecureHashType = 'HMACSHA512';
+    // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
+    // (see VNPay docs). Include it before signing so that the signing string
+    // excludes it but the final query contains it as required.
+    params.vnp_SecureHashType = "HMACSHA512";
 
     if (params.vnp_IpAddr === "::1") params.vnp_IpAddr = "127.0.0.1";
 
@@ -125,10 +138,25 @@ class PaymentService extends BaseService<Payment> {
 
     if (bankCode) params.vnp_BankCode = bankCode;
 
-    const url = this.buildVnpUrl(
-      params,
-      process.env.VNP_RETURN_URL_ORDER || ""
-    );
+    // Build return URL with fallback - ensure it's never empty
+    let returnUrl = process.env.VNP_RETURN_URL_ORDER || "";
+    if (!returnUrl || returnUrl.trim() === "") {
+      // Fallback: use VNP_RETURN_URL or construct from CLIENT_URL
+      returnUrl =
+        process.env.VNP_RETURN_URL ||
+        `${
+          process.env.CLIENT_URL || "http://localhost:3000"
+        }/api/payments/vnpay/return`;
+    }
+
+    // Final validation - ensure returnUrl is not empty
+    if (!returnUrl || returnUrl.trim() === "") {
+      throw new Error(
+        "VNPay return URL cannot be empty. Please set VNP_RETURN_URL_ORDER, VNP_RETURN_URL, or CLIENT_URL environment variable."
+      );
+    }
+
+    const url = this.buildVnpUrl(params, returnUrl.trim());
     return { url, txnRef };
   }
 

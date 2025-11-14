@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NotificationWidget } from "@/components/shared/NotificationWidget";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",
@@ -26,10 +27,10 @@ const moduleNames: Record<string, string> = {
   complaints: "Khiếu nại",
   reviews: "Đánh giá",
   vouchers: "Quản lý voucher",
-  table:"Quản lý bàn/sơ đồ bàn",
-  supplier:"Quản lý nhà cung cấp",
-  event:"Quản lý sự kiện"
-}
+  table: "Quản lý bàn/sơ đồ bàn",
+  supplier: "Quản lý nhà cung cấp",
+  event: "Quản lý sự kiện",
+};
 
 export function Header() {
   const pathname = usePathname();
@@ -43,12 +44,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" className="relative">
-          <span className="text-lg">🔔</span>
-          <span className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-            3
-          </span>
-        </Button>
+        <NotificationWidget />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

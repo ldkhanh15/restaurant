@@ -3,3 +3,7 @@ Số thẻ	9704198526191432198
 Tên chủ thẻ	NGUYEN VAN A
 Ngày phát hành	07/15
 Mật khẩu OTP	123456
+
+- nếu khách đặt bàn đến muộn quá 30p thì sẽ hủy bàn
+- đăng nhập sai  5  lần bị lock
+- đặtbàn k thành công 5 lần bị lock acc

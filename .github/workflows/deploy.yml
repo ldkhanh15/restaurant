@@ -1,4 +1,4 @@
-name: Deploy to AWS EC2
+name: Deploy to Azure VM
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-southeast-2
   DOCKER_BUILDKIT: 1
 
 jobs:
@@ -21,20 +20,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
           # Write SSH key
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.AZURE_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           
           # Validate SSH key format
@@ -46,20 +38,20 @@ jobs:
           
           echo "✅ SSH key is valid"
           
-          # Add EC2 to known hosts with timeout and retry
-          EC2_HOST="${{ secrets.EC2_HOST }}"
-          if [ -z "$EC2_HOST" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
+          # Add Azure VM to known hosts with timeout and retry
+          AZURE_HOST="${{ secrets.AZURE_VM_HOST }}"
+          if [ -z "$AZURE_HOST" ]; then
+            echo "❌ Error: AZURE_VM_HOST secret is not set"
             exit 1
           fi
           
-          echo "🔍 Scanning host: $EC2_HOST"
+          echo "🔍 Scanning host: $AZURE_HOST"
           MAX_RETRIES=3
           RETRY=0
           
           while [ $RETRY -lt $MAX_RETRIES ]; do
-            if ssh-keyscan -H -T 10 "$EC2_HOST" >> ~/.ssh/known_hosts 2>&1; then
-              echo "✅ Successfully added $EC2_HOST to known_hosts"
+            if ssh-keyscan -H -T 10 "$AZURE_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              echo "✅ Successfully added $AZURE_HOST to known_hosts"
               break
             else
               RETRY=$((RETRY + 1))
@@ -76,27 +68,27 @@ jobs:
 
       - name: Validate secrets
         run: |
-          if [ -z "${{ secrets.EC2_HOST }}" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
+          if [ -z "${{ secrets.AZURE_VM_HOST }}" ]; then
+            echo "❌ Error: AZURE_VM_HOST secret is not set"
             exit 1
           fi
-          if [ -z "${{ secrets.EC2_USER }}" ]; then
-            echo "❌ Error: EC2_USER secret is not set"
+          if [ -z "${{ secrets.AZURE_VM_USER }}" ]; then
+            echo "❌ Error: AZURE_VM_USER secret is not set"
             exit 1
           fi
-          if [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
-            echo "❌ Error: EC2_SSH_KEY secret is not set"
+          if [ -z "${{ secrets.AZURE_SSH_KEY }}" ]; then
+            echo "❌ Error: AZURE_SSH_KEY secret is not set"
             exit 1
           fi
           echo "✅ All required secrets are set"
-          echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
-          echo "EC2_USER: ${{ secrets.EC2_USER }}"
+          echo "AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}"
+          echo "AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}"
 
-      - name: Deploy to EC2
+      - name: Deploy to Azure VM
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH || '/home/ec2-user/restaurant' }}
+          AZURE_VM_HOST: ${{ secrets.AZURE_VM_HOST }}
+          AZURE_VM_USER: ${{ secrets.AZURE_VM_USER }}
+          AZURE_DEPLOY_PATH: ${{ secrets.AZURE_DEPLOY_PATH || '/home/azureuser/restaurant' }}
         run: |
           # Create deployment script
           cat > /tmp/deploy_remote.sh << 'DEPLOYSCRIPT'
@@ -104,9 +96,9 @@ jobs:
           set -e
           
           # Use provided DEPLOY_PATH or default based on user
-          DEPLOY_PATH="${DEPLOY_PATH:-/home/ec2-user/restaurant}"
+          DEPLOY_PATH="${DEPLOY_PATH:-/home/azureuser/restaurant}"
           COMPOSE_FILE="docker-compose.prod.yml"
-          SERVER_IP="${SERVER_IP:-98.91.23.236}"
+          SERVER_IP="${SERVER_IP}"
           PROTOCOL="${PROTOCOL:-https}"
           
           # Navigate to deployment directory
@@ -204,6 +196,11 @@ jobs:
           exit 0
           DEPLOYSCRIPT
           
+          # Get Azure VM public IP from hostname if needed
+          AZURE_VM_HOST="${{ secrets.AZURE_VM_HOST }}"
+          AZURE_VM_USER="${{ secrets.AZURE_VM_USER }}"
+          AZURE_DEPLOY_PATH="${{ secrets.AZURE_DEPLOY_PATH || '/home/azureuser/restaurant' }}"
+          
           # Test SSH connection first
           echo "🔍 Testing SSH connection..."
           ssh -i ~/.ssh/deploy_key \
@@ -211,42 +208,53 @@ jobs:
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o ConnectTimeout=10 \
             -o BatchMode=yes \
-            ${EC2_USER}@${EC2_HOST} \
+            ${AZURE_VM_USER}@${AZURE_VM_HOST} \
             "echo '✅ SSH connection successful'" || {
             echo "❌ SSH connection failed!"
             echo "Please check:"
-            echo "  1. EC2_HOST is correct: ${EC2_HOST}"
-            echo "  2. EC2_USER is correct: ${EC2_USER}"
-            echo "  3. SSH key is valid and matches the public key on EC2"
-            echo "  4. Security Group allows SSH (port 22) from GitHub Actions IPs"
-            echo "  5. EC2 instance is running"
+            echo "  1. AZURE_VM_HOST is correct: ${AZURE_VM_HOST}"
+            echo "  2. AZURE_VM_USER is correct: ${AZURE_VM_USER}"
+            echo "  3. SSH key is valid and matches the public key on Azure VM"
+            echo "  4. Network Security Group (NSG) allows SSH (port 22) from GitHub Actions IPs"
+            echo "  5. Azure VM is running"
             exit 1
           }
           
-          # Copy script to EC2
-          echo "📤 Copying deployment script to EC2..."
+          # Get server IP from Azure VM (use hostname if it's an IP, otherwise get public IP)
+          if [[ "$AZURE_VM_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            SERVER_IP="$AZURE_VM_HOST"
+          else
+            SERVER_IP=$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${AZURE_VM_USER}@${AZURE_VM_HOST} 'curl -s ifconfig.me 2>/dev/null || echo ""')
+            if [ -z "$SERVER_IP" ]; then
+              SERVER_IP="$AZURE_VM_HOST"
+            fi
+          fi
+          echo "🌐 Server IP: ${SERVER_IP}"
+          
+          # Copy script to Azure VM
+          echo "📤 Copying deployment script to Azure VM..."
           scp -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o ConnectTimeout=10 \
-            /tmp/deploy_remote.sh ${EC2_USER}@${EC2_HOST}:/tmp/deploy_remote.sh || {
-            echo "❌ Failed to copy script to EC2"
+            /tmp/deploy_remote.sh ${AZURE_VM_USER}@${AZURE_VM_HOST}:/tmp/deploy_remote.sh || {
+            echo "❌ Failed to copy script to Azure VM"
             exit 1
           }
           
           # Execute deployment script
-          echo "🚀 Executing deployment script on EC2..."
+          echo "🚀 Executing deployment script on Azure VM..."
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o ConnectTimeout=10 \
-            ${EC2_USER}@${EC2_HOST} \
-            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${EC2_DEPLOY_PATH}' SERVER_IP='98.91.23.236' PROTOCOL='https' /tmp/deploy_remote.sh" || {
+            ${AZURE_VM_USER}@${AZURE_VM_HOST} \
+            "chmod +x /tmp/deploy_remote.sh && DEPLOY_PATH='${AZURE_DEPLOY_PATH}' SERVER_IP='${SERVER_IP}' PROTOCOL='https' /tmp/deploy_remote.sh" || {
             echo "❌ Deployment script failed!"
             echo "📋 Checking deployment script logs..."
             ssh -i ~/.ssh/deploy_key \
               -o StrictHostKeyChecking=no \
-              ${EC2_USER}@${EC2_HOST} \
+              ${AZURE_VM_USER}@${AZURE_VM_HOST} \
               "cat /tmp/deploy_remote.sh | head -20" || true
             exit 1
           }

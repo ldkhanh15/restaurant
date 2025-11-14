@@ -1,0 +1,647 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Bell,
+  BellRing,
+  CheckCircle,
+  Clock,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Trash2,
+  Eye,
+  ArrowRight,
+} from "lucide-react";
+import { useWebSocketContext } from "@/providers/WebSocketProvider";
+import { notificationService } from "@/services/notificationService";
+import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
+
+interface Notification {
+  id: string;
+  title: string;
+  message?: string;
+  content?: string;
+  type: string;
+  is_read: boolean;
+  created_at?: string;
+  sent_at?: string;
+  data?: {
+    order_id?: string;
+    reservation_id?: string;
+    table_id?: string;
+    chat_id?: string;
+    [key: string]: any;
+  };
+}
+
+const NOTIFICATION_TYPES: Record<
+  string,
+  {
+    label: string;
+    color: string;
+    icon: string;
+    route?: (data: any) => string | null;
+  }
+> = {
+  order_created: {
+    label: "Đơn hàng",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+    icon: "🛒",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : null;
+    },
+  },
+  order_updated: {
+    label: "Đơn hàng",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+    icon: "🛒",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : null;
+    },
+  },
+  order_status_changed: {
+    label: "Đơn hàng",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+    icon: "🛒",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : null;
+    },
+  },
+  reservation_created: {
+    label: "Đặt bàn",
+    color: "bg-green-100 text-green-800 border-green-300",
+    icon: "📅",
+    route: (data: any) => {
+      const reservationId = data?.reservation_id;
+      return reservationId ? `/reservations/${reservationId}` : null;
+    },
+  },
+  reservation_updated: {
+    label: "Đặt bàn",
+    color: "bg-green-100 text-green-800 border-green-300",
+    icon: "📅",
+    route: (data: any) => {
+      const reservationId = data?.reservation_id;
+      return reservationId ? `/reservations/${reservationId}` : null;
+    },
+  },
+  payment_completed: {
+    label: "Thanh toán",
+    color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+    icon: "💳",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : null;
+    },
+  },
+  chat_message: {
+    label: "Chat",
+    color: "bg-purple-100 text-purple-800 border-purple-300",
+    icon: "💬",
+    route: (data: any) => {
+      return data?.chat_id ? `/chat?chat_id=${data.chat_id}` : `/chat`;
+    },
+  },
+  support_request: {
+    label: "Hỗ trợ",
+    color: "bg-orange-100 text-orange-800 border-orange-300",
+    icon: "🆘",
+    route: (data: any) => {
+      const orderId = data?.order_id;
+      return orderId ? `/orders/${orderId}` : null;
+    },
+  },
+  system: {
+    label: "Hệ thống",
+    color: "bg-gray-100 text-gray-800 border-gray-300",
+    icon: "⚙️",
+  },
+};
+
+export function NotificationWidget() {
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { toast } = useToast();
+
+  // WebSocket integration
+  const { notificationSocket } = useWebSocketContext();
+  const {
+    isConnected: isWebSocketConnected,
+    onNewNotification,
+    onNotificationOrder,
+    onNotificationReservation,
+    onNotificationChat,
+  } = notificationSocket;
+
+  // Load notifications on component mount and set up auto-refresh
+  useEffect(() => {
+    // Try to load from localStorage first for instant display
+    try {
+      const cached = localStorage.getItem("admin_notifications");
+      const cachedTimestamp = localStorage.getItem(
+        "admin_notifications_timestamp"
+      );
+      if (cached && cachedTimestamp) {
+        const cachedNotifs = JSON.parse(cached);
+        const timestamp = new Date(cachedTimestamp);
+        const now = new Date();
+        // Use cached data if less than 5 minutes old
+        if (now.getTime() - timestamp.getTime() < 5 * 60 * 1000) {
+          setNotifications(cachedNotifs);
+          setUnreadCount(
+            cachedNotifs.filter((n: Notification) => !n.is_read).length
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load cached notifications:", e);
+    }
+
+    // Then load fresh data from API
+    loadNotifications();
+
+    // Auto-refresh notifications every 30 seconds
+    const refreshInterval = setInterval(() => {
+      if (!isOpen) {
+        // Only refresh when popover is closed to avoid disrupting user interaction
+        loadNotifications();
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [isOpen]);
+
+  // Play notification sound
+  const playNotificationSound = (type: string) => {
+    try {
+      // Create audio context for sound alerts
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      // Different sounds for different notification types
+      let frequency = 800; // Default frequency
+      if (type.includes("order") || type.includes("payment")) {
+        frequency = 1000; // Higher pitch for orders/payments
+      } else if (type.includes("support") || type.includes("urgent")) {
+        frequency = 1200; // Highest pitch for urgent notifications
+      }
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = frequency;
+      oscillator.type = "sine";
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.3
+      );
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.error("Failed to play notification sound:", error);
+    }
+  };
+
+  // Show browser notification with enhanced options
+  const showBrowserNotification = (notification: Notification) => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      const notificationOptions: NotificationOptions = {
+        body:
+          notification.message || notification.content || notification.title,
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        tag: notification.id, // Prevent duplicate notifications
+        requireInteraction:
+          notification.type.includes("support") ||
+          notification.type.includes("urgent"), // Keep visible for urgent notifications
+        silent: false, // Allow sound
+        timestamp: notification.sent_at
+          ? new Date(notification.sent_at).getTime()
+          : Date.now(),
+        data: notification.data,
+      };
+
+      const browserNotification = new Notification(
+        notification.title,
+        notificationOptions
+      );
+
+      // Auto-close after 5 seconds (except urgent notifications)
+      if (!notificationOptions.requireInteraction) {
+        setTimeout(() => {
+          browserNotification.close();
+        }, 5000);
+      }
+
+      // Handle click to navigate
+      browserNotification.onclick = () => {
+        window.focus();
+        const typeConfig =
+          NOTIFICATION_TYPES[notification.type] || NOTIFICATION_TYPES.system;
+        if (typeConfig.route && notification.data) {
+          try {
+            const route = typeConfig.route(notification.data);
+            if (route) {
+              router.push(route);
+            }
+          } catch (error) {
+            console.error("Failed to navigate:", error);
+          }
+        }
+        browserNotification.close();
+      };
+    } else if (Notification.permission === "default") {
+      // Request permission if not yet requested
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          showBrowserNotification(notification);
+        }
+      });
+    }
+  };
+
+  // WebSocket event listeners with enhanced notification handling
+  useEffect(() => {
+    if (!isWebSocketConnected) return;
+
+    const handleNewNotification = (notification: Notification) => {
+      // Add to state
+      setNotifications((prev) => {
+        // Check if notification already exists (prevent duplicates)
+        const exists = prev.find((n) => n.id === notification.id);
+        if (exists) return prev;
+        return [notification, ...prev];
+      });
+      setUnreadCount((prev) => prev + 1);
+
+      // Play sound for important notifications
+      const importantTypes = [
+        "order_created",
+        "support_request",
+        "payment_completed",
+        "payment_failed",
+      ];
+      if (importantTypes.includes(notification.type)) {
+        playNotificationSound(notification.type);
+      }
+
+      // Show browser notification
+      showBrowserNotification(notification);
+
+      // Show toast notification
+      toast({
+        title: notification.title,
+        description: notification.message || notification.content,
+        variant:
+          notification.type.includes("error") ||
+          notification.type.includes("failed")
+            ? "destructive"
+            : "default",
+      });
+    };
+
+    onNewNotification((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationOrder((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationReservation((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+    onNotificationChat((notification: any) =>
+      handleNewNotification(notification as Notification)
+    );
+
+    // Request notification permission on mount
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
+      Notification.requestPermission();
+    }
+  }, [
+    isWebSocketConnected,
+    onNewNotification,
+    onNotificationOrder,
+    onNotificationReservation,
+    onNotificationChat,
+    toast,
+    router,
+  ]);
+
+  const loadNotifications = async () => {
+    setIsLoading(true);
+    try {
+      const response = await notificationService.getAllNotifications({
+        page: 1,
+        limit: 50, // Load more notifications for better persistence
+        sortBy: "created_at",
+        sortOrder: "DESC",
+      });
+
+      if (response.data?.data?.data) {
+        const notifs = response.data.data.data;
+        setNotifications(notifs);
+        setUnreadCount(notifs.filter((n: Notification) => !n.is_read).length);
+
+        // Persist to localStorage for offline access
+        try {
+          localStorage.setItem("admin_notifications", JSON.stringify(notifs));
+          localStorage.setItem(
+            "admin_notifications_timestamp",
+            new Date().toISOString()
+          );
+        } catch (e) {
+          console.error("Failed to persist notifications:", e);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load notifications:", error);
+      // Try to load from localStorage on error
+      try {
+        const cached = localStorage.getItem("admin_notifications");
+        if (cached) {
+          const cachedNotifs = JSON.parse(cached);
+          setNotifications(cachedNotifs);
+          setUnreadCount(
+            cachedNotifs.filter((n: Notification) => !n.is_read).length
+          );
+        }
+      } catch (e) {
+        console.error("Failed to load cached notifications:", e);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      await notificationService.markAsRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Failed to mark notification as read:", error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      toast({
+        title: "Thành công",
+        description: "Đã đánh dấu tất cả thông báo là đã đọc",
+      });
+    } catch (error) {
+      console.error("Failed to mark all notifications as read:", error);
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    // Mark as read
+    if (!notification.is_read) {
+      markAsRead(notification.id);
+    }
+
+    // Get route based on notification type and data
+    const typeConfig =
+      NOTIFICATION_TYPES[notification.type] || NOTIFICATION_TYPES.system;
+    if (typeConfig.route && notification.data) {
+      try {
+        const route = typeConfig.route(notification.data);
+        if (route && route !== "/") {
+          setIsOpen(false);
+          router.push(route);
+        }
+      } catch (error) {
+        console.error("Failed to navigate to notification route:", error);
+      }
+    }
+  };
+
+  const getTypeConfig = (type: string) => {
+    return NOTIFICATION_TYPES[type] || NOTIFICATION_TYPES.system;
+  };
+
+  const formatRelativeTime = (dateString?: string) => {
+    if (!dateString) return "Vừa xong";
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) {
+      return "Vừa xong";
+    } else if (diffInSeconds < 3600) {
+      return `${Math.floor(diffInSeconds / 60)} phút trước`;
+    } else if (diffInSeconds < 86400) {
+      return `${Math.floor(diffInSeconds / 3600)} giờ trước`;
+    } else {
+      return `${Math.floor(diffInSeconds / 86400)} ngày trước`;
+    }
+  };
+
+  const unreadNotifications = notifications.filter((n) => !n.is_read);
+  const displayNotifications = isOpen
+    ? notifications.slice(0, 10)
+    : unreadNotifications.slice(0, 5);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative h-10 w-10">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-96 p-0" align="end">
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-lg">Thông báo</h3>
+            <div className="flex items-center gap-2">
+              {isWebSocketConnected ? (
+                <Badge variant="outline" className="text-xs">
+                  <Wifi className="h-3 w-3 mr-1" />
+                  Online
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="text-xs">
+                  <WifiOff className="h-3 w-3 mr-1" />
+                  Offline
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadNotifications}
+                disabled={isLoading}
+                className="h-7 w-7 p-0"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", isLoading && "animate-spin")}
+                />
+              </Button>
+            </div>
+          </div>
+          {unreadCount > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {unreadCount} thông báo chưa đọc
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={markAllAsRead}
+                className="h-7 text-xs"
+              >
+                Đánh dấu tất cả đã đọc
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <ScrollArea className="h-[400px]">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : displayNotifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <BellRing className="h-12 w-12 text-muted-foreground opacity-50 mb-2" />
+              <p className="text-sm text-muted-foreground">
+                {isOpen
+                  ? "Không có thông báo nào"
+                  : "Không có thông báo chưa đọc"}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {displayNotifications.map((notification) => {
+                const typeConfig = getTypeConfig(notification.type);
+                const message =
+                  notification.message || notification.content || "";
+                return (
+                  <div
+                    key={notification.id}
+                    className={cn(
+                      "p-4 hover:bg-muted/50 transition-colors cursor-pointer",
+                      !notification.is_read && "bg-blue-50/50"
+                    )}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <span className="text-xl">{typeConfig.icon}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge
+                            variant="outline"
+                            className={cn("text-xs", typeConfig.color)}
+                          >
+                            {typeConfig.label}
+                          </Badge>
+                          {!notification.is_read && (
+                            <div className="h-2 w-2 rounded-full bg-blue-500" />
+                          )}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {formatRelativeTime(
+                              notification.created_at || notification.sent_at
+                            )}
+                          </span>
+                        </div>
+                        <h4
+                          className={cn(
+                            "font-semibold text-sm mb-1",
+                            !notification.is_read
+                              ? "text-gray-900"
+                              : "text-gray-600"
+                          )}
+                        >
+                          {notification.title || "Thông báo"}
+                        </h4>
+                        <p
+                          className={cn(
+                            "text-sm line-clamp-2",
+                            !notification.is_read
+                              ? "text-gray-700"
+                              : "text-gray-500"
+                          )}
+                        >
+                          {message}
+                        </p>
+                        {typeConfig.route && notification.data && (
+                          <div className="flex items-center gap-1 mt-2 text-xs text-primary">
+                            <span>Xem chi tiết</span>
+                            <ArrowRight className="h-3 w-3" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </ScrollArea>
+
+        {notifications.length > 0 && (
+          <div className="p-3 border-t">
+            <Button
+              variant="ghost"
+              className="w-full text-sm"
+              onClick={() => {
+                setIsOpen(false);
+                router.push("/notifications");
+              }}
+            >
+              Xem tất cả thông báo
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
