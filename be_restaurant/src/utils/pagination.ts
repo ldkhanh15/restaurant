@@ -1,34 +1,37 @@
 export interface PaginationParams {
-  page?: number
-  limit?: number
-  sortBy?: string
-  sortOrder?: "ASC" | "DESC"
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "ASC" | "DESC";
+  status?: string;
 }
 
 export interface PaginationResult<T> {
-  data: T[]
+  data: T[];
   pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export const getPaginationParams = (query: any): PaginationParams => {
-  const page = Number.parseInt(query.page) || 1
-  const limit = Number.parseInt(query.limit) || 10
-  const sortBy = query.sortBy || "created_at"
-  const sortOrder = (query.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC") as "ASC" | "DESC"
+  const page = Number.parseInt(query.page) || 1;
+  const limit = Number.parseInt(query.limit) || 10;
+  const sortBy = query.sortBy || "created_at";
+  const sortOrder = (
+    query.sortOrder?.toUpperCase() === "ASC" ? "ASC" : "DESC"
+  ) as "ASC" | "DESC";
 
-  return { page, limit, sortBy, sortOrder }
-}
+  return { page, limit, sortBy, sortOrder };
+};
 
 export const buildPaginationResult = <T>(
   data: T[],
   total: number,
   page: number,
-  limit: number,
+  limit: number
 ): PaginationResult<T> => {
   return {
     data,
@@ -38,5 +41,5 @@ export const buildPaginationResult = <T>(
       total,
       totalPages: Math.ceil(total / limit),
     },
-  }
-}
+  };
+};

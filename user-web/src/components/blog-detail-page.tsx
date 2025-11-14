@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "@/lib/router";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -10,79 +10,87 @@ import {
   Calendar,
   Clock,
   User,
-  Eye,
-  Heart,
   Share2,
   ArrowLeft,
   BookOpen,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-
-// Same blog data - in production, fetch from API
-const blogPosts = [
-  {
-    id: "blog-1",
-    title: "Bí Quyết Chế Biến Cá Hồi Hoàn Hảo",
-    excerpt:
-      "Khám phá những kỹ thuật đặc biệt mà đầu bếp chúng tôi sử dụng để tạo ra món cá hồi nướng tuyệt vời",
-    content: `
-      <h2 class="text-3xl font-elegant font-bold text-primary mb-6">Lựa Chọn Cá Hồi Tươi Ngon</h2>
-      <p class="font-serif text-lg leading-relaxed mb-6 text-foreground">
-        Bước đầu tiên để có một món cá hồi hoàn hảo là lựa chọn nguyên liệu tươi ngon. 
-        Tại nhà hàng, chúng tôi chỉ sử dụng cá hồi Na Uy cao cấp, được vận chuyển bằng đường hàng không để đảm bảo độ tươi ngon tối đa.
-      </p>
-      
-      <h2 class="text-3xl font-elegant font-bold text-primary mb-6">Kỹ Thuật Ướp Marinate Đặc Biệt</h2>
-      <p class="font-serif text-lg leading-relaxed mb-6 text-foreground">
-        Cá hồi được ướp với hỗn hợp gia vị bí mật bao gồm: muối biển Himalaya, tiêu đen nghiền thô, 
-        thảo mộc tươi và một chút mật ong. Thời gian ướp tối thiểu 2 giờ để gia vị thấm đều.
-      </p>
-      
-      <h2 class="text-3xl font-elegant font-bold text-primary mb-6">Nhiệt Độ Nướng Lý Tưởng</h2>
-      <p class="font-serif text-lg leading-relaxed mb-6 text-foreground">
-        Nhiệt độ nướng là yếu tố quyết định. Chúng tôi nướng ở 180°C trong 12-15 phút, 
-        tùy thuộc vào độ dày của miếng cá. Bí quyết là nướng mặt da trước để tạo lớp giòn bên ngoài.
-      </p>
-      
-      <h2 class="text-3xl font-elegant font-bold text-primary mb-6">Cách Trình Bày Đẹp Mắt</h2>
-      <p class="font-serif text-lg leading-relaxed mb-6 text-foreground">
-        Món ăn được trình bày trên đĩa sứ trắng, kèm theo rau củ nướng nhiều màu sắc và sốt hollandaise tự làm. 
-        Điểm nhấn cuối cùng là lá thảo mộc tươi và một lát chanh.
-      </p>
-    `,
-    image: "/grilled-salmon-dish.jpg",
-    author: "Chef Nguyễn Minh Tuấn",
-    date: "2024-01-15",
-    category: "Kỹ Thuật Nấu Ăn",
-    readTime: 8,
-    views: 1247,
-    likes: 89,
-    tags: ["cá hồi", "nướng", "kỹ thuật", "chef"],
-    featured: true,
-  },
-  // Add other posts...
-];
+import { BlogPost } from "@/types/BlogPost";
+import blogService from "@/services/blogService";
 
 interface BlogDetailPageProps {
   postId: string;
 }
 
 export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
-  const { navigate } = useRouter();
-  const post = useMemo(() => blogPosts.find((p) => p.id === postId), [postId]);
+  const router = useRouter();
+  const [post, setPost] = useState<BlogPost | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!post) {
+  console.log("BlogDetailPage rendered with postId:", postId);
+
+  // Fetch blog post from API
+  const fetchPost = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await blogService.getById(postId);
+      const data = response.data?.data || response.data;
+      
+      if (!data) {
+        setError("Không tìm thấy bài viết");
+        return;
+      }
+      
+      setPost(data);
+    } catch (err) {
+      console.error('Error fetching blog post:', err);
+      setError(err instanceof Error ? err.message : 'Không thể tải bài viết');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (postId) {
+      fetchPost();
+    }
+  }, [postId]);
+
+  // Loading state
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-cream flex items-center justify-center">
         <div className="text-center">
-          <BookOpen className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground font-serif">
-            Không tìm thấy bài viết
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-accent" />
+          <p className="text-muted-foreground font-serif">Đang tải bài viết...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-gradient-cream flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-16 w-16 text-destructive mx-auto mb-4" />
+          <p className="text-destructive font-serif mb-4">
+            {error || "Không tìm thấy bài viết"}
           </p>
-          <Button onClick={() => navigate("blog")} className="mt-4">
-            Quay Lại Blog
-          </Button>
+          <div className="space-x-4">
+            <Button onClick={fetchPost} variant="outline">
+              Thử lại
+            </Button>
+            <Button onClick={() => router.push("/blog")}>
+              Quay Lại Blog
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -99,7 +107,7 @@ export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <button
-              onClick={() => navigate("blog")}
+              onClick={() => router.push("/blog")}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <BookOpen className="h-6 w-6 text-accent" />
@@ -109,7 +117,7 @@ export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
             </button>
             <Button
               variant="outline"
-              onClick={() => navigate("blog")}
+              onClick={() => router.push("/blog")}
               className="border-accent/20 hover:bg-accent/10"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -133,42 +141,34 @@ export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
           <h1 className="font-elegant text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-primary leading-tight">
             {post.title}
           </h1>
-          <p className="font-serif text-xl text-muted-foreground mb-8 leading-relaxed">
-            {post.excerpt}
-          </p>
+          {post.meta_description && (
+            <p className="font-serif text-xl text-muted-foreground mb-8 leading-relaxed">
+              {post.meta_description}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-6 text-muted-foreground mb-8">
             <div className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              <span className="font-medium">{post.author}</span>
+              <span className="font-medium">
+                {post.author?.name || post.author?.full_name || post.author?.username || "Ẩn danh"}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               <span>
-                {format(new Date(post.date), "EEEE, dd MMMM yyyy", {
-                  locale: vi,
-                })}
+                {post.published_at 
+                  ? format(new Date(post.published_at), "EEEE, dd MMMM yyyy", { locale: vi })
+                  : "Chưa xuất bản"
+                }
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              <span>{post.readTime} phút đọc</span>
-            </div>
+            {/* Remove read time as it's not in BlogPost type */}
           </div>
 
           <Separator className="mb-8" />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium">{post.views}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Heart className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium">{post.likes}</span>
-              </div>
-            </div>
+          <div className="flex items-center justify-end">
             <Button
               variant="outline"
               size="sm"
@@ -188,7 +188,7 @@ export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
           className="relative aspect-[16/9] overflow-hidden rounded-lg mb-12"
         >
           <img
-            src={post.image || "/placeholder.svg"}
+            src={post.thumbnail_url || "/placeholder.svg"}
             alt={post.title}
             className="w-full h-full object-cover"
           />
@@ -207,24 +207,41 @@ export default function BlogDetailPage({ postId }: BlogDetailPageProps) {
           />
         </motion.div>
 
-        {/* Tags */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-12 pt-8 border-t border-accent/20"
-        >
-          <div className="flex flex-wrap gap-2">
-            {post.tags.map((tag) => (
+        {/* Tags - Only show if category exists */}
+        {post.category && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+            className="mt-12 pt-8 border-t border-accent/20"
+          >
+            <div className="flex flex-wrap gap-2 mb-8">
               <Badge
-                key={tag}
                 variant="secondary"
                 className="bg-accent/5 text-accent border-accent/20"
               >
-                #{tag}
+                #{post.category}
               </Badge>
-            ))}
-          </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Back to Blog Button */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.6 }}
+          className="mt-8 text-center"
+        >
+          <Button
+            onClick={() => router.push("/blog")}
+            variant="outline"
+            size="lg"
+            className="border-accent/20 hover:bg-accent/10"
+          >
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Quay Lại Blog
+          </Button>
         </motion.div>
       </article>
     </div>

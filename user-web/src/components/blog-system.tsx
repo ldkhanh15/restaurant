@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "@/lib/router";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,152 +14,126 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Calendar,
   Clock,
   User,
-  Eye,
-  Heart,
   Share2,
   Search,
   BookOpen,
   ArrowRight,
   Sparkles,
+  Loader2,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-
-const blogPosts = [
-  {
-    id: "blog-1",
-    title: "Bí Quyết Chế Biến Cá Hồi Hoàn Hảo",
-    excerpt:
-      "Khám phá những kỹ thuật đặc biệt mà đầu bếp chúng tôi sử dụng để tạo ra món cá hồi nướng tuyệt vời",
-    content: `
-      <h3>Lựa Chọn Cá Hồi Tươi Ngon</h3>
-      <p>Bước đầu tiên để có một món cá hồi hoàn hảo là lựa chọn nguyên liệu tươi ngon. Tại nhà hàng, chúng tôi chỉ sử dụng cá hồi Na Uy cao cấp, được vận chuyển bằng đường hàng không để đảm bảo độ tươi ngon tối đa.</p>
-      
-      <h3>Kỹ Thuật Ướp Marinate Đặc Biệt</h3>
-      <p>Cá hồi được ướp với hỗn hợp gia vị bí mật bao gồm: muối biển Himalaya, tiêu đen nghiền thô, thảo mộc tươi và một chút mật ong. Thời gian ướp tối thiểu 2 giờ để gia vị thấm đều.</p>
-      
-      <h3>Nhiệt Độ Nướng Lý Tưởng</h3>
-      <p>Nhiệt độ nướng là yếu tố quyết định. Chúng tôi nướng ở 180°C trong 12-15 phút, tùy thuộc vào độ dày của miếng cá. Bí quyết là nướng mặt da trước để tạo lớp giòn bên ngoài.</p>
-      
-      <h3>Cách Trình Bày Đẹp Mắt</h3>
-      <p>Món ăn được trình bày trên đĩa sứ trắng, kèm theo rau củ nướng nhiều màu sắc và sốt hollandaise tự làm. Điểm nhấn cuối cùng là lá thảo mộc tươi và một lát chanh.</p>
-    `,
-    image: "/grilled-salmon-dish.jpg",
-    author: "Chef Nguyễn Minh Tuấn",
-    date: "2024-01-15",
-    category: "Kỹ Thuật Nấu Ăn",
-    readTime: 8,
-    views: 1247,
-    likes: 89,
-    tags: ["cá hồi", "nướng", "kỹ thuật", "chef"],
-    featured: true,
-  },
-  {
-    id: "blog-2",
-    title: "Không Gian Sang Trọng - Thiết Kế Nhà Hàng",
-    excerpt:
-      "Tìm hiểu về triết lý thiết kế và cách chúng tôi tạo ra không gian ẩm thực đẳng cấp",
-    content: `
-      <h3>Triết Lý Thiết Kế</h3>
-      <p>Không gian nhà hàng được thiết kế theo phong cách hiện đại kết hợp cổ điển, tạo ra một môi trường vừa sang trọng vừa ấm cúng.</p>
-    `,
-    image: "/elegant-restaurant-interior.png",
-    author: "KTS Lê Thị Hương",
-    date: "2024-01-10",
-    category: "Thiết Kế",
-    readTime: 6,
-    views: 892,
-    likes: 67,
-    tags: ["thiết kế", "nội thất", "không gian", "sang trọng"],
-    featured: true,
-  },
-  {
-    id: "blog-3",
-    title: "Menu Mùa Xuân 2024 - Hương Vị Tươi Mới",
-    excerpt:
-      "Giới thiệu những món ăn mới với nguyên liệu tươi ngon của mùa xuân",
-    content: `<p>Menu mùa xuân với nguyên liệu tươi ngon nhất.</p>`,
-    image: "/chocolate-cake-dessert.jpg",
-    author: "Chef Trần Văn Đức",
-    date: "2024-01-05",
-    category: "Menu Mới",
-    readTime: 5,
-    views: 1156,
-    likes: 94,
-    tags: ["menu mới", "mùa xuân", "nguyên liệu tươi", "đặc biệt"],
-    featured: false,
-  },
-  {
-    id: "blog-4",
-    title: "Nghệ Thuật Pha Chế Cocktail Đẳng Cấp",
-    excerpt: "Khám phá bí mật đằng sau những ly cocktail độc đáo tại nhà hàng",
-    content: `<p>Nghệ thuật pha chế cocktail đẳng cấp.</p>`,
-    image: "/mojito-cocktail.jpg",
-    author: "Bartender Phạm Minh Hải",
-    date: "2024-01-12",
-    category: "Đồ Uống",
-    readTime: 7,
-    views: 743,
-    likes: 52,
-    tags: ["cocktail", "pha chế", "nghệ thuật", "đồ uống"],
-    featured: false,
-  },
-  {
-    id: "blog-5",
-    title: "Câu Chuyện Về Nguồn Gốc Nguyên Liệu",
-    excerpt:
-      "Hành trình tìm kiếm và lựa chọn những nguyên liệu tốt nhất cho nhà hàng",
-    content: `<p>Câu chuyện về nguồn gốc nguyên liệu.</p>`,
-    image: "/premium-beef-steak.jpg",
-    author: "Quản lý F&B Nguyễn Thị Lan",
-    date: "2024-01-08",
-    category: "Nguyên Liệu",
-    readTime: 6,
-    views: 634,
-    likes: 41,
-    tags: ["nguyên liệu", "chất lượng", "nguồn gốc", "tươi ngon"],
-    featured: false,
-  },
-];
+import { BlogPost } from "@/types/BlogPost";
+import blogService from "@/services/blogService";
 
 const categories = [
-  { id: "all", name: "Tất Cả", count: blogPosts.length },
-  {
-    id: "Kỹ Thuật Nấu Ăn",
-    name: "Kỹ Thuật Nấu Ăn",
-    count: blogPosts.filter((p) => p.category === "Kỹ Thuật Nấu Ăn").length,
-  },
-  {
-    id: "Menu Mới",
-    name: "Menu Mới",
-    count: blogPosts.filter((p) => p.category === "Menu Mới").length,
-  },
-  {
-    id: "Thiết Kế",
-    name: "Thiết Kế",
-    count: blogPosts.filter((p) => p.category === "Thiết Kế").length,
-  },
-  {
-    id: "Đồ Uống",
-    name: "Đồ Uống",
-    count: blogPosts.filter((p) => p.category === "Đồ Uống").length,
-  },
-  {
-    id: "Nguyên Liệu",
-    name: "Nguyên Liệu",
-    count: blogPosts.filter((p) => p.category === "Nguyên Liệu").length,
-  },
+  { id: "all", name: "Tất Cả" },
+  { id: "Công thức", name: "Công thức" },
+  { id: "Thực đơn", name: "Thực đơn" },
+  { id: "Hướng dẫn", name: "Hướng dẫn" },
+  { id: "Tin tức", name: "Tin tức" },
 ];
+
+// Pagination Controls Component
+const PaginationControls = ({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex items-center justify-center gap-4 mt-12"
+    >
+      {/* Previous Button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="flex items-center gap-2 border-accent/20 hover:bg-accent/10 hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Trang trước
+      </Button>
+
+      {/* Page Numbers */}
+      <div className="flex items-center gap-2">
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+          // Show first page, last page, current page and pages around current page
+          const shouldShow =
+            page === 1 ||
+            page === totalPages ||
+            Math.abs(page - currentPage) <= 1;
+
+          if (!shouldShow && page === 2 && currentPage > 4) {
+            return (
+              <span key={page} className="text-muted-foreground">
+                ...
+              </span>
+            );
+          }
+
+          if (
+            !shouldShow &&
+            page === totalPages - 1 &&
+            currentPage < totalPages - 3
+          ) {
+            return (
+              <span key={page} className="text-muted-foreground">
+                ...
+              </span>
+            );
+          }
+
+          if (!shouldShow) return null;
+
+          return (
+            <Button
+              key={page}
+              variant={page === currentPage ? "default" : "outline"}
+              size="sm"
+              onClick={() => onPageChange(page)}
+              className={
+                page === currentPage
+                  ? "bg-gradient-gold text-primary-foreground min-w-[40px]"
+                  : "border-accent/20 hover:bg-accent/10 hover:border-accent min-w-[40px]"
+              }
+            >
+              {page}
+            </Button>
+          );
+        })}
+      </div>
+
+      {/* Next Button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="flex items-center gap-2 border-accent/20 hover:bg-accent/10 hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Trang sau
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </motion.div>
+  );
+};
 
 // Reusable BlogCard Component
 const BlogCard = ({
@@ -168,7 +142,7 @@ const BlogCard = ({
   variant = "default",
   onClick,
 }: {
-  post: (typeof blogPosts)[0];
+  post: BlogPost;
   index: number;
   variant?: "default" | "featured";
   onClick?: () => void;
@@ -190,16 +164,16 @@ const BlogCard = ({
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent z-10" />
           <img
-            src={post.image || "/placeholder.svg"}
+            src={post.thumbnail_url || "/placeholder.svg"}
             alt={post.title}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
           <div className="absolute top-4 left-4 z-20">
             <Badge className="bg-accent/20 text-accent border border-accent/30 backdrop-blur-sm">
-              {post.category}
+              {post.category || "Chưa phân loại"}
             </Badge>
           </div>
-          {post.featured && (
+          {variant === "featured" && (
             <div className="absolute top-4 right-4 z-20">
               <Badge className="bg-gradient-gold text-primary-foreground border-0 shadow-md">
                 <Sparkles className="w-3 h-3 mr-1" />
@@ -215,9 +189,9 @@ const BlogCard = ({
             >
               {post.title}
             </h3>
-            {variant === "featured" && (
+            {variant === "featured" && post.meta_description && (
               <p className="text-white/90 text-sm line-clamp-2 font-serif">
-                {post.excerpt}
+                {post.meta_description}
               </p>
             )}
           </div>
@@ -228,39 +202,32 @@ const BlogCard = ({
               {post.title}
             </CardTitle>
             <CardDescription className="font-serif text-sm leading-relaxed line-clamp-2">
-              {post.excerpt}
+              {post.meta_description || "Không có mô tả"}
             </CardDescription>
           </CardHeader>
         )}
         <CardContent className={variant === "featured" ? "p-6" : ""}>
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <User className="h-4 w-4" />
-                <span>{post.author}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
                 <span>
-                  {format(new Date(post.date), "dd/MM/yyyy", { locale: vi })}
+                  {post.author?.name ||
+                    post.author?.full_name ||
+                    post.author?.username ||
+                    "Ẩn danh"}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
-                <span>{post.readTime} phút</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <Eye className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{post.views}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Heart className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{post.likes}</span>
-              </div>
+              {post.published_at && (
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  <span>
+                    {format(new Date(post.published_at), "dd/MM/yyyy", {
+                      locale: vi,
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
@@ -280,46 +247,180 @@ const BlogCard = ({
 };
 
 export default function BlogSystem() {
-  const { navigate } = useRouter();
+  const router = useRouter();
+  const [allBlogs, setAllBlogs] = useState<BlogPost[]>([]); // Store all blogs
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "views" | "likes">("date");
+  const [sortBy, setSortBy] = useState<"published_at">("published_at");
 
-  const filteredPosts = useMemo(() => {
-    const filtered = blogPosts.filter((post) => {
-      const matchesCategory =
-        selectedCategory === "all" || post.category === selectedCategory;
-      const matchesSearch =
-        post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        post.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        post.tags.some((tag) =>
-          tag.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      return matchesCategory && matchesSearch;
-    });
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
+  // Fetch all blogs for category counting (run once)
+  const fetchAllBlogsForCounting = async () => {
+    try {
+      const response = await blogService.getAll({
+        status: "published",
+        limit: 10, // Get all for counting
+      });
+      const data = response.data?.data || response.data || [];
+      setAllBlogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error fetching blogs for counting:", err);
+      setAllBlogs([]);
+    }
+  };
+
+  // Fetch all blogs once
+  const fetchAllBlogs = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await blogService.getAll({
+        status: "published",
+        limit: 10, // Get all blogs
+      });
+
+      // Extract data from response
+      const data = response.data?.data || response.data || [];
+      setAllBlogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error fetching blogs:", err);
+      setError(err instanceof Error ? err.message : "Không thể tải bài viết");
+      setAllBlogs([]); // Set empty array on error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial load: fetch all blogs
+  useEffect(() => {
+    fetchAllBlogs();
+    fetchAllBlogsForCounting();
+  }, []);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery]);
+
+  // Client-side filtering based on search and category
+  const filteredBlogs = useMemo(() => {
+    let filtered = [...allBlogs];
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((blog: BlogPost) =>
+        blog.title?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filter by category
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter(
+        (blog: BlogPost) => blog.category === selectedCategory
+      );
+    }
+
+    // Filter by status
+    filtered = filtered.filter((blog: BlogPost) => blog.status === "published");
+
+    // Sort blogs by published_at (newest first)
     filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "views":
-          return b.views - a.views;
-        case "likes":
-          return b.likes - a.likes;
-        default:
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-      }
+      if (!a.published_at || !b.published_at) return 0;
+      return (
+        new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+      );
     });
 
     return filtered;
-  }, [selectedCategory, searchQuery, sortBy]);
+  }, [allBlogs, searchQuery, selectedCategory, sortBy]);
 
-  const featuredPosts = blogPosts.filter((post) => post.featured);
-  const regularPosts = filteredPosts.filter(
-    (post) => !post.featured || !featuredPosts.includes(post)
+  // Find featured post (most recent published post)
+  const featuredPost = useMemo(() => {
+    if (filteredBlogs.length === 0 || searchQuery ) return null;
+
+    // Use the most recent published post as featured
+    return filteredBlogs.reduce((latest: BlogPost, current: BlogPost) => {
+      if (!latest.published_at) return current;
+      if (!current.published_at) return latest;
+      return new Date(current.published_at) > new Date(latest.published_at)
+        ? current
+        : latest;
+    });
+  }, [filteredBlogs]);
+
+  // Separate featured and regular posts
+  const regularBlogs = filteredBlogs.filter(
+    (blog: BlogPost) => blog.id !== featuredPost?.id
+  );
+
+  // Pagination calculations
+  const totalPages = Math.ceil(regularBlogs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedBlogs = regularBlogs.slice(
+    startIndex,
+    startIndex + itemsPerPage
   );
 
   const handlePostClick = (postId: string) => {
-    navigate("blog-detail", { id: postId });
+    console.log("Navigating to blog detail with postId:", postId);
+    router.push(`/blog/${postId}`);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-accent" />
+          <p className="text-muted-foreground font-serif">
+            Đang tải bài viết...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 mx-auto mb-4 text-destructive" />
+          <p className="text-destructive font-serif mb-4">
+            Không thể tải bài viết
+          </p>
+          <p className="text-muted-foreground text-sm mb-4">{error}</p>
+          <div className="space-x-4">
+            <Button
+              onClick={() => {
+                setError(null);
+                fetchAllBlogs();
+                fetchAllBlogsForCounting();
+              }}
+              className="mt-4"
+            >
+              Thử lại
+            </Button>
+            <Button
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedCategory("all");
+                setError(null);
+              }}
+              variant="outline"
+            >
+              Đặt lại bộ lọc
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-cream py-8 px-4 sm:px-6 lg:px-8">
@@ -345,7 +446,7 @@ export default function BlogSystem() {
             </div>
           </div>
 
-          {/* Search and Filters */}
+          {/* Search */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -356,50 +457,44 @@ export default function BlogSystem() {
                 className="pl-10 border-accent/20 focus:border-accent"
               />
             </div>
-            <Select
-              value={sortBy}
-              onValueChange={(value: any) => setSortBy(value)}
-            >
-              <SelectTrigger className="w-full md:w-48 border-accent/20 focus:border-accent">
-                <SelectValue placeholder="Sắp xếp theo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="date">Mới nhất</SelectItem>
-                <SelectItem value="views">Xem nhiều nhất</SelectItem>
-                <SelectItem value="likes">Yêu thích nhất</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Category Pills */}
           <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <motion.div
-                key={category.id}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  variant={
-                    selectedCategory === category.id ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => setSelectedCategory(category.id)}
-                  className={
-                    selectedCategory === category.id
-                      ? "bg-gradient-gold text-primary-foreground"
-                      : "border-accent/20"
-                  }
+            {categories.map((category) => {
+              const count =
+                category.id === "all"
+                  ? allBlogs.length
+                  : allBlogs.filter((b) => b.category === category.id).length;
+
+              return (
+                <motion.div
+                  key={category.id}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  {category.name} ({category.count})
-                </Button>
-              </motion.div>
-            ))}
+                  <Button
+                    variant={
+                      selectedCategory === category.id ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() => setSelectedCategory(category.id)}
+                    className={
+                      selectedCategory === category.id
+                        ? "bg-gradient-gold text-primary-foreground"
+                        : "border-accent/20"
+                    }
+                  >
+                    {category.name} ({count})
+                  </Button>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
 
-        {/* Featured Posts Section */}
-        {featuredPosts.length > 0 && (
+        {/* Featured Post Section */}
+        {featuredPost && (
           <motion.section
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -412,29 +507,12 @@ export default function BlogSystem() {
                 Bài Viết Nổi Bật
               </h2>
             </div>
-            <div className="grid lg:grid-cols-3 gap-6">
-              {/* Large Featured Post */}
-              <div className="lg:col-span-2">
-                <BlogCard
-                  post={featuredPosts[0]}
-                  index={0}
-                  variant="featured"
-                  onClick={() => handlePostClick(featuredPosts[0].id)}
-                />
-              </div>
-              {/* Small Featured Posts */}
-              <div className="space-y-6">
-                {featuredPosts.slice(1, 3).map((post, idx) => (
-                  <BlogCard
-                    key={post.id}
-                    post={post}
-                    index={idx + 1}
-                    variant="default"
-                    onClick={() => handlePostClick(post.id)}
-                  />
-                ))}
-              </div>
-            </div>
+            <BlogCard
+              post={featuredPost}
+              index={0}
+              variant="featured"
+              onClick={() => handlePostClick(featuredPost.id)}
+            />
           </motion.section>
         )}
 
@@ -446,19 +524,33 @@ export default function BlogSystem() {
         >
           <h2 className="font-elegant text-2xl font-semibold text-primary mb-6">
             Tất Cả Bài Viết
+            {regularBlogs.length > 0 && (
+              <span className="text-sm text-muted-foreground font-normal ml-2">
+                ({regularBlogs.length} bài viết)
+              </span>
+            )}
           </h2>
-          {regularPosts.length > 0 ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {regularPosts.map((post, index) => (
-                <BlogCard
-                  key={post.id}
-                  post={post}
-                  index={index}
-                  variant="default"
-                  onClick={() => handlePostClick(post.id)}
-                />
-              ))}
-            </div>
+          {paginatedBlogs.length > 0 ? (
+            <>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {paginatedBlogs.map((post, index) => (
+                  <BlogCard
+                    key={post.id}
+                    post={post}
+                    index={index}
+                    variant="default"
+                    onClick={() => handlePostClick(post.id)}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </>
           ) : (
             <div className="text-center py-16">
               <BookOpen className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />

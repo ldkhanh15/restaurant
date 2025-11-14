@@ -420,7 +420,7 @@ export function CategoryManagement({ dishes, categories, setCategories }: Catego
 
       {/* Dialog Chỉnh sửa */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Sửa danh mục</DialogTitle>
             <DialogDescription>Chỉnh sửa thông tin danh mục</DialogDescription>

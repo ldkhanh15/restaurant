@@ -856,6 +856,8 @@ export default function OrderDetailPage({
     selectedOrder.payment_status !== "paid" &&
     selectedOrder.status !== "cancelled";
 
+  console.log("Selected Order:", selectedOrder);
+
   return (
     <div className="min-h-screen bg-background py-8">
       <div className="max-w-7xl mx-auto px-4">
