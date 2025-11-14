@@ -44,7 +44,11 @@ const mockComplaints = [
   },
 ];
 
-export default function ComplaintsPage() {
+export default function ComplaintsPage({
+  params,
+}: {
+  params: { orderId: string };
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
@@ -95,22 +99,6 @@ export default function ComplaintsPage() {
                 )}
 
                 <div>
-                  <Label htmlFor="category">Danh Mục *</Label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger className="mt-2 border-accent/20">
-                      <SelectValue placeholder="Chọn danh mục" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {complaintCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
                   <Label htmlFor="description">Mô Tả Chi Tiết *</Label>
                   <Textarea
                     id="description"
@@ -136,51 +124,6 @@ export default function ComplaintsPage() {
                     </>
                   )}
                 </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Complaints List */}
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Lịch Sử Khiếu Nại</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {mockComplaints.length > 0 ? (
-                  mockComplaints.map((complaint) => (
-                    <div
-                      key={complaint.id}
-                      className="p-3 border rounded-lg cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/complaints/${complaint.id}`)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">
-                          {complaint.id}
-                        </span>
-                        <Badge
-                          className={
-                            statusColors[
-                              complaint.status as keyof typeof statusColors
-                            ]
-                          }
-                        >
-                          {complaint.status === "submitted" && "Đã gửi"}
-                          {complaint.status === "under-review" && "Đang xử lý"}
-                          {complaint.status === "resolved" && "Đã giải quyết"}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {complaint.description}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Chưa có khiếu nại nào</p>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>

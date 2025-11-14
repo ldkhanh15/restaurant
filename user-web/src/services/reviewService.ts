@@ -1,5 +1,5 @@
 import apiClient from "../lib/apiClient";
-import type { Review, CreateReviewData } from "@/types/Review";
+import type { Review, CreateReviewData } from "@/type/Review";
 
 export type { Review, CreateReviewData };
 
