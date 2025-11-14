@@ -1,6 +1,6 @@
 "use client";
 
-import apiClient from "./apiClient";
+import apiClient from "@/lib/apiClient";
 
 export const voucherService = {
   getActiveVouchers: () => apiClient.get("/vouchers/active"),
