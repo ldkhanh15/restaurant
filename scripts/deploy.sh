@@ -12,9 +12,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-# Auto-detect user home directory
+# Auto-detect user home directory (supports AWS EC2, Azure VM, and others)
 if [ "$USER" = "ec2-user" ]; then
   DEFAULT_DEPLOY_PATH="/home/ec2-user/restaurant"
+elif [ "$USER" = "azureuser" ]; then
+  DEFAULT_DEPLOY_PATH="/home/azureuser/restaurant"
 else
   DEFAULT_DEPLOY_PATH="/home/$USER/restaurant"
 fi
@@ -145,10 +147,19 @@ else
   $COMPOSE_CMD -f $COMPOSE_FILE ps
 fi
 
-# Get server IP (use configured IP or detect from EC2 metadata)
-SERVER_IP="${SERVER_IP:-98.91.23.236}"
+# Get server IP (use configured IP or detect from cloud metadata)
+SERVER_IP="${SERVER_IP}"
 if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "auto" ]; then
-  SERVER_IP=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || curl -s ifconfig.me || echo "localhost")
+  # Try AWS EC2 metadata first
+  SERVER_IP=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+  # If not AWS, try Azure metadata
+  if [ -z "$SERVER_IP" ]; then
+    SERVER_IP=$(curl -s --max-time 2 -H "Metadata:true" "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text" 2>/dev/null || echo "")
+  fi
+  # Fallback to ifconfig.me
+  if [ -z "$SERVER_IP" ]; then
+    SERVER_IP=$(curl -s --max-time 2 ifconfig.me || echo "localhost")
+  fi
 fi
 
 # Only show URLs if not using production script (script already shows URLs)

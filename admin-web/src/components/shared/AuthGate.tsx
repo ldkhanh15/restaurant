@@ -59,5 +59,27 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [token, pathname, router]);
 
+  // Check role authorization for admin-web (only admin and employee/staff allowed)
+  useEffect(() => {
+    if (user && token && pathname !== "/login" && pathname !== "/signup") {
+      const allowedRoles = ["admin", "staff", "employee"];
+      const userRole = user.role || "";
+
+      // Map "employee" from backend to "staff" in frontend
+      const mappedRole = userRole === "employee" ? "staff" : userRole;
+
+      if (!allowedRoles.includes(mappedRole)) {
+        console.warn("⚠️ Unauthorized role access:", mappedRole);
+        // Clear auth and redirect to login
+        setToken(null);
+        setUser(null);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("token");
+        }
+        router.replace("/login?error=unauthorized");
+      }
+    }
+  }, [user, token, pathname, router, setToken, setUser]);
+
   return <>{children}</>;
 }

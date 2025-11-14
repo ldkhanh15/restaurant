@@ -96,22 +96,117 @@ function NotificationCenter({ className }: NotificationCenterProps) {
   useEffect(() => {
     if (!isWebSocketConnected) return;
 
+    // Play notification sound
+    const playNotificationSound = (type: string) => {
+      try {
+        const audioContext = new (window.AudioContext ||
+          (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        let frequency = 800;
+        if (type.includes("order") || type.includes("payment")) {
+          frequency = 1000;
+        } else if (type.includes("support") || type.includes("urgent")) {
+          frequency = 1200;
+        }
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = frequency;
+        oscillator.type = "sine";
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.3
+        );
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } catch (error) {
+        console.error("Failed to play notification sound:", error);
+      }
+    };
+
+    // Show enhanced browser notification
+    const showBrowserNotification = (notification: Notification) => {
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        return;
+      }
+
+      if (Notification.permission === "granted") {
+        const notificationOptions: NotificationOptions = {
+          body:
+            notification.message || notification.content || notification.title,
+          icon: "/favicon.ico",
+          badge: "/favicon.ico",
+          tag: notification.id,
+          requireInteraction:
+            notification.type?.includes("support") ||
+            notification.type?.includes("urgent"),
+          silent: false,
+          timestamp: notification.sent_at
+            ? new Date(notification.sent_at).getTime()
+            : Date.now(),
+          data: notification.data,
+        };
+
+        const browserNotification = new Notification(
+          notification.title,
+          notificationOptions
+        );
+
+        if (!notificationOptions.requireInteraction) {
+          setTimeout(() => {
+            browserNotification.close();
+          }, 5000);
+        }
+
+        browserNotification.onclick = () => {
+          window.focus();
+          browserNotification.close();
+        };
+      } else if (Notification.permission === "default") {
+        Notification.requestPermission().then((permission) => {
+          if (permission === "granted") {
+            showBrowserNotification(notification);
+          }
+        });
+      }
+    };
+
     const handleNewNotification = (notification: Notification) => {
-      setNotifications((prev) => [notification, ...prev]);
+      // Prevent duplicates
+      setNotifications((prev) => {
+        const exists = prev.find((n) => n.id === notification.id);
+        if (exists) return prev;
+        return [notification, ...prev];
+      });
       setUnreadCount((prev) => prev + 1);
       setLastUpdate(new Date());
 
-      // Show browser notification if permission is granted
-      if (Notification.permission === "granted") {
-        new Notification(notification.title, {
-          body: notification.message,
-          icon: "/favicon.ico",
-        });
+      // Play sound for important notifications
+      const importantTypes = [
+        "order_created",
+        "support_request",
+        "payment_completed",
+        "payment_failed",
+      ];
+      if (importantTypes.includes(notification.type)) {
+        playNotificationSound(notification.type);
       }
 
+      // Show browser notification
+      showBrowserNotification(notification);
+
+      // Show toast
       toast({
         title: "Thông báo mới",
         description: notification.title,
+        variant:
+          notification.type?.includes("error") ||
+          notification.type?.includes("failed")
+            ? "destructive"
+            : "default",
       });
     };
 

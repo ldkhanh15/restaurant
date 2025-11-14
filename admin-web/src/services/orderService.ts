@@ -57,8 +57,21 @@ export const orderService = {
     apiClient.put(`/orders/${orderId}/change-table`, { table_id: newTableId }),
 
   // Yêu cầu thanh toán
-  requestPayment: (orderId: string, data: { method: string; amount: number }) =>
-    apiClient.post(`/orders/${orderId}/request-payment`, data),
+  requestPayment: (
+    orderId: string,
+    data: { method: string; amount: number; client?: string }
+  ) => apiClient.post(`/orders/${orderId}/payment/request`, data),
+
+  // Request payment retry (for failed payments)
+  requestPaymentRetry: (
+    orderId: string,
+    method: "vnpay" | "cash",
+    bankCode?: string
+  ): Promise<{
+    status: string;
+    data: { redirect_url?: string; message: string };
+  }> =>
+    apiClient.post(`/orders/${orderId}/payment/retry`, { method, bankCode }),
 
   // Gộp đơn hàng
   mergeOrders: (orderId1: string, orderId2: string) =>
@@ -143,6 +156,25 @@ export const orderService = {
   }) => apiClient.get("/orders/stats/revenue", { params }),
   getOrdersByDateRange: (params: { start_date: string; end_date: string }) =>
     apiClient.get("/orders/date-range", { params }),
+
+  // Excel Export APIs
+  exportRevenue: (filters?: {
+    start_date?: string;
+    end_date?: string;
+    status?: string;
+    table_id?: string;
+    user_id?: string;
+  }) => apiClient.get("/orders/export/revenue", { params: filters }),
+
+  getPopularDishesStats: (filters?: {
+    start_date?: string;
+    end_date?: string;
+  }) => apiClient.get("/orders/stats/popular-dishes", { params: filters }),
+
+  getTopCustomersStats: (filters?: {
+    start_date?: string;
+    end_date?: string;
+  }) => apiClient.get("/orders/stats/top-customers", { params: filters }),
 };
 
 export type Order = {

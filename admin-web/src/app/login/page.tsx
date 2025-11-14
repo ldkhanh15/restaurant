@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,9 @@ import { authService, LoginPayload } from "@/services/authService";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuthStore } from "@/store/authStore";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { setToken, setUser } = useAuthStore();
 
@@ -25,6 +26,22 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
+  // Check for unauthorized error from query params
+  useEffect(() => {
+    const errorParam = searchParams?.get("error");
+    if (errorParam === "unauthorized") {
+      setError(
+        "Bạn không có quyền truy cập hệ thống quản lý. Chỉ admin và nhân viên mới được phép."
+      );
+      toast({
+        title: "Không có quyền truy cập",
+        description:
+          "Chỉ admin và nhân viên mới có thể đăng nhập vào hệ thống quản lý",
+        variant: "destructive",
+      });
+    }
+  }, [searchParams, toast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -34,14 +51,43 @@ export default function LoginPage() {
       const response = await authService.login(formData);
       console.log("Login response:", response);
       if (response.token) {
+        // Validate role - only admin and employee allowed in admin-web
+        const userRole = response.user?.role || "";
+        const allowedRoles = ["admin", "employee", "staff"];
+
+        // Map backend "employee" to frontend "staff"
+        const mappedRole = userRole === "employee" ? "staff" : userRole;
+
+        if (!allowedRoles.includes(mappedRole)) {
+          setError(
+            "Chỉ admin và nhân viên mới có thể đăng nhập vào hệ thống quản lý"
+          );
+          toast({
+            title: "Không có quyền truy cập",
+            description:
+              "Chỉ admin và nhân viên mới có thể đăng nhập vào hệ thống quản lý",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
         localStorage.setItem("token", response.token);
         localStorage.setItem("user", JSON.stringify(response.user));
 
+        // Set token and user in store
         setToken(response.token);
+        setUser({
+          id: response.user.id,
+          email: response.user.email,
+          username: response.user.username,
+          role: mappedRole as "admin" | "staff" | "customer",
+        });
 
         toast({
           title: "Đăng nhập thành công",
           description: `Chào mừng ${response.user.username}!`,
+          variant: "success",
         });
 
         router.push("/");
@@ -189,5 +235,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-primary/5 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

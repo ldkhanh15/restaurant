@@ -3,6 +3,8 @@ import orderRepository from "../repositories/orderRepository";
 import Order from "../models/Order";
 import OrderItem from "../models/OrderItem";
 import Dish from "../models/Dish";
+import DishIngredient from "../models/DishIngredient";
+import Ingredient from "../models/Ingredient";
 import Voucher from "../models/Voucher";
 import VoucherUsage from "../models/VoucherUsage";
 import Table from "../models/Table";
@@ -15,6 +17,7 @@ import notificationService from "./notificationService";
 import paymentService from "./paymentService";
 import { getIO } from "../sockets";
 import { orderEvents } from "../sockets/orderSocket";
+import { tableEvents } from "../sockets/tableSocket";
 import loyaltyService from "./loyalty_app_userService";
 import {
   validateOrderOverlap,
@@ -173,6 +176,23 @@ class OrderService {
       payment_status: "pending",
     });
 
+    // Create order items if provided
+    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+      for (const item of data.items) {
+        const dish = await Dish.findByPk(item.dish_id);
+        if (dish && dish.active) {
+          await orderRepository.addItem(
+            order.id,
+            item.dish_id,
+            item.quantity,
+            item.price || dish.price
+          );
+        }
+      }
+      // Recalculate order totals after adding items
+      await this.recalculateOrderTotals(order.id);
+    }
+
     // Update table/table group status
     if (data.table_id) {
       await Table.update(
@@ -181,15 +201,23 @@ class OrderService {
       );
     }
 
+    // Reload order with items
+    const orderWithItems = await orderRepository.findById(order.id);
+
     // Send notification and WebSocket event
-    await notificationService.notifyOrderCreated(order);
+    await notificationService.notifyOrderCreated(orderWithItems);
     try {
-      orderEvents.orderCreated(getIO(), order);
+      orderEvents.orderCreated(getIO(), orderWithItems);
+
+      // Also emit table event if order is for a table
+      if (data.table_id) {
+        tableEvents.tableOrderCreated(getIO(), data.table_id, orderWithItems);
+      }
     } catch (error) {
       console.error("Failed to emit order created event:", error);
     }
 
-    return order;
+    return orderWithItems;
   }
 
   async updateOrder(id: string, data: UpdateOrderData) {
@@ -305,12 +333,7 @@ class OrderService {
       throw new AppError("Quantity must be at least 1", 400);
     }
 
-    // Check if item already exists before adding
-    const existingItemBefore = await OrderItem.findOne({
-      where: { order_id: orderId, dish_id: data.dish_id },
-    });
-    const wasNewItem = !existingItemBefore;
-
+    // Luôn tạo item mới mỗi lần order để track status riêng biệt
     const item = await orderRepository.addItem(
       orderId,
       data.dish_id,
@@ -327,7 +350,7 @@ class OrderService {
       try {
         orderEvents.orderUpdated(getIO(), updatedOrder);
 
-        // Emit orderItemCreated or orderItemQuantityChanged event
+        // Emit orderItemCreated event (luôn là item mới)
         const itemWithDish = await OrderItem.findByPk(item.id, {
           include: [
             {
@@ -339,23 +362,13 @@ class OrderService {
         });
 
         if (itemWithDish && updatedOrder) {
-          if (wasNewItem) {
-            // New item created
-            orderEvents.orderItemCreated(
-              getIO(),
-              orderId,
-              itemWithDish.toJSON(),
-              updatedOrder
-            );
-          } else {
-            // Existing item quantity updated
-            orderEvents.orderItemQuantityChanged(
-              getIO(),
-              orderId,
-              itemWithDish.toJSON(),
-              updatedOrder
-            );
-          }
+          // Luôn emit orderItemCreated vì mỗi lần order tạo item mới
+          orderEvents.orderItemCreated(
+            getIO(),
+            orderId,
+            itemWithDish.toJSON(),
+            updatedOrder
+          );
         }
       } catch (error) {
         console.error("Failed to emit order updated event:", error);
@@ -424,12 +437,48 @@ class OrderService {
     if (!["pending", "preparing", "ready", "completed"].includes(status)) {
       throw new AppError("Invalid item status", 400);
     }
-    const itemOrder = await OrderItem.findByPk(itemId);
+    const itemOrder = await OrderItem.findByPk(itemId, {
+      include: [
+        {
+          model: Dish,
+          as: "dish",
+        },
+      ],
+    });
     if (!itemOrder) {
       throw new AppError("Order item not found", 404);
     }
     await this.recalculateOrderTotals(itemOrder.order_id as string);
     const item = await orderRepository.updateItemStatus(itemId, status);
+
+    // If status is "completed", deduct ingredients with 5% waste
+    if (status === "completed") {
+      const dishIngredients = await DishIngredient.findAll({
+        where: { dish_id: itemOrder.dish_id },
+      });
+
+      const quantity = Number(itemOrder.quantity) || 1;
+      const wasteFactor = 1.05; // 5% waste
+
+      for (const dishIngredient of dishIngredients) {
+        const ingredient = await Ingredient.findByPk(
+          dishIngredient.ingredient_id
+        );
+        if (ingredient) {
+          const requiredQuantity =
+            Number(dishIngredient.quantity) * quantity * wasteFactor;
+          const newStock = Math.max(
+            0,
+            Number(ingredient.current_stock) - requiredQuantity
+          );
+
+          await Ingredient.update(
+            { current_stock: newStock },
+            { where: { id: ingredient.id } }
+          );
+        }
+      }
+    }
 
     // Emit orderItemStatusChanged event
     try {
@@ -523,26 +572,19 @@ class OrderService {
     ) {
       throw new AppError("Order does not meet voucher minimum value", 400);
     }
-    console.log("voucher", voucher);
     // Calculate discount
     let discountAmount = 0;
     if (voucher.discount_type === "percentage") {
-      console.log("voucher.value", voucher.value);
-      console.log("order.total_amount", order.total_amount);
-      console.log("type", voucher.discount_type);
       discountAmount = Math.min(
         (Number(order.total_amount) * Number(voucher.value)) / 100,
         Number(order.total_amount)
       );
     } else {
-      console.log("voucher.value", voucher.value);
-      console.log("order.total_amount", order.total_amount);
       discountAmount = Math.min(
         Number(voucher.value),
         Number(order.total_amount)
       );
     }
-    console.log("discountAmount", discountAmount);
     const updatedOrder = await orderRepository.applyVoucher(
       orderId,
       voucher.id,
@@ -639,8 +681,127 @@ class OrderService {
 
   async requestPayment(
     orderId: string,
-    bankCode?: string,
-    client: "admin" | "user" = "user"
+    options?: {
+      bankCode?: string;
+      client?: "admin" | "user";
+      pointsUsed?: number;
+      clientIp?: string;
+    }
+  ) {
+    const {
+      bankCode,
+      client = "user",
+      pointsUsed = 0,
+      clientIp = "127.0.0.1",
+    } = options || {};
+    const order = await orderRepository.findById(orderId);
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
+
+    if (order.payment_status === "paid") {
+      throw new AppError("Order already paid", 400);
+    }
+
+    // Validate: All order items must be either "completed" or "cancelled"
+    const orderItems = await OrderItem.findAll({
+      where: { order_id: orderId },
+    });
+
+    if (orderItems.length === 0) {
+      throw new AppError("Order must have at least one item", 400);
+    }
+
+    const invalidItems = orderItems.filter(
+      (item) => item.status !== "completed" && item.status !== "cancelled"
+    );
+
+    if (invalidItems.length > 0) {
+      throw new AppError(
+        `Không thể thanh toán. Có ${invalidItems.length} món chưa hoàn thành hoặc chưa hủy. Vui lòng đợi tất cả món hoàn thành hoặc hủy các món không cần thiết.`,
+        400
+      );
+    }
+
+    // Calculate payment amount: final_amount + 10% VAT
+    const baseAmount = Number(order.final_amount ?? order.total_amount ?? 0);
+    const vatRate = 0.1; // 10% VAT
+    const vatAmount = baseAmount * vatRate;
+    const subtotal = baseAmount;
+    const totalBeforePoints = subtotal + vatAmount;
+
+    // Apply points if provided (1 point = 1 VND)
+    let pointsToUse = 0;
+    let finalPaymentAmount = totalBeforePoints;
+
+    if (pointsUsed && pointsUsed > 0 && order.user_id) {
+      const user = await User.findByPk(order.user_id);
+      if (user && user.points) {
+        const availablePoints = Number(user.points);
+        pointsToUse = Math.min(pointsUsed, availablePoints, totalBeforePoints);
+        finalPaymentAmount = Math.max(0, totalBeforePoints - pointsToUse);
+      }
+    }
+
+    // Update order with VAT and points info
+    const updatedOrder = await orderRepository.update(orderId, {
+      status: "waiting_payment",
+      payment_method: "vnpay",
+      // Store VAT and points info in order (we can add fields or use a JSON field)
+    });
+
+    // Create payment record with final amount
+    const paymentUrl = paymentService.generateVnpayOrderUrl(
+      { id: orderId, final_amount: finalPaymentAmount },
+      bankCode,
+      clientIp,
+      client
+    );
+    await paymentService.createPendingPayment({
+      order_id: orderId,
+      amount: finalPaymentAmount,
+      method: "vnpay",
+      transaction_id: paymentUrl.txnRef,
+    });
+
+    // Deduct points if used
+    if (pointsToUse > 0 && order.user_id) {
+      await User.update(
+        {
+          points: Sequelize.literal(`points - ${pointsToUse}`),
+        },
+        { where: { id: order.user_id } }
+      );
+    }
+
+    try {
+      const payload =
+        typeof (updatedOrder as any).toJSON === "function"
+          ? (updatedOrder as any).toJSON()
+          : updatedOrder;
+      orderEvents.paymentRequested(getIO(), {
+        ...payload,
+        payment_method: "vnpay",
+        vat_amount: vatAmount,
+        points_used: pointsToUse,
+        final_payment_amount: finalPaymentAmount,
+      });
+    } catch (error) {
+      console.error("Failed to emit payment requested event:", error);
+    }
+
+    return {
+      redirect_url: paymentUrl.url,
+      vat_amount: vatAmount,
+      points_used: pointsToUse,
+      final_payment_amount: finalPaymentAmount,
+    };
+  }
+
+  async requestCashPayment(
+    orderId: string,
+    note?: string,
+    pointsUsed?: number
   ) {
     const order = await orderRepository.findById(orderId);
     if (!order) {
@@ -651,48 +812,44 @@ class OrderService {
       throw new AppError("Order already paid", 400);
     }
 
-    // Update order status and payment method
-    const updatedOrder = await orderRepository.update(orderId, {
-      status: "waiting_payment",
-      payment_method: "vnpay",
+    // Validate: All order items must be either "completed" or "cancelled"
+    const orderItems = await OrderItem.findAll({
+      where: { order_id: orderId },
     });
 
-    const paymentUrl = paymentService.generateVnpayOrderUrl(
-      order,
-      bankCode,
-      "",
-      client
+    if (orderItems.length === 0) {
+      throw new AppError("Order must have at least one item", 400);
+    }
+
+    const invalidItems = orderItems.filter(
+      (item) => item.status !== "completed" && item.status !== "cancelled"
     );
-    await paymentService.createPendingPayment({
-      order_id: orderId,
-      amount: Number(order.final_amount ?? order.total_amount ?? 0),
-      method: "vnpay",
-      transaction_id: paymentUrl.txnRef,
-    });
-    try {
-      const payload =
-        typeof (updatedOrder as any).toJSON === "function"
-          ? (updatedOrder as any).toJSON()
-          : updatedOrder;
-      orderEvents.paymentRequested(getIO(), {
-        ...payload,
-        payment_method: "vnpay",
-      });
-    } catch (error) {
-      console.error("Failed to emit payment requested event:", error);
+
+    if (invalidItems.length > 0) {
+      throw new AppError(
+        `Không thể thanh toán. Có ${invalidItems.length} món chưa hoàn thành hoặc chưa hủy. Vui lòng đợi tất cả món hoàn thành hoặc hủy các món không cần thiết.`,
+        400
+      );
     }
 
-    return { redirect_url: paymentUrl.url };
-  }
+    // Calculate payment amount: final_amount + 10% VAT
+    const baseAmount = Number(order.final_amount ?? order.total_amount ?? 0);
+    const vatRate = 0.1; // 10% VAT
+    const vatAmount = baseAmount * vatRate;
+    const subtotal = baseAmount;
+    const totalBeforePoints = subtotal + vatAmount;
 
-  async requestCashPayment(orderId: string, note?: string) {
-    const order = await orderRepository.findById(orderId);
-    if (!order) {
-      throw new AppError("Order not found", 404);
-    }
+    // Apply points if provided (1 point = 1 VND)
+    let pointsToUse = 0;
+    let finalPaymentAmount = totalBeforePoints;
 
-    if (order.payment_status === "paid") {
-      throw new AppError("Order already paid", 400);
+    if (pointsUsed && pointsUsed > 0 && order.user_id) {
+      const user = await User.findByPk(order.user_id);
+      if (user && user.points) {
+        const availablePoints = Number(user.points);
+        pointsToUse = Math.min(pointsUsed, availablePoints, totalBeforePoints);
+        finalPaymentAmount = Math.max(0, totalBeforePoints - pointsToUse);
+      }
     }
 
     const updatedOrder = await orderRepository.update(orderId, {
@@ -702,9 +859,19 @@ class OrderService {
 
     await paymentService.createPendingPayment({
       order_id: orderId,
-      amount: Number(order.final_amount ?? order.total_amount ?? 0),
+      amount: finalPaymentAmount,
       method: "cash",
     });
+
+    // Deduct points if used
+    if (pointsToUse > 0 && order.user_id) {
+      await User.update(
+        {
+          points: Sequelize.literal(`points - ${pointsToUse}`),
+        },
+        { where: { id: order.user_id } }
+      );
+    }
 
     // Send notification to admin about cash payment request
     try {
@@ -725,12 +892,20 @@ class OrderService {
         ...payload,
         payment_method: "cash",
         payment_note: note || undefined,
+        vat_amount: vatAmount,
+        points_used: pointsToUse,
+        final_payment_amount: finalPaymentAmount,
       });
     } catch (error) {
       console.error("Failed to emit payment requested event:", error);
     }
 
-    return { message: "Cash payment request sent" };
+    return {
+      message: "Cash payment request sent",
+      vat_amount: vatAmount,
+      points_used: pointsToUse,
+      final_payment_amount: finalPaymentAmount,
+    };
   }
 
   async handlePaymentSuccess(orderId: string) {
@@ -752,16 +927,34 @@ class OrderService {
         { where: { id: order.table_id } }
       );
     }
+
+    // Award loyalty points: 1% of final_amount (excluding walk-in customers)
     if (order.user_id) {
-      await User.update(
-        {
-          points: Sequelize.literal(
-            `points + ${(order.total_amount ?? 0) / 1000}`
-          ),
-        },
-        { where: { id: order.user_id } }
-      );
+      const finalAmount = Number(order.final_amount ?? order.total_amount ?? 0);
+      const pointsToAward = Math.floor(finalAmount * 0.01); // 1% of final amount
+
+      if (pointsToAward > 0) {
+        await User.update(
+          {
+            points: Sequelize.literal(`points + ${pointsToAward}`),
+          },
+          { where: { id: order.user_id } }
+        );
+
+        // Update ranking based on new points
+        const user = await User.findByPk(order.user_id);
+        if (user) {
+          const newPoints = Number(user.points) + pointsToAward;
+          let newRanking = user.ranking;
+          if (newPoints >= 2500) newRanking = "platinum";
+          else if (newPoints >= 1000) newRanking = "vip";
+          else newRanking = "regular";
+
+          await user.update({ ranking: newRanking });
+        }
+      }
     }
+
     // Send notification and WebSocket event
     await notificationService.notifyPaymentCompleted(updatedOrder);
     try {
@@ -770,7 +963,7 @@ class OrderService {
       console.error("Failed to emit payment completed event:", error);
     }
 
-    // Award loyalty points for this paid order (if associated with a user)
+    // Also use loyalty service for additional features (notifications, etc.)
     try {
       const res = await loyaltyService.awardPointsForOrder(order);
       if (res) {
@@ -852,6 +1045,15 @@ class OrderService {
     const items = await OrderItem.findAll({
       where: { order_id: orderId },
     });
+
+    if (!items || items.length === 0) {
+      // No items, set totals to 0
+      await order.update({
+        total_amount: 0,
+        final_amount: 0,
+      });
+      return;
+    }
 
     const subtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;

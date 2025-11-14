@@ -572,6 +572,44 @@ class ReservationService {
       throw new AppError("Reservation is not confirmed", 400);
     }
 
+    // Validate check-in time: allow check-in from 5 minutes before to 10 minutes after reservation time
+    const reservationTime = new Date(reservation.reservation_time);
+    const now = new Date();
+    const minutesBefore = 5;
+    const minutesAfter = 10;
+
+    const earliestCheckIn = new Date(reservationTime);
+    earliestCheckIn.setMinutes(earliestCheckIn.getMinutes() - minutesBefore);
+
+    const latestCheckIn = new Date(reservationTime);
+    latestCheckIn.setMinutes(latestCheckIn.getMinutes() + minutesAfter);
+
+    if (now < earliestCheckIn) {
+      const minutesUntil = Math.ceil(
+        (earliestCheckIn.getTime() - now.getTime()) / (1000 * 60)
+      );
+      throw new AppError(
+        `Chưa đến giờ check-in. Vui lòng quay lại sau ${minutesUntil} phút nữa (từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )}).`,
+        400
+      );
+    }
+
+    if (now > latestCheckIn) {
+      throw new AppError(
+        `Đã quá thời gian check-in. Thời gian check-in hợp lệ là từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )} đến ${latestCheckIn.toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}.`,
+        400
+      );
+    }
+
     const result = await reservationRepository.checkIn(id);
 
     // Send notification and WebSocket event

@@ -1,5 +1,6 @@
 import type { Server } from "socket.io";
 import { forwardToAdmin, forwardToCustomer, broadcastToAdmin } from "./index";
+import { tableEvents } from "./tableSocket";
 
 /**
  * Register Order Socket Handlers
@@ -91,16 +92,74 @@ export default function registerOrderSocket(io: Server) {
 
 /**
  * Helper function to serialize order object to avoid circular references
+ * Uses JSON.parse(JSON.stringify()) with custom replacer to handle circular refs
  */
-function serializeOrder(order: any): any {
+export function serializeOrder(order: any): any {
   if (!order) return null;
+
+  // Convert to plain object if it's a Sequelize model
   const orderData =
     order && typeof order.toJSON === "function" ? order.toJSON() : order;
+
   const toNumber = (value: any) => {
     if (value === null || value === undefined) return 0;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
   };
+
+  // Serialize items separately to avoid circular references
+  const items = orderData.items
+    ? orderData.items.map((item: any) => {
+        const itemData =
+          item && typeof item.toJSON === "function" ? item.toJSON() : item;
+        return {
+          id: itemData.id,
+          order_id: itemData.order_id,
+          dish_id: itemData.dish_id,
+          quantity: toNumber(itemData.quantity),
+          price: toNumber(itemData.price),
+          status: itemData.status,
+          dish: itemData.dish
+            ? {
+                id: itemData.dish.id,
+                name: itemData.dish.name,
+                price: toNumber(itemData.dish.price),
+                media_urls: itemData.dish.media_urls || [],
+                description: itemData.dish.description,
+              }
+            : null,
+        };
+      })
+    : [];
+
+  // Serialize related objects
+  const user = orderData.user
+    ? {
+        id: orderData.user.id,
+        username: orderData.user.username,
+        email: orderData.user.email,
+        phone: orderData.user.phone,
+      }
+    : null;
+
+  const table = orderData.table
+    ? {
+        id: orderData.table.id,
+        table_number: orderData.table.table_number,
+        capacity: orderData.table.capacity,
+        status: orderData.table.status,
+      }
+    : null;
+
+  const voucher = orderData.voucher
+    ? {
+        id: orderData.voucher.id,
+        code: orderData.voucher.code,
+        discount_type: orderData.voucher.discount_type,
+        value: toNumber(orderData.voucher.value),
+      }
+    : null;
+
   return {
     id: orderData.id,
     orderId: orderData.id,
@@ -120,6 +179,10 @@ function serializeOrder(order: any): any {
     voucher_id: orderData.voucher_id,
     created_at: orderData.created_at,
     updated_at: orderData.updated_at,
+    items,
+    user,
+    table,
+    voucher,
   };
 }
 
@@ -128,55 +191,71 @@ function serializeOrder(order: any): any {
  */
 export const orderEvents = {
   orderCreated: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      status: order.status,
-      changes: order,
-      updatedAt: order.updated_at || new Date().toISOString(),
-      ...order,
+      orderId: serialized.id,
+      status: serialized.status,
+      updatedAt: serialized.updated_at || new Date().toISOString(),
+      ...serialized,
     };
 
     // Broadcast to all admins
     broadcastToAdmin(io, "admin:order:created", payload);
 
     // Forward to specific customer if exists
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:created", payload);
     }
   },
 
   orderUpdated: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      status: order.status,
-      changes: order,
-      updatedAt: order.updated_at || new Date().toISOString(),
-      ...order,
+      orderId: serialized.id,
+      status: serialized.status,
+      updatedAt: serialized.updated_at || new Date().toISOString(),
+      ...serialized,
     };
 
     broadcastToAdmin(io, "admin:order:updated", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:updated", payload);
+    }
+
+    // Also emit to table room for walk-in customers
+    if (serialized.table_id) {
+      tableEvents.tableOrderUpdated(io, serialized.table_id, payload);
     }
   },
 
   orderStatusChanged: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      status: order.status,
-      changes: { status: order.status },
-      updatedAt: order.updated_at || new Date().toISOString(),
-      ...order,
+      orderId: serialized.id,
+      status: serialized.status,
+      updatedAt: serialized.updated_at || new Date().toISOString(),
+      ...serialized,
     };
 
     broadcastToAdmin(io, "admin:order:status_changed", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:status_changed", payload);
+    }
+
+    // Also emit to table room for walk-in customers
+    if (serialized.table_id) {
+      tableEvents.tableOrderUpdated(io, serialized.table_id, payload);
     }
   },
 
@@ -217,51 +296,74 @@ export const orderEvents = {
   },
 
   supportRequested: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     // Only notify admins (not customer)
     broadcastToAdmin(io, "admin:order:support_requested", {
-      orderId: order.id,
-      customerId: order.user_id || order.customer_id,
-      ...order,
+      orderId: serialized.id,
+      customerId: serialized.user_id || serialized.customer_id,
+      table_id: serialized.table_id,
+      ...serialized,
     });
   },
 
   voucherApplied: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      ...order,
+      orderId: serialized.id,
+      ...serialized,
     };
 
     broadcastToAdmin(io, "admin:order:voucher_applied", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:voucher_applied", payload);
+    }
+
+    // Also emit to table room for walk-in customers
+    if (serialized.table_id) {
+      tableEvents.tableOrderUpdated(io, serialized.table_id, payload);
     }
   },
 
   voucherRemoved: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      ...order,
+      orderId: serialized.id,
+      ...serialized,
     };
 
     broadcastToAdmin(io, "admin:order:voucher_removed", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:voucher_removed", payload);
+    }
+
+    // Also emit to table room for walk-in customers
+    if (serialized.table_id) {
+      tableEvents.tableOrderUpdated(io, serialized.table_id, payload);
     }
   },
 
   orderMerged: (io: Server, order: any) => {
+    const serialized = serializeOrder(order);
+    if (!serialized) return;
+
     const payload = {
-      orderId: order.id,
-      ...order,
+      orderId: serialized.id,
+      ...serialized,
     };
 
     broadcastToAdmin(io, "admin:order:merged", payload);
 
-    const customerId = order.user_id || order.customer_id;
+    const customerId = serialized.user_id || serialized.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:merged", payload);
     }
@@ -269,25 +371,44 @@ export const orderEvents = {
 
   // OrderItem Events
   orderItemCreated: (io: Server, orderId: string, item: any, order: any) => {
+    // Serialize item
+    const itemData =
+      item && typeof item.toJSON === "function" ? item.toJSON() : item;
+    const serializedItem = {
+      id: itemData.id,
+      order_id: itemData.order_id,
+      dish_id: itemData.dish_id,
+      quantity: Number(itemData.quantity) || 0,
+      price: Number(itemData.price) || 0,
+      status: itemData.status,
+      dish: itemData.dish
+        ? {
+            id: itemData.dish.id,
+            name: itemData.dish.name,
+            price: Number(itemData.dish.price) || 0,
+            media_urls: itemData.dish.media_urls || [],
+            description: itemData.dish.description,
+          }
+        : null,
+    };
+
+    // Serialize order summary
+    const orderData =
+      order && typeof order.toJSON === "function" ? order.toJSON() : order;
+    const orderSummary = {
+      id: orderData.id,
+      total_amount: Number(orderData.total_amount) || 0,
+      final_amount:
+        Number(orderData.final_amount || orderData.total_amount) || 0,
+      status: orderData.status,
+      table_id: orderData.table_id,
+    };
+
     const payload = {
       orderId,
-      itemId: item.id,
-      item: {
-        id: item.id,
-        order_id: item.order_id,
-        dish_id: item.dish_id,
-        quantity: item.quantity,
-        price: item.price,
-        status: item.status,
-        dish: item.dish,
-        ...item,
-      },
-      order: {
-        id: order.id,
-        total_amount: order.total_amount,
-        final_amount: order.final_amount,
-        status: order.status,
-      },
+      itemId: serializedItem.id,
+      item: serializedItem,
+      order: orderSummary,
       updatedAt: new Date().toISOString(),
     };
 
@@ -296,8 +417,16 @@ export const orderEvents = {
       .to(`order:${orderId}`)
       .emit("admin:order:item_created", payload);
 
+    // Also emit to table room for walk-in customers
+    if (orderSummary.table_id) {
+      io.to(`table:${orderSummary.table_id}`).emit(
+        "table:order_item_created",
+        payload
+      );
+    }
+
     // Forward to customer if exists
-    const customerId = order.user_id || order.customer_id;
+    const customerId = orderData.user_id || orderData.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:item_created", payload);
     }
@@ -309,25 +438,44 @@ export const orderEvents = {
     item: any,
     order: any
   ) => {
+    // Serialize item
+    const itemData =
+      item && typeof item.toJSON === "function" ? item.toJSON() : item;
+    const serializedItem = {
+      id: itemData.id,
+      order_id: itemData.order_id,
+      dish_id: itemData.dish_id,
+      quantity: Number(itemData.quantity) || 0,
+      price: Number(itemData.price) || 0,
+      status: itemData.status,
+      dish: itemData.dish
+        ? {
+            id: itemData.dish.id,
+            name: itemData.dish.name,
+            price: Number(itemData.dish.price) || 0,
+            media_urls: itemData.dish.media_urls || [],
+            description: itemData.dish.description,
+          }
+        : null,
+    };
+
+    // Serialize order summary
+    const orderData =
+      order && typeof order.toJSON === "function" ? order.toJSON() : order;
+    const orderSummary = {
+      id: orderData.id,
+      total_amount: Number(orderData.total_amount) || 0,
+      final_amount:
+        Number(orderData.final_amount || orderData.total_amount) || 0,
+      status: orderData.status,
+      table_id: orderData.table_id,
+    };
+
     const payload = {
       orderId,
-      itemId: item.id,
-      item: {
-        id: item.id,
-        order_id: item.order_id,
-        dish_id: item.dish_id,
-        quantity: item.quantity,
-        price: item.price,
-        status: item.status,
-        dish: item.dish,
-        ...item,
-      },
-      order: {
-        id: order.id,
-        total_amount: order.total_amount,
-        final_amount: order.final_amount,
-        status: order.status,
-      },
+      itemId: serializedItem.id,
+      item: serializedItem,
+      order: orderSummary,
       updatedAt: new Date().toISOString(),
     };
 
@@ -336,8 +484,17 @@ export const orderEvents = {
       .to(`order:${orderId}`)
       .emit("admin:order:item_quantity_changed", payload);
 
+    // Also emit to table room for walk-in customers
+    if (orderSummary.table_id) {
+      io.to(`table:${orderSummary.table_id}`).emit(
+        "table:order_item_updated",
+        payload
+      );
+      tableEvents.tableOrderUpdated(io, orderSummary.table_id, orderSummary);
+    }
+
     // Forward to customer if exists
-    const customerId = order.user_id || order.customer_id;
+    const customerId = orderData.user_id || orderData.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:item_quantity_changed", payload);
     }
@@ -349,15 +506,27 @@ export const orderEvents = {
     itemId: string,
     order: any
   ) => {
+    // Serialize order summary
+    const orderData =
+      order && typeof order.toJSON === "function" ? order.toJSON() : order;
+    const toNumber = (value: any) => {
+      if (value === null || value === undefined) return 0;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const orderSummary = {
+      id: orderData.id,
+      total_amount: toNumber(orderData.total_amount),
+      final_amount: toNumber(orderData.final_amount || orderData.total_amount),
+      status: orderData.status,
+      table_id: orderData.table_id,
+    };
+
     const payload = {
       orderId,
       itemId,
-      order: {
-        id: order.id,
-        total_amount: order.total_amount,
-        final_amount: order.final_amount,
-        status: order.status,
-      },
+      order: orderSummary,
       updatedAt: new Date().toISOString(),
     };
 
@@ -366,8 +535,17 @@ export const orderEvents = {
       .to(`order:${orderId}`)
       .emit("admin:order:item_deleted", payload);
 
+    // Also emit to table room for walk-in customers
+    if (orderSummary.table_id) {
+      io.to(`table:${orderSummary.table_id}`).emit(
+        "table:order_item_deleted",
+        payload
+      );
+      tableEvents.tableOrderUpdated(io, orderSummary.table_id, orderSummary);
+    }
+
     // Forward to customer if exists
-    const customerId = order.user_id || order.customer_id;
+    const customerId = orderData.user_id || orderData.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:item_deleted", payload);
     }
@@ -379,25 +557,44 @@ export const orderEvents = {
     item: any,
     order: any
   ) => {
+    // Serialize item
+    const itemData =
+      item && typeof item.toJSON === "function" ? item.toJSON() : item;
+    const serializedItem = {
+      id: itemData.id,
+      order_id: itemData.order_id,
+      dish_id: itemData.dish_id,
+      quantity: Number(itemData.quantity) || 0,
+      price: Number(itemData.price) || 0,
+      status: itemData.status,
+      dish: itemData.dish
+        ? {
+            id: itemData.dish.id,
+            name: itemData.dish.name,
+            price: Number(itemData.dish.price) || 0,
+            media_urls: itemData.dish.media_urls || [],
+            description: itemData.dish.description,
+          }
+        : null,
+    };
+
+    // Serialize order summary
+    const orderData =
+      order && typeof order.toJSON === "function" ? order.toJSON() : order;
+    const orderSummary = {
+      id: orderData.id,
+      total_amount: Number(orderData.total_amount) || 0,
+      final_amount:
+        Number(orderData.final_amount || orderData.total_amount) || 0,
+      status: orderData.status,
+      table_id: orderData.table_id,
+    };
+
     const payload = {
       orderId,
-      itemId: item.id,
-      item: {
-        id: item.id,
-        order_id: item.order_id,
-        dish_id: item.dish_id,
-        quantity: item.quantity,
-        price: item.price,
-        status: item.status,
-        dish: item.dish,
-        ...item,
-      },
-      order: {
-        id: order.id,
-        total_amount: order.total_amount,
-        final_amount: order.final_amount,
-        status: order.status,
-      },
+      itemId: serializedItem.id,
+      item: serializedItem,
+      order: orderSummary,
       updatedAt: new Date().toISOString(),
     };
 
@@ -406,8 +603,17 @@ export const orderEvents = {
       .to(`order:${orderId}`)
       .emit("admin:order:item_status_changed", payload);
 
+    // Also emit to table room for walk-in customers
+    if (orderSummary.table_id) {
+      io.to(`table:${orderSummary.table_id}`).emit(
+        "table:order_item_status_changed",
+        payload
+      );
+      tableEvents.tableOrderUpdated(io, orderSummary.table_id, orderSummary);
+    }
+
     // Forward to customer if exists
-    const customerId = order.user_id || order.customer_id;
+    const customerId = orderData.user_id || orderData.customer_id;
     if (customerId) {
       forwardToCustomer(io, customerId, "order:item_status_changed", payload);
     }

@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuthStore } from "@/store/authStore";
+import { NotificationWidget } from "@/components/shared/NotificationWidget";
 
 const moduleNames: Record<string, string> = {
   dashboard: "Tổng quan",
@@ -64,16 +64,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Hiển thị khi user đã đăng nhập */}
-        {user && token ? (
-          <>
-            {/* Nút thông báo */}
-            <Button variant="ghost" size="icon" className="relative">
-              <span className="text-lg">🔔</span>
-              <span className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-                3
-              </span>
-            </Button>
+        <NotificationWidget />
 
             {/* Dropdown menu với thông tin user */}
             <DropdownMenu 

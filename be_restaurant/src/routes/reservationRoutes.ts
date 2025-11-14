@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as reservationController from "../controllers/reservationController";
+import * as paymentController from "../controllers/paymentController";
 import { authenticate, authorize } from "../middlewares/auth";
 import { body, param, query } from "express-validator";
 import { validate } from "../middlewares/validator";
@@ -141,6 +142,17 @@ router.post(
     validate,
   ],
   reservationController.cancelReservation
+);
+
+// Request deposit payment retry (for failed payments)
+router.post(
+  "/:id/deposit/retry",
+  [
+    param("id").isUUID().withMessage("Invalid reservation ID"),
+    body("bankCode").optional().isString(),
+    validate,
+  ],
+  paymentController.requestReservationDepositRetry
 );
 
 // Delete reservation
