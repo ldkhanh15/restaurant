@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Package, Eye, Edit, Trash2, Camera, Barcode, Badge, Volume2 } from "lucide-react"
+import { Package, Eye, Edit, Trash2, Camera, Barcode, Badge, Download } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { supplierService } from "@/services/supplierService"
 import { ingredientService } from "@/services/ingredientService"
@@ -43,6 +43,8 @@ import {
 import employeeApi from "@/services/employeeService"
 import { v4 as uuidv4 } from "uuid"
 import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library"
+import ExcelJS from "exceljs"
+import { saveAs } from "file-saver"
 
 interface Employee {
   id: string
@@ -122,10 +124,11 @@ export function ImportManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Loading cho bảng
 
   // === BARCODE SCANNER MODAL ===
   const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false)
-  const [isCameraActive, setIsCameraActive] = useState(false) // Bắt đầu tắt
+  const [isCameraActive, setIsCameraActive] = useState(false)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
@@ -134,7 +137,7 @@ export function ImportManagement() {
 
   // === TRẠNG THÁI QUÉT BARCODE ===
   const [scannedIngredient, setScannedIngredient] = useState<IngredientAttributes | null>(null)
-  const [scanQuantity, setScanQuantity] = useState<string>("0") // Mặc định là 0
+  const [scanQuantity, setScanQuantity] = useState<string>("0")
   const [scanTotalPrice, setScanTotalPrice] = useState<string>("")
   const [scannedItems, setScannedItems] = useState<InventoryImportIngredientAttributes[]>([])
   const [totalScannedPrice, setTotalScannedPrice] = useState(0)
@@ -157,6 +160,10 @@ export function ImportManagement() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [ingredientErrors, setIngredientErrors] = useState<Record<number, Record<string, string>>>({})
 
+  // === LỌC THEO THỜI GIAN ===
+  const [filterType, setFilterType] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all')
+  const [filterDate, setFilterDate] = useState<Date>(new Date())
+
   // === TÌM INGREDIENT THEO BARCODE ===
   const findIngredientByBarcode = (barcode: string): IngredientAttributes | null => {
     return ingredients.find(ing => ing.barcode?.trim() === barcode.trim()) || null
@@ -167,7 +174,6 @@ export function ImportManagement() {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
     }
-
     try {
       const response = await fetch("/sounds/beep.mp3")
       const arrayBuffer = await response.arrayBuffer()
@@ -178,27 +184,21 @@ export function ImportManagement() {
       source.start(0)
     } catch (err) {
       console.warn("Không thể phát âm thanh beep:", err)
-      // Fallback: dùng HTML5 Audio
       const audio = new Audio("/sounds/beep.mp3")
       audio.play().catch(() => {})
     }
   }
 
+  // === TẢI DỮ LIỆU BAN ĐẦU ===
   useEffect(() => {
     loadSuppliers()
     loadIngredients()
-    loadImports(1)
     loadEmployees()
-
-    // Khởi tạo ZXing reader
+    loadImports(1)
     codeReaderRef.current = new BrowserMultiFormatReader()
     return () => {
-      if (codeReaderRef.current) {
-        codeReaderRef.current.reset()
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close()
-      }
+      if (codeReaderRef.current) codeReaderRef.current.reset()
+      if (audioContextRef.current) audioContextRef.current.close()
     }
   }, [])
 
@@ -214,27 +214,22 @@ export function ImportManagement() {
   useEffect(() => {
     if (isCameraActive && videoRef.current && codeReaderRef.current) {
       navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        }
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
       })
-      .then(stream => {
-        setCameraStream(stream)
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play()
-          startContinuousBarcodeScanning()
-        }
-      })
-      .catch(err => {
-        console.error("Lỗi camera:", err)
-        toast.error("Không thể truy cập camera. Vui lòng kiểm tra quyền.")
-        setIsCameraActive(false)
-      })
+        .then(stream => {
+          setCameraStream(stream)
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream
+            videoRef.current.play()
+            startContinuousBarcodeScanning()
+          }
+        })
+        .catch(err => {
+          console.error("Lỗi camera:", err)
+          toast.error("Không thể truy cập camera. Vui lòng kiểm tra quyền.")
+          setIsCameraActive(false)
+        })
     }
-
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop())
@@ -248,20 +243,16 @@ export function ImportManagement() {
   // === QUÉT BARCODE LIÊN TỤC ===
   const startContinuousBarcodeScanning = () => {
     if (!videoRef.current || !codeReaderRef.current || !isCameraActive) return
-
     const codeReader = codeReaderRef.current
     let lastScannedCode = ""
     let lastScannedTime = 0
-    const DEBOUNCE_TIME = 1000 // Tránh quét trùng trong 1s
-
+    const DEBOUNCE_TIME = 1000
     const scan = () => {
       if (!isCameraActive || !videoRef.current) return
-
       codeReader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
         if (result) {
           const barcode = result.getText()
           const now = Date.now()
-
           if (barcode !== lastScannedCode || now - lastScannedTime > DEBOUNCE_TIME) {
             lastScannedCode = barcode
             lastScannedTime = now
@@ -274,19 +265,16 @@ export function ImportManagement() {
         }
       })
     }
-
     scan()
   }
 
   // === XỬ LÝ KHI QUÉT ĐƯỢC BARCODE ===
   const handleBarcodeScanned = (barcode: string) => {
     if (!barcode) return
-
     const ingredient = findIngredientByBarcode(barcode)
-
     if (ingredient) {
       setScannedIngredient(ingredient)
-      setScanQuantity("0") // Reset về 0
+      setScanQuantity("0")
       setScanTotalPrice("")
       toast.success(`Đã quét: ${ingredient.name}`)
     } else {
@@ -297,35 +285,21 @@ export function ImportManagement() {
   // === THÊM NGUYÊN LIỆU TỪ QUÉT ===
   const handleAddScannedItem = () => {
     if (!scannedIngredient) return
-
     const quantity = parseFloat(scanQuantity) || 0
     const totalPrice = parseFloat(scanTotalPrice) || 0
-
-    if (quantity <= 0) {
-      toast.error("Số lượng phải > 0")
-      return
-    }
-    if (totalPrice <= 0) {
-      toast.error("Thành tiền phải > 0")
-      return
-    }
+    if (quantity <= 0) return toast.error("Số lượng phải > 0")
+    if (totalPrice <= 0) return toast.error("Thành tiền phải > 0")
 
     const newItem: InventoryImportIngredientAttributes = {
       id: uuidv4(),
       ingredient_id: scannedIngredient.id,
       quantity,
       total_price: totalPrice,
-      ingredient: {
-        id: scannedIngredient.id,
-        name: scannedIngredient.name,
-        unit: scannedIngredient.unit
-      }
+      ingredient: { id: scannedIngredient.id, name: scannedIngredient.name, unit: scannedIngredient.unit }
     }
-
     const updatedItems = [...scannedItems, newItem]
     setScannedItems(updatedItems)
     setTotalScannedPrice(prev => prev + totalPrice)
-
     toast.success("Đã thêm nguyên liệu")
     setScannedIngredient(null)
     setScanQuantity("0")
@@ -342,11 +316,7 @@ export function ImportManagement() {
 
   // === CHUYỂN DỮ LIỆU SANG MODAL NHẬP HÀNG ===
   const handleTransferToImport = () => {
-    if (scannedItems.length === 0) {
-      toast.warn("Chưa có nguyên liệu nào để chuyển")
-      return
-    }
-
+    if (scannedItems.length === 0) return toast.warn("Chưa có nguyên liệu nào để chuyển")
     setSelectedIngredients(prev => [...prev, ...scannedItems])
     setTotalImportPrice(prev => prev + totalScannedPrice)
     handleCloseBarcodeScanner()
@@ -380,69 +350,98 @@ export function ImportManagement() {
     }
   }
 
+  // === LOAD IMPORTS VỚI LỌC CHÍNH XÁC ===
   const loadImports = async (page: number) => {
+    setIsLoading(true)
     try {
-      const response = await inventoryImportService.getAll({
+      const params: any = {
         page,
-        limit: 10,
+        limit: 1000,
         sortBy: 'timestamp',
         sortOrder: 'DESC'
-      })
-      const data = response.data || []
+      }
+
+      // Chỉ thêm filter ngày nếu không phải "Tất cả"
+      if (filterType !== 'all') {
+        let startDate = new Date()
+        let endDate = new Date()
+
+        if (filterType === 'day') {
+          startDate = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate(), 0, 0, 0, 0)
+          endDate = new Date(filterDate.getFullYear(), filterDate.getMonth(), filterDate.getDate(), 23, 59, 59, 999)
+        } 
+        else if (filterType === 'week') {
+          // Tuần: từ 7 ngày trước đến hôm nay
+          endDate = new Date()
+          endDate.setHours(23, 59, 59, 999)
+          startDate = new Date(endDate)
+          startDate.setDate(endDate.getDate() - 6)
+          startDate.setHours(0, 0, 0, 0)
+        } 
+        else if (filterType === 'month') {
+          startDate = new Date(filterDate.getFullYear(), filterDate.getMonth(), 1, 0, 0, 0, 0)
+          endDate = new Date(filterDate.getFullYear(), filterDate.getMonth() + 1, 0, 23, 59, 59, 999)
+        } 
+        else if (filterType === 'year') {
+          startDate = new Date(filterDate.getFullYear(), 0, 1, 0, 0, 0, 0)
+          endDate = new Date(filterDate.getFullYear(), 11, 31, 23, 59, 59, 999)
+        }
+
+        params.start_date = startDate.toISOString()
+        params.end_date = endDate.toISOString()
+
+        console.log("Filtering with:", { filterType, filterDate, startDate: startDate.toISOString(), endDate: endDate.toISOString() })
+      } else {
+        console.log("Loading all imports without date filter")
+      }
+
+      const response = await inventoryImportService.getAll(params)
+      const responseData = response as any || {}
+      // Backend trả về { status: "success", data: { items, total, page, totalPages, ... } }
+      const data = responseData.data || responseData.items || []
+      const paginationData = responseData.data || responseData
+
       setImports({
-        items: data,
-        total: data.length,
-        page: 1,
-        totalPages: 1,
-        hasNext: false,
-        hasPrevious: false
+        items: Array.isArray(data) ? data : (paginationData.items || []),
+        total: paginationData.total || (Array.isArray(data) ? data.length : 0),
+        page: paginationData.page || 1,
+        totalPages: paginationData.totalPages || 1,
+        hasNext: paginationData.hasNext || false,
+        hasPrevious: paginationData.hasPrevious || false
       })
-      setCurrentPage(page)
-    } catch (error) {
-      toast.error("Không thể tải lịch sử nhập hàng")
+      setCurrentPage(1) // Reset trang khi lọc
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể tải lịch sử nhập hàng")
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  // === ÁP DỤNG LỌC KHI NHẤN NÚT ===
+  const handleApplyFilter = () => {
+    loadImports(1)
   }
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
-
-    if (!selectedSupplier) {
-      newErrors.supplier = "Vui lòng chọn nhà cung cấp"
-    }
-
-    if (selectedIngredients.length === 0) {
-      newErrors.ingredients = "Phải có ít nhất 1 nguyên liệu"
-    }
+    if (!selectedSupplier) newErrors.supplier = "Vui lòng chọn nhà cung cấp"
+    if (selectedIngredients.length === 0) newErrors.ingredients = "Phải có ít nhất 1 nguyên liệu"
 
     const newIngErrors: Record<number, Record<string, string>> = {}
-
     selectedIngredients.forEach((ing, index) => {
       const err: Record<string, string> = {}
-
-      if (!ing.ingredient_id) {
-        err.ingredient = "Vui lòng chọn nguyên liệu"
-      }
-      if (!ing.quantity || ing.quantity <= 0) {
-        err.quantity = "Số lượng phải > 0"
-      }
-      if (!ing.total_price || ing.total_price <= 0) {
-        err.total_price = "Thành tiền phải > 0"
-      }
-
-      if (Object.keys(err).length > 0) {
-        newIngErrors[index] = err
-      }
+      if (!ing.ingredient_id) err.ingredient = "Vui lòng chọn nguyên liệu"
+      if (!ing.quantity || ing.quantity <= 0) err.quantity = "Số lượng phải > 0"
+      if (!ing.total_price || ing.total_price <= 0) err.total_price = "Thành tiền phải > 0"
+      if (Object.keys(err).length > 0) newIngErrors[index] = err
     })
 
     setErrors(newErrors)
     setIngredientErrors(newIngErrors)
-
     if (Object.keys(newErrors).length > 0 || Object.keys(newIngErrors).length > 0) {
-      const firstError = Object.values(newErrors)[0] || "Vui lòng kiểm tra lại các trường"
-      toast.error(firstError)
+      toast.error(Object.values(newErrors)[0] || "Vui lòng kiểm tra lại các trường")
       return false
     }
-
     return true
   }
 
@@ -459,7 +458,6 @@ export function ImportManagement() {
 
   const handleCreateImport = async () => {
     if (!validateForm()) return
-
     const id = uuidv4()
     try {
       const importData = {
@@ -475,13 +473,11 @@ export function ImportManagement() {
           total_price: ing.total_price
         }))
       }
-
       await inventoryImportService.create(importData)
       await inventoryImportService.addIngredients({
         inventory_imports_id: id,
         ingredients: importData.ingredients
       })
-
       toast.success("Tạo phiếu nhập hàng thành công")
       setIsImportDialogOpen(false)
       loadImports(currentPage)
@@ -493,28 +489,22 @@ export function ImportManagement() {
 
   const handleUpdateImport = async () => {
     if (!selectedImport || !validateForm()) return
-
     try {
       const calculatedTotal = selectedIngredients.reduce((sum, ing) => sum + ing.total_price, 0)
-
       const importData = {
         reason: reason.trim() || "Nhập hàng",
         supplier_id: selectedSupplier,
         employee_id: selectedEmployee === "none" ? null : selectedEmployee,
         total_price: calculatedTotal
       }
-
       await inventoryImportService.update(selectedImport.id, importData)
-
       const ingredients = selectedIngredients.map(ing => ({
         id: ing.id,
         ingredient_id: ing.ingredient_id!,
         quantity: ing.quantity,
         total_price: ing.total_price
       }))
-
       await inventoryImportService.updateInventoryIngredients(selectedImport.id, ingredients)
-
       toast.success("Cập nhật phiếu nhập hàng thành công")
       setIsEditDialogOpen(false)
       loadImports(currentPage)
@@ -541,13 +531,11 @@ export function ImportManagement() {
     try {
       const resp = await inventoryImportService.getById(importRecord.id)
       const data = resp as any
-
       setSelectedImport(data)
       setReason(data.reason || "")
       setSelectedSupplier(data.supplier_id || data.supplier?.id || "")
       setSelectedEmployee(data.employee_id || data.employee?.id || "none")
       setTotalImportPrice(data.total_price || 0)
-
       if (data.ingredients) {
         setSelectedIngredients(
           data.ingredients.map((ing: any) => ({
@@ -558,7 +546,6 @@ export function ImportManagement() {
           }))
         )
       }
-
       setErrors({})
       setIngredientErrors({})
       setIsEditDialogOpen(true)
@@ -590,32 +577,19 @@ export function ImportManagement() {
     if (endPage - startPage + 1 < maxPagesToShow) {
       startPage = Math.max(1, endPage - maxPagesToShow + 1)
     }
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(i)
-    }
-    if (startPage > 1) {
-      pages.unshift('...')
-      pages.unshift(1)
-    }
-    if (endPage < totalPages) {
-      pages.push('...')
-      pages.push(totalPages)
-    }
+    for (let i = startPage; i <= endPage; i++) pages.push(i)
+    if (startPage > 1) { pages.unshift('...'); pages.unshift(1) }
+    if (endPage < totalPages) { pages.push('...'); pages.push(totalPages) }
     return pages
   }
 
-  const handleOpenImportDialog = () => {
-    resetForm()
-    setIsImportDialogOpen(true)
-  }
-
+  const handleOpenImportDialog = () => { resetForm(); setIsImportDialogOpen(true) }
   const handleOpenBarcodeScanner = () => {
     setScannedItems([])
     setTotalScannedPrice(0)
-    setIsCameraActive(false) // Bắt đầu ở trạng thái tắt
+    setIsCameraActive(false)
     setIsBarcodeScannerOpen(true)
   }
-
   const handleCloseBarcodeScanner = () => {
     setIsBarcodeScannerOpen(false)
     setIsCameraActive(false)
@@ -624,34 +598,132 @@ export function ImportManagement() {
     setScannedIngredient(null)
     setScanQuantity("0")
     setScanTotalPrice("")
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop())
-      setCameraStream(null)
-    }
-    if (codeReaderRef.current) {
-      codeReaderRef.current.reset()
-    }
+    if (cameraStream) cameraStream.getTracks().forEach(track => track.stop())
+    if (codeReaderRef.current) codeReaderRef.current.reset()
   }
 
   const updateIngredient = (index: number, field: keyof InventoryImportIngredientAttributes, value: any) => {
     const newIngredients = [...selectedIngredients]
     newIngredients[index] = { ...newIngredients[index], [field]: value }
-
     if (field === "total_price") {
       const total = newIngredients.reduce((sum, ing) => sum + (Number(ing.total_price) || 0), 0)
       setTotalImportPrice(total)
     }
-
     setSelectedIngredients(newIngredients)
-
     const newIngErrors = { ...ingredientErrors }
     if (newIngErrors[index]) {
       delete newIngErrors[index][field]
-      if (Object.keys(newIngErrors[index]).length === 0) {
-        delete newIngErrors[index]
-      }
+      if (Object.keys(newIngErrors[index]).length === 0) delete newIngErrors[index]
     }
     setIngredientErrors(newIngErrors)
+  }
+
+  // === EXPORT EXCEL ===
+  const handleExportExcel = async () => {
+    if (!imports || imports.items.length === 0) return toast.warn("Không có dữ liệu để xuất")
+    const fullImports = await Promise.all(
+      imports.items.map(async (imp) => {
+        if (!imp.ingredients || imp.ingredients.length === 0) {
+          const fullData = await inventoryImportService.getById(imp.id)
+          return fullData as any
+        }
+        return imp
+      })
+    )
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet("Phiếu Nhập Hàng", { pageSetup: { paperSize: 9, orientation: 'landscape' } })
+
+    const title = `BÁO CÁO NHẬP HÀNG - ${formatFilterLabel()}`
+    worksheet.mergeCells('A1:I1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = title
+    titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } }
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1f4e79' } }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getRow(1).height = 36
+
+    const headerRow = worksheet.addRow(['STT', 'Mã phiếu', 'Lý do', 'Ngày nhập', 'Nhà cung cấp', 'Nhân viên', 'Tổng tiền (đ)', 'Nguyên liệu', 'SL × Đơn vị | Thành tiền'])
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } }
+    headerRow.eachCell(cell => {
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    })
+
+    let totalAll = 0
+    let stt = 1
+    fullImports.forEach(imp => {
+      const totalPrice = Number(imp.total_price) || 0
+      totalAll += totalPrice
+      const ingredients = imp.ingredients || []
+      const mainRow = worksheet.addRow([
+        stt++,
+        `#${imp.id}`,
+        imp.reason || 'Nhập hàng',
+        imp.timestamp ? new Date(imp.timestamp).toLocaleDateString('vi-VN') : '-',
+        imp.supplier?.name || '-',
+        imp.employee?.user?.full_name || '-',
+        totalPrice,
+        '',
+        ''
+      ])
+      mainRow.eachCell((cell, colNumber) => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+        if (colNumber === 7) { 
+          cell.numFmt = '#,##0" đ"'
+          cell.alignment = { horizontal: 'right' } 
+        }
+      })
+      if (ingredients.length > 0) {
+        const first = ingredients[0]
+        const firstPrice = Number(first.total_price) || 0
+        mainRow.getCell(8).value = first.ingredient?.name || ''
+        mainRow.getCell(9).value = `${first.quantity} ${first.ingredient?.unit} | ${firstPrice.toLocaleString('vi-VN')} đ`
+        mainRow.getCell(9).alignment = { horizontal: 'left' }
+      }
+      ingredients.slice(1).forEach((ing:any) => {
+        const ingPrice = Number(ing.total_price) || 0
+        const subRow = worksheet.addRow(['', '', '', '', '', '', '', ing.ingredient?.name || '', `${ing.quantity} ${ing.ingredient?.unit} | ${ingPrice.toLocaleString('vi-VN')} đ`])
+        subRow.eachCell((cell, colNumber) => {
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+          if (colNumber === 9) {
+            cell.alignment = { horizontal: 'left' }
+          }
+        })
+      })
+    })
+
+    const totalRow = worksheet.addRow(['', '', '', '', '', 'TỔNG CỘNG:', totalAll, '', ''])
+    totalRow.font = { bold: true, size: 13 }
+    totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }
+    totalRow.getCell(6).alignment = { horizontal: 'right' }
+    totalRow.getCell(7).numFmt = '#,##0" đ"'
+    totalRow.getCell(7).alignment = { horizontal: 'right' }
+    totalRow.eachCell(cell => cell.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } })
+
+    worksheet.columns = [
+      { width: 6 }, { width: 16 }, { width: 20 }, { width: 14 }, { width: 22 }, { width: 18 }, { width: 16 }, { width: 24 }, { width: 32 }
+    ]
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const fileName = `BaoCao_NhapHang_${formatFilterLabel().replace(/[^a-z0-9]/gi, '_')}.xlsx`
+    saveAs(new Blob([buffer]), fileName)
+    toast.success("Xuất Excel thành công!")
+  }
+
+  const formatFilterLabel = () => {
+    if (filterType === 'all') return 'Tất cả'
+    if (filterType === 'day') return filterDate.toLocaleDateString('vi-VN')
+    if (filterType === 'week') {
+      // Tuần: từ 7 ngày trước đến hôm nay
+      const endDate = new Date()
+      const startDate = new Date(endDate)
+      startDate.setDate(endDate.getDate() - 6)
+      return `${startDate.toLocaleDateString('vi-VN')} - ${endDate.toLocaleDateString('vi-VN')}`
+    }
+    if (filterType === 'month') return `${filterDate.getMonth() + 1}/${filterDate.getFullYear()}`
+    if (filterType === 'year') return filterDate.getFullYear().toString()
+    return 'Tất cả'
   }
 
   return (
@@ -669,7 +741,7 @@ export function ImportManagement() {
               Nhập hàng
             </Button>
           </DialogTrigger>
-          {/* === MODAL NHẬP HÀNG (GIỮ NGUYÊN) === */}
+          {/* === MODAL NHẬP HÀNG === */}
           <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Nhập hàng mới</DialogTitle>
@@ -719,7 +791,6 @@ export function ImportManagement() {
                   </Select>
                 </div>
               </div>
-
               <div className="grid gap-2">
                 <Label>Nguyên liệu nhập *</Label>
                 {errors.ingredients && <p className="text-sm text-red-500 -mt-2">{errors.ingredients}</p>}
@@ -766,7 +837,6 @@ export function ImportManagement() {
                             <p className="text-sm text-red-500">{ingredientErrors[index].ingredient}</p>
                           )}
                         </div>
-
                         <div className="space-y-1">
                           <Input
                             type="text"
@@ -786,7 +856,6 @@ export function ImportManagement() {
                             <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
                           )}
                         </div>
-
                         <div className="space-y-1">
                           <Input
                             type="number"
@@ -799,7 +868,6 @@ export function ImportManagement() {
                             <p className="text-sm text-red-500">{ingredientErrors[index].total_price}</p>
                           )}
                         </div>
-
                         <Button
                           variant="ghost"
                           size="icon"
@@ -840,7 +908,243 @@ export function ImportManagement() {
         </Dialog>
       </div>
 
-      {/* === MODAL QUÉT BARCODE MỚI (CẢI TIẾN) === */}
+      {/* === BỘ LỌC & EXPORT === */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
+            {/* Filter Section */}
+            <div className="flex flex-col gap-3 flex-1">
+              <Label className="text-sm font-semibold">Lọc theo thời gian</Label>
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end flex-wrap">
+                <div className="w-full sm:w-auto">
+                  <Label htmlFor="filter-type" className="text-xs text-muted-foreground mb-1 block">Loại</Label>
+                  <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
+                    <SelectTrigger className="w-full sm:w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tất cả</SelectItem>
+                      <SelectItem value="day">Ngày</SelectItem>
+                      <SelectItem value="week">Tuần (7 ngày gần nhất)</SelectItem>
+                      <SelectItem value="month">Tháng</SelectItem>
+                      <SelectItem value="year">Năm</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {filterType === 'day' && (
+                  <div className="w-full sm:w-auto">
+                    <Label htmlFor="filter-day" className="text-xs text-muted-foreground mb-1 block">Chọn ngày</Label>
+                    <Input
+                      id="filter-day"
+                      type="date"
+                      value={filterDate.toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const newDate = new Date(e.target.value)
+                        if (!isNaN(newDate.getTime())) setFilterDate(newDate)
+                      }}
+                      className="w-full sm:w-40"
+                    />
+                  </div>
+                )}
+
+                {filterType === 'week' && (
+                  <div className="w-full sm:w-auto">
+                    <Label htmlFor="filter-week" className="text-xs text-muted-foreground mb-1 block">Hiển thị 7 ngày gần nhất</Label>
+                    <div className="text-xs text-muted-foreground p-2 border rounded bg-gray-50 w-full sm:w-40">
+                      Từ {(() => {
+                        const endDate = new Date()
+                        const startDate = new Date(endDate)
+                        startDate.setDate(endDate.getDate() - 6)
+                        return `${startDate.toLocaleDateString('vi-VN')} - ${endDate.toLocaleDateString('vi-VN')}`
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {filterType === 'month' && (
+                  <div className="w-full sm:w-auto">
+                    <Label htmlFor="filter-month" className="text-xs text-muted-foreground mb-1 block">Chọn tháng</Label>
+                    <Input
+                      id="filter-month"
+                      type="month"
+                      value={filterDate.toISOString().slice(0, 7)}
+                      onChange={(e) => {
+                        const [year, month] = e.target.value.split('-')
+                        const newDate = new Date(Number(year), Number(month) - 1, 1)
+                        if (!isNaN(newDate.getTime())) setFilterDate(newDate)
+                      }}
+                      className="w-full sm:w-50"
+                    />
+                  </div>
+                )}
+
+                {filterType === 'year' && (
+                  <div className="w-full sm:w-auto">
+                    <Label htmlFor="filter-year" className="text-xs text-muted-foreground mb-1 block">Chọn năm</Label>
+                    <Input
+                      id="filter-year"
+                      type="number"
+                      min="2000"
+                      max="2100"
+                      value={filterDate.getFullYear()}
+                      onChange={(e) => {
+                        const year = Number(e.target.value)
+                        if (year >= 2000 && year <= 2100) setFilterDate(new Date(year, 0, 1))
+                      }}
+                      className="w-full sm:w-40"
+                      placeholder="Năm"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleApplyFilter}
+                  disabled={isLoading}
+                  className="w-full sm:w-auto"
+                >
+                  <Badge className="h-3.5 w-3.5 mr-2" />
+                  Áp dụng lọc
+                </Button>
+              </div>
+
+              {/* Filter Info */}
+              <div className="text-xs text-muted-foreground mt-2">
+                Hiển thị: <span className="font-semibold text-foreground">{formatFilterLabel()}</span>
+                {imports && imports.total > 0 && (
+                  <span className="ml-2">• {imports.total} phiếu nhập</span>
+                )}
+              </div>
+            </div>
+
+            {/* Export Section */}
+            <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+              <Button
+                variant="default"
+                onClick={handleExportExcel}
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                disabled={!imports || imports.items.length === 0 || isLoading}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Xuất Excel
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Tổng: <span className="font-semibold text-foreground">
+                  {(imports?.items || []).reduce((sum, imp) => sum + (Number(imp.total_price) || 0), 0).toLocaleString('vi-VN')}đ
+                </span>
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* === BẢNG LỊCH SỬ NHẬP HÀNG === */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Lịch sử nhập hàng</CardTitle>
+          <CardDescription>Theo dõi các lần nhập hàng vào kho</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : !imports || imports.items.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>Không có dữ liệu nhập hàng</p>
+              <p className="text-sm mt-1">Thử thay đổi bộ lọc hoặc tạo phiếu nhập mới.</p>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mã phiếu</TableHead>
+                    <TableHead>Lý do</TableHead>
+                    <TableHead>Ngày nhập</TableHead>
+                    <TableHead>Tổng tiền</TableHead>
+                    <TableHead>Nhân viên</TableHead>
+                    <TableHead>Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {imports.items.map((imp) => (
+                    <TableRow key={imp.id}>
+                      <TableCell className="font-medium">#{imp.id}</TableCell>
+                      <TableCell>{imp.reason || "Nhập hàng"}</TableCell>
+                      <TableCell>{imp.timestamp ? new Date(imp.timestamp).toLocaleDateString("vi-VN") : "-"}</TableCell>
+                      <TableCell className="font-medium text-right">{(Number(imp.total_price) || 0).toLocaleString("vi-VN")}đ</TableCell>
+                      <TableCell>{imp.employee?.user?.full_name || "—"}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => loadImportDetail(imp.id)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(imp)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedImport(imp)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {imports.totalPages > 1 && (
+                <div className="mt-6">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => imports.hasPrevious && loadImports(currentPage - 1)}
+                          className={!imports.hasPrevious ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+                      {getPageNumbers().map((page, i) => (
+                        <PaginationItem key={i}>
+                          {page === '...' ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              isActive={currentPage === page}
+                              onClick={() => typeof page === 'number' && loadImports(page)}
+                              className="cursor-pointer"
+                            >
+                              {page}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => imports.hasNext && loadImports(currentPage + 1)}
+                          className={!imports.hasNext ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* === MODAL QUÉT BARCODE === */}
       <Dialog open={isBarcodeScannerOpen} onOpenChange={handleCloseBarcodeScanner}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -989,8 +1293,8 @@ export function ImportManagement() {
           </div>
         </DialogContent>
       </Dialog>
-  
-      {/* Detail Dialog - giữ nguyên */}
+
+      {/* === DETAIL DIALOG === */}
       <Dialog open={isDetailDialogOpen && !isLoadingDetail} onOpenChange={setIsDetailDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           {isLoadingDetail ? (
@@ -1011,8 +1315,8 @@ export function ImportManagement() {
                   </div>
                   <div>
                     <Label>Tổng tiền</Label>
-                    <div className="font-bold">
-                      {(selectedImport?.total_price || 0).toLocaleString("vi-VN")}đ
+                    <div className="font-bold text-lg">
+                      {(Number(selectedImport?.total_price) || 0).toLocaleString("vi-VN")}đ
                     </div>
                   </div>
                 </div>
@@ -1037,7 +1341,7 @@ export function ImportManagement() {
                         <TableHead>Tên</TableHead>
                         <TableHead>SL</TableHead>
                         <TableHead>Đơn vị</TableHead>
-                        <TableHead>Thành tiền</TableHead>
+                        <TableHead className="text-right">Thành tiền</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1045,9 +1349,9 @@ export function ImportManagement() {
                         selectedImport.ingredients.map((ing: any) => (
                           <TableRow key={ing.id}>
                             <TableCell>{ing.ingredient?.name || "-"}</TableCell>
-                            <TableCell>{ing.quantity || 0}</TableCell>
+                            <TableCell>{Number(ing.quantity) || 0}</TableCell>
                             <TableCell>{ing.ingredient?.unit || "-"}</TableCell>
-                            <TableCell>{(ing.total_price || 0).toLocaleString("vi-VN")}đ</TableCell>
+                            <TableCell className="text-right">{(Number(ing.total_price) || 0).toLocaleString("vi-VN")}đ</TableCell>
                           </TableRow>
                         ))
                       ) : (
@@ -1066,7 +1370,7 @@ export function ImportManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog - giữ nguyên */}
+      {/* === DELETE DIALOG === */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1082,7 +1386,7 @@ export function ImportManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Dialog - giữ nguyên */}
+      {/* === EDIT DIALOG === */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -1176,25 +1480,19 @@ export function ImportManagement() {
 
                       <div className="space-y-1">
                         <Input
-                            type="text"
-                            placeholder="Số lượng"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
-                                updateIngredient(index, "quantity", e.target.value as any)
-                              } else {
-                                toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
-                              }
-                            }}
-                            className="w-28"
-                          />
-                        {/* <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity || ""}
-                          onChange={(e) => updateIngredient(index, "quantity", Number(e.target.value) || 0)}
-                        /> */}
+                          type="text"
+                          placeholder="Số lượng"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (/^[\d]*\.?[\d]*$/.test(val) || val === "") {
+                              updateIngredient(index, "quantity", e.target.value as any)
+                            } else {
+                              toast.warn("Vui lòng chỉ nhập số hoặc dấu chấm (.)")
+                            }
+                          }}
+                          className="w-28"
+                        />
                         {ingredientErrors[index]?.quantity && (
                           <p className="text-sm text-red-500">{ingredientErrors[index].quantity}</p>
                         )}
@@ -1250,94 +1548,6 @@ export function ImportManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Table - giữ nguyên */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lịch sử nhập hàng</CardTitle>
-          <CardDescription>Theo dõi các lần nhập hàng vào kho</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã phiếu</TableHead>
-                <TableHead>Lý do</TableHead>
-                <TableHead>Ngày nhập</TableHead>
-                <TableHead>Tổng tiền</TableHead>
-                <TableHead>Nhân viên</TableHead>
-                <TableHead>Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(imports?.items || []).map((imp) => (
-                <TableRow key={imp.id}>
-                  <TableCell className="font-medium">#{imp.id}</TableCell>
-                  <TableCell>{imp.reason || "Nhập hàng"}</TableCell>
-                  <TableCell>{imp.timestamp ? new Date(imp.timestamp).toLocaleDateString("vi-VN") : "-"}</TableCell>
-                  <TableCell className="font-medium">{(imp.total_price || 0).toLocaleString("vi-VN")}đ</TableCell>
-                  <TableCell>{imp.employee?.user?.full_name || "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => loadImportDetail(imp.id)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(imp)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedImport(imp)
-                          setIsDeleteDialogOpen(true)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {imports && imports.totalPages > 1 && (
-            <div className="mt-6">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      onClick={() => imports.hasPrevious && loadImports(currentPage - 1)}
-                      className={!imports.hasPrevious ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                  </PaginationItem>
-                  {getPageNumbers().map((page, i) => (
-                    <PaginationItem key={i}>
-                      {page === '...' ? (
-                        <PaginationEllipsis />
-                      ) : (
-                        <PaginationLink
-                          isActive={currentPage === page}
-                          onClick={() => typeof page === 'number' && loadImports(page)}
-                          className="cursor-pointer"
-                        >
-                          {page}
-                        </PaginationLink>
-                      )}
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      onClick={() => imports.hasNext && loadImports(currentPage + 1)}
-                      className={!imports.hasNext ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }

@@ -13,7 +13,25 @@ export const getAllInventoryImport = async (req: Request, res: Response, next: N
     const { page = 1, limit = 10, sortBy = 'timestamp', sortOrder = 'ASC' } = getPaginationParams(req.query)
     const offset = (page - 1) * limit
 
+    const where: any = {}
+
+    // Handle date range filter
+    if (req.query.start_date || req.query.end_date) {
+      where.timestamp = {}
+      if (req.query.start_date) {
+        const startDate = new Date(req.query.start_date as string)
+        startDate.setHours(0, 0, 0, 0)
+        where.timestamp[Op.gte] = startDate
+      }
+      if (req.query.end_date) {
+        const endDate = new Date(req.query.end_date as string)
+        endDate.setHours(23, 59, 59, 999)
+        where.timestamp[Op.lte] = endDate
+      }
+    }
+
     const { rows, count } = await inventoryService.findAllWithDetails({
+      where,
       limit,
       offset,
       order: [[sortBy, sortOrder]],
