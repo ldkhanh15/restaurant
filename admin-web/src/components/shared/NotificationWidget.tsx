@@ -180,7 +180,7 @@ export function NotificationWidget() {
     onNotificationChat,
   } = notificationSocket;
 
-  // Load notifications on component mount and set up auto-refresh
+  // Load notifications on component mount only (not on every open/close)
   useEffect(() => {
     // Try to load from localStorage first for instant display
     try {
@@ -203,11 +203,11 @@ export function NotificationWidget() {
     } catch (e) {
       console.error("Failed to load cached notifications:", e);
     }
-    // Then load fresh data from API
+    // Then load fresh data from API only once on mount
     loadNotifications();
-
-    // Auto-refresh notifications every 30 second
-  }, [isOpen]);
+    // Removed auto-refresh polling to prevent 401 redirect loops
+    // Notifications will be updated via WebSocket instead
+  }, []); // Empty dependency array - only load on mount
 
   // Play notification sound
   const playNotificationSound = (type: string) => {

@@ -98,6 +98,20 @@ export function TableManagement({
   const [currentUrls, setCurrentUrls] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Form state for create dialog
+  const [createFormData, setCreateFormData] = useState({
+    table_number: "",
+    capacity: "",
+    deposit: "",
+    cancel_minutes: "",
+    status: "available" as "available" | "occupied" | "cleaning" | "reserved",
+    description: "",
+    location_area: "",
+    location_floor: "",
+    location_x: "",
+    location_y: "",
+  });
+
   // Form refs
   const createFormRef = useRef<HTMLFormElement>(null);
   const editFormRef = useRef<HTMLFormElement>(null);
@@ -240,13 +254,21 @@ export function TableManagement({
     form: HTMLFormElement,
     isEdit = false
   ): Record<string, string> => {
-    const formData = new FormData(form);
     const errors: Record<string, string> = {};
 
-    const table_number = formData.get("table_number")?.toString().trim();
-    const capacity = formData.get("capacity")?.toString();
-    const deposit = formData.get("deposit")?.toString();
-    const cancel_minutes = formData.get("cancel_minutes")?.toString();
+    // Use createFormData for create form, FormData for edit form
+    const table_number = isEdit
+      ? new FormData(form).get("table_number")?.toString().trim()
+      : createFormData.table_number?.trim();
+    const capacity = isEdit
+      ? new FormData(form).get("capacity")?.toString()
+      : createFormData.capacity;
+    const deposit = isEdit
+      ? new FormData(form).get("deposit")?.toString()
+      : createFormData.deposit;
+    const cancel_minutes = isEdit
+      ? new FormData(form).get("cancel_minutes")?.toString()
+      : createFormData.cancel_minutes;
 
     if (!table_number) errors.table_number = "Số bàn không được để trống";
     if (!capacity) errors.capacity = "Sức chứa không được để trống";
@@ -261,9 +283,15 @@ export function TableManagement({
       errors.cancel_minutes = "Thời gian hủy phải ≥ 0";
 
     // Tọa độ và tầng (nếu có)
-    const floor = formData.get("location_floor")?.toString();
-    const x = formData.get("location_x")?.toString();
-    const y = formData.get("location_y")?.toString();
+    const floor = isEdit
+      ? new FormData(form).get("location_floor")?.toString()
+      : createFormData.location_floor;
+    const x = isEdit
+      ? new FormData(form).get("location_x")?.toString()
+      : createFormData.location_x;
+    const y = isEdit
+      ? new FormData(form).get("location_y")?.toString()
+      : createFormData.location_y;
 
     if (floor && Number(floor) < 0) errors.location_floor = "Tầng phải ≥ 0";
     if (x && Number(x) < 0) errors.location_x = "Tọa độ X phải ≥ 0";
@@ -272,21 +300,14 @@ export function TableManagement({
     return errors;
   };
 
-  // Realtime validation cho Create
-  useEffect(() => {
-    if (createFormRef.current) {
-      const handleInput = () => {
-        const errors = validateForm(createFormRef.current!);
-        setCreateErrors(errors);
-      };
-      const inputs = createFormRef.current.querySelectorAll("input, select");
-      inputs.forEach((input) => input.addEventListener("input", handleInput));
-      return () =>
-        inputs.forEach((input) =>
-          input.removeEventListener("input", handleInput)
-        );
-    }
-  }, [createFormRef.current, amenities, panoramaFiles]);
+  // Validate form khi user blur khỏi input hoặc khi submit
+  // Tạm thời tắt realtime validation để tránh block input
+  // useEffect(() => {
+  //   if (isCreateTableDialogOpen && createFormRef.current) {
+  //     const errors = validateForm(createFormRef.current!);
+  //     setCreateErrors(errors);
+  //   }
+  // }, [isCreateTableDialogOpen, createFormData, amenities, panoramaFiles]);
 
   // Realtime validation cho Edit
   useEffect(() => {
@@ -314,28 +335,44 @@ export function TableManagement({
 
     setIsSubmitting(true);
     try {
-      const formValues = new FormData(form);
       const id = uuidv4();
-      const location = buildLocationFromForm(formValues);
+      // Build location from createFormData
+      const area = createFormData.location_area?.trim();
+      const floorRaw = createFormData.location_floor?.trim();
+      const xRaw = createFormData.location_x?.trim();
+      const yRaw = createFormData.location_y?.trim();
+      const hasAny = !!(area || floorRaw || xRaw || yRaw);
+      const location = hasAny
+        ? (() => {
+            const loc: any = {};
+            if (area) loc.area = area;
+            if (floorRaw) {
+              const f = Number(floorRaw);
+              if (!Number.isNaN(f) && f >= 0) loc.floor = f;
+            }
+            const coords: any = {};
+            if (xRaw) {
+              const xv = Number(xRaw);
+              if (!Number.isNaN(xv) && xv >= 0) coords.x = xv;
+            }
+            if (yRaw) {
+              const yv = Number(yRaw);
+              if (!Number.isNaN(yv) && yv >= 0) coords.y = yv;
+            }
+            if (Object.keys(coords).length) loc.coordinates = coords;
+            return loc;
+          })()
+        : undefined;
       const amenitiesObj = parseAmenitiesToObject(amenities);
 
       const payload = new FormData();
       payload.append("id", id);
-      payload.append(
-        "table_number",
-        String(formValues.get("table_number") || "")
-      );
-      payload.append("capacity", String(formValues.get("capacity") || "0"));
-      payload.append("deposit", String(formValues.get("deposit") || "0"));
-      payload.append(
-        "cancel_minutes",
-        String(formValues.get("cancel_minutes") || "0")
-      );
-      payload.append("status", String(formValues.get("status") || "available"));
-      payload.append(
-        "description",
-        String(formValues.get("description") || "")
-      );
+      payload.append("table_number", createFormData.table_number);
+      payload.append("capacity", createFormData.capacity || "0");
+      payload.append("deposit", createFormData.deposit || "0");
+      payload.append("cancel_minutes", createFormData.cancel_minutes || "0");
+      payload.append("status", createFormData.status);
+      payload.append("description", createFormData.description || "");
       if (location) payload.append("location", JSON.stringify(location));
       payload.append("amenities", JSON.stringify(amenitiesObj));
       // files
@@ -424,6 +461,18 @@ export function TableManagement({
     setCurrentUrls([]);
     setCreateErrors({});
     setEditErrors([] as any);
+    setCreateFormData({
+      table_number: "",
+      capacity: "",
+      deposit: "",
+      cancel_minutes: "",
+      status: "available",
+      description: "",
+      location_area: "",
+      location_floor: "",
+      location_x: "",
+      location_y: "",
+    });
   };
 
   const handleDeleteTable = async (id: string) => {
@@ -445,11 +494,11 @@ export function TableManagement({
   };
 
   const handleAddAmenity = () => {
-    setAmenities([...amenities, { label: "", value: "" }]);
+    setAmenities((prev) => [...prev, { label: "", value: "" }]);
   };
 
   const handleRemoveAmenity = (index: number) => {
-    setAmenities(amenities.filter((_, i) => i !== index));
+    setAmenities((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleAmenityChange = (
@@ -457,9 +506,11 @@ export function TableManagement({
     field: "label" | "value",
     value: string
   ) => {
-    const newAmenities = [...amenities];
-    newAmenities[index][field] = value;
-    setAmenities(newAmenities);
+    setAmenities((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -659,11 +710,13 @@ export function TableManagement({
           if (!open) resetForm();
         }}
       >
-        <DialogContent className="min-w-7xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Thêm bàn mới</DialogTitle>
-            <DialogDescription>
-              Thêm thông tin bàn mới vào hệ thống
+            <DialogTitle className="text-2xl font-bold">
+              Thêm bàn mới
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Điền đầy đủ thông tin để thêm bàn mới vào hệ thống
             </DialogDescription>
           </DialogHeader>
           <form
@@ -672,59 +725,126 @@ export function TableManagement({
               e.preventDefault();
               handleCreateTable(e.currentTarget);
             }}
+            className="space-y-6"
           >
-            <div className="grid grid-cols-2 gap-8 py-4">
-              <div className="space-y-4">
+            {/* Thông tin cơ bản */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <div className="h-1 w-1 rounded-full bg-primary"></div>
+                <h3 className="text-lg font-semibold">Thông tin cơ bản</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="table_number">Số bàn *</Label>
+                  <Label htmlFor="table_number" className="text-sm font-medium">
+                    Số bàn <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="table_number"
                     name="table_number"
+                    value={createFormData.table_number}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        table_number: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: Bàn 1, Bàn VIP 1"
                     required
-                    className="w-full"
+                    className={`w-full ${
+                      createErrors.table_number ? "border-red-500" : ""
+                    }`}
                   />
                   <ErrorMessage message={createErrors.table_number} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="capacity">Sức chứa *</Label>
+                  <Label htmlFor="capacity" className="text-sm font-medium">
+                    Sức chứa (người) <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="capacity"
                     name="capacity"
                     type="number"
                     min="0"
+                    value={createFormData.capacity}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        capacity: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 4, 6, 8"
                     required
-                    className="w-full"
+                    className={`w-full ${
+                      createErrors.capacity ? "border-red-500" : ""
+                    }`}
                   />
                   <ErrorMessage message={createErrors.capacity} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="deposit">Tiền cọc (VNĐ) *</Label>
+                  <Label htmlFor="deposit" className="text-sm font-medium">
+                    Tiền cọc (VNĐ) <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="deposit"
                     name="deposit"
                     type="number"
                     min="0"
+                    value={createFormData.deposit}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        deposit: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 100000"
                     required
-                    className="w-full"
+                    className={`w-full ${
+                      createErrors.deposit ? "border-red-500" : ""
+                    }`}
                   />
                   <ErrorMessage message={createErrors.deposit} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="cancel_minutes">Thời gian hủy (phút) *</Label>
+                  <Label
+                    htmlFor="cancel_minutes"
+                    className="text-sm font-medium"
+                  >
+                    Thời gian hủy (phút) <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="cancel_minutes"
                     name="cancel_minutes"
                     type="number"
                     min="0"
+                    value={createFormData.cancel_minutes}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        cancel_minutes: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 30, 60"
                     required
-                    className="w-full"
+                    className={`w-full ${
+                      createErrors.cancel_minutes ? "border-red-500" : ""
+                    }`}
                   />
                   <ErrorMessage message={createErrors.cancel_minutes} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="status">Trạng thái</Label>
-                  <Select name="status" defaultValue="available">
-                    <SelectTrigger>
+                  <Label htmlFor="status" className="text-sm font-medium">
+                    Trạng thái
+                  </Label>
+                  <Select
+                    name="status"
+                    value={createFormData.status}
+                    onValueChange={(
+                      value: "available" | "occupied" | "cleaning" | "reserved"
+                    ) => {
+                      setCreateFormData({ ...createFormData, status: value });
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Chọn trạng thái" />
                     </SelectTrigger>
                     <SelectContent>
@@ -736,179 +856,262 @@ export function TableManagement({
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Mô tả</Label>
+                  <Label htmlFor="description" className="text-sm font-medium">
+                    Mô tả
+                  </Label>
                   <Input
                     id="description"
                     name="description"
+                    value={createFormData.description}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        description: e.target.value,
+                      });
+                    }}
+                    placeholder="Mô tả về bàn (tùy chọn)"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Vị trí */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <div className="h-1 w-1 rounded-full bg-primary"></div>
+                <h3 className="text-lg font-semibold">Vị trí</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label
+                    htmlFor="location_area"
+                    className="text-sm font-medium"
+                  >
+                    Khu vực
+                  </Label>
+                  <Input
+                    id="location_area"
+                    name="location_area"
+                    value={createFormData.location_area}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        location_area: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: Gần cửa sổ, Khu VIP"
                     className="w-full"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label>Vị trí</Label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="location_area">Khu vực</Label>
-                      <Input
-                        id="location_area"
-                        name="location_area"
-                        placeholder="Gần cửa sổ"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="location_floor">Tầng</Label>
-                      <Input
-                        id="location_floor"
-                        name="location_floor"
-                        type="number"
-                        min="0"
-                        placeholder="1"
-                      />
-                      <ErrorMessage message={createErrors.location_floor} />
-                    </div>
-                    <div>
-                      <Label htmlFor="location_x">Tọa độ X</Label>
-                      <Input
-                        id="location_x"
-                        name="location_x"
-                        type="number"
-                        min="0"
-                        placeholder="10"
-                      />
-                      <ErrorMessage message={createErrors.location_x} />
-                    </div>
-                    <div>
-                      <Label htmlFor="location_y">Tọa độ Y</Label>
-                      <Input
-                        id="location_y"
-                        name="location_y"
-                        type="number"
-                        min="0"
-                        placeholder="20"
-                      />
-                      <ErrorMessage message={createErrors.location_y} />
-                    </div>
-                  </div>
+                  <Label
+                    htmlFor="location_floor"
+                    className="text-sm font-medium"
+                  >
+                    Tầng
+                  </Label>
+                  <Input
+                    id="location_floor"
+                    name="location_floor"
+                    type="number"
+                    min="0"
+                    value={createFormData.location_floor}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        location_floor: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 1, 2, 3"
+                    className={`w-full ${
+                      createErrors.location_floor ? "border-red-500" : ""
+                    }`}
+                  />
+                  <ErrorMessage message={createErrors.location_floor} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="location_x" className="text-sm font-medium">
+                    Tọa độ X
+                  </Label>
+                  <Input
+                    id="location_x"
+                    name="location_x"
+                    type="number"
+                    min="0"
+                    value={createFormData.location_x}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        location_x: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 10"
+                    className={`w-full ${
+                      createErrors.location_x ? "border-red-500" : ""
+                    }`}
+                  />
+                  <ErrorMessage message={createErrors.location_x} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="location_y" className="text-sm font-medium">
+                    Tọa độ Y
+                  </Label>
+                  <Input
+                    id="location_y"
+                    name="location_y"
+                    type="number"
+                    min="0"
+                    value={createFormData.location_y}
+                    onChange={(e) => {
+                      setCreateFormData({
+                        ...createFormData,
+                        location_y: e.target.value,
+                      });
+                    }}
+                    placeholder="VD: 20"
+                    className={`w-full ${
+                      createErrors.location_y ? "border-red-500" : ""
+                    }`}
+                  />
+                  <ErrorMessage message={createErrors.location_y} />
                 </div>
               </div>
-              <div className="space-y-4">
-                <div className="grid gap-2">
-                  <div className="flex justify-between items-center">
-                    <Label>Ảnh Panorama</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isSubmitting}
-                      onClick={() =>
-                        document.getElementById("panorama_upload")?.click()
-                      }
-                      className="bg-black text-white hover:bg-gray-800"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />{" "}
-                      {isSubmitting ? "Đang xử lý..." : "Chọn ảnh"}
-                    </Button>
-                    <Input
-                      id="panorama_upload"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={handleImageSelect}
-                    />
-                  </div>
-                  <div className="space-y-2 max-h-96 overflow-y-auto p-2 border rounded-md">
-                    {panoramaPreviews.length > 0 ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        {panoramaPreviews.map((url, index) => (
-                          <div key={index} className="relative">
-                            <img
-                              src={url}
-                              alt={`Panorama ${index + 1}`}
-                              className="w-full h-40 object-cover rounded"
-                            />
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="absolute top-1 right-1 bg-red-600 text-white hover:bg-red-700"
-                              onClick={() => handleRemovePanorama(index)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center">
-                        Chưa có ảnh panorama
-                      </p>
-                    )}
-                  </div>
+            </div>
+
+            {/* Ảnh Panorama */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b">
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-1 rounded-full bg-primary"></div>
+                  <h3 className="text-lg font-semibold">Ảnh Panorama</h3>
                 </div>
-                <div className="grid gap-2">
-                  <div className="flex justify-between items-center">
-                    <Label>Tiện nghi</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAddAmenity}
-                      className="bg-black text-white hover:bg-gray-800"
-                    >
-                      <Plus className="h-4 w-4 mr-2" /> Thêm tiện nghi
-                    </Button>
-                  </div>
-                  <div className="space-y-2 max-h-96 overflow-y-auto p-2 border rounded-md">
-                    {amenities.map((amenity, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input
-                          value={amenity.label}
-                          onChange={(e) =>
-                            handleAmenityChange(index, "label", e.target.value)
-                          }
-                          placeholder="Tên tiện nghi"
-                          className="w-2/3"
-                        />
-                        <Input
-                          value={amenity.value}
-                          onChange={(e) =>
-                            handleAmenityChange(index, "value", e.target.value)
-                          }
-                          placeholder="Giá trị"
-                          className="w-1/3"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSubmitting}
+                  onClick={() =>
+                    document.getElementById("panorama_upload")?.click()
+                  }
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {isSubmitting ? "Đang xử lý..." : "Chọn ảnh"}
+                </Button>
+                <Input
+                  id="panorama_upload"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+              </div>
+              <div className="border rounded-lg p-4 bg-muted/30">
+                {panoramaPreviews.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {panoramaPreviews.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Panorama ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-md border"
                         />
                         <Button
                           type="button"
                           variant="destructive"
                           size="sm"
-                          onClick={() => handleRemoveAmenity(index)}
+                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleRemovePanorama(index)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
                     ))}
-                    {amenities.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center">
-                        Chưa có tiện nghi
-                      </p>
-                    )}
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p className="text-sm">Chưa có ảnh panorama</p>
+                    <p className="text-xs mt-1">Nhấn "Chọn ảnh" để thêm ảnh</p>
+                  </div>
+                )}
               </div>
             </div>
-            <DialogFooter>
+
+            {/* Tiện nghi */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b">
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-1 rounded-full bg-primary"></div>
+                  <h3 className="text-lg font-semibold">Tiện nghi</h3>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddAmenity}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Thêm tiện nghi
+                </Button>
+              </div>
+              <div className="border rounded-lg p-4 bg-muted/30 space-y-3 max-h-64 overflow-y-auto">
+                {amenities.length > 0 ? (
+                  amenities.map((amenity, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        value={amenity.label}
+                        onChange={(e) =>
+                          handleAmenityChange(index, "label", e.target.value)
+                        }
+                        placeholder="Tên tiện nghi (VD: WiFi, Điều hòa)"
+                        className="flex-1"
+                      />
+                      <Input
+                        value={amenity.value}
+                        onChange={(e) =>
+                          handleAmenityChange(index, "value", e.target.value)
+                        }
+                        placeholder="Giá trị (VD: true, Có)"
+                        className="w-32"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveAmenity(index)}
+                        className="shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <p className="text-sm">Chưa có tiện nghi</p>
+                    <p className="text-xs mt-1">
+                      Nhấn "Thêm tiện nghi" để thêm
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsCreateTableDialogOpen(false)}
-                className="bg-red-600 text-white hover:bg-red-700"
+                disabled={isSubmitting}
               >
                 Hủy
               </Button>
               <Button
                 type="submit"
-                className="bg-black text-white hover:bg-gray-800"
-                disabled={isSubmitting || Object.keys(createErrors).length > 0}
+                disabled={isSubmitting}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {isSubmitting ? "Đang thêm..." : "Thêm bàn"}
               </Button>

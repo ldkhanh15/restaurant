@@ -136,10 +136,10 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD:-restaurant_password}
       # Chatbot URL using Docker service name (must include /api prefix)
       CHATBOT_URL: http://chatbot:7860/api
-      CLIENT_ADMIN_URL: http://44.222.106.220:3001
-      CLIENT_USER_URL: http://44.222.106.220:3000
-      VNP_RETURN_URL_ORDER: http://44.222.106.220:8000/api/payments/vnpay/return
-      VNP_RETURN_URL_RESERVATION: http://44.222.106.220:8000/api/payments/vnpay/return
+      CLIENT_ADMIN_URL: http://3.231.228.129:3001
+      CLIENT_USER_URL: http://3.231.228.129:3000
+      VNP_RETURN_URL_ORDER: http://3.231.228.129:8000/api/payments/vnpay/return
+      VNP_RETURN_URL_RESERVATION: http://3.231.228.129:8000/api/payments/vnpay/return
     volumes:
       - ./be_restaurant/uploads:/app/uploads
       - ./be_restaurant/logs:/app/logs
@@ -181,8 +181,8 @@ services:
       args:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://44.222.106.220:8000
-        NEXT_PUBLIC_USER_WEB_URL: http://44.222.106.220:3000
+        NEXT_PUBLIC_API_URL: http://3.231.228.129:8000
+        NEXT_PUBLIC_USER_WEB_URL: http://3.231.228.129:3000
     container_name: restaurant_admin_web
     restart: unless-stopped
     ports:
@@ -215,7 +215,7 @@ services:
       args:
         # Build args - pass API URL for build-time embedding
         # For Docker network, use backend service name
-        NEXT_PUBLIC_API_URL: http://44.222.106.220:8000
+        NEXT_PUBLIC_API_URL: http://3.231.228.129:8000
     container_name: restaurant_user_web
     restart: unless-stopped
     ports:
