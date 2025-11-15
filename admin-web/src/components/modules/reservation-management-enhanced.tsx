@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { api, Reservation, ReservationFilters } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "react-toastify";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/providers/WebSocketProvider";
 
@@ -108,7 +109,6 @@ export function ReservationManagementEnhanced({
   className,
 }: ReservationManagementEnhancedProps) {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<
@@ -116,6 +116,7 @@ export function ReservationManagementEnhanced({
   >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [selectedReservation, setSelectedReservation] =
@@ -170,7 +171,7 @@ export function ReservationManagementEnhanced({
   useEffect(() => {
     loadReservations();
     loadStats();
-  }, [currentPage, statusFilter, dateFilter]);
+  }, [currentPage, statusFilter, dateFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     if (!showCreateDialog) return;
@@ -192,7 +193,7 @@ export function ReservationManagementEnhanced({
 
   const handleCreateReservation = async () => {
     if (!selectedTableId || !reservationTime) {
-      toast({ title: "Thiếu thông tin", description: "Chọn bàn và thời gian" });
+      toast.warning("Thiếu thông tin: Chọn bàn và thời gian");
       return;
     }
     try {
@@ -227,14 +228,10 @@ export function ReservationManagementEnhanced({
       setNotes("");
       setPreOrderItems([]);
       await loadReservations();
-      toast({ title: "Thành công", description: "Tạo đặt bàn thành công" });
+      toast.success("Tạo đặt bàn thành công");
     } catch (error) {
       console.error(error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tạo đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể tạo đặt bàn");
     } finally {
       setIsCreatingReservation(false);
     }
@@ -279,10 +276,7 @@ export function ReservationManagementEnhanced({
     onReservationCreated((newReservation) => {
       console.log("newReservation", newReservation);
       setReservations((prev) => [newReservation, ...prev]);
-      toast({
-        title: "Đặt bàn mới",
-        description: `Đặt bàn #${newReservation.id} đã được tạo`,
-      });
+      toast.info(`Đặt bàn mới: #${newReservation.id} đã được tạo`);
     });
 
     onReservationUpdated((updatedReservation) => {
@@ -301,10 +295,9 @@ export function ReservationManagementEnhanced({
           r.id === reservation.id ? { ...r, status: reservation.status } : r
         )
       );
-      toast({
-        title: "Trạng thái đặt bàn thay đổi",
-        description: `Đặt bàn #${reservation.id} đã chuyển sang ${reservation.status}`,
-      });
+      toast.info(
+        `Trạng thái đặt bàn: #${reservation.id} đã chuyển sang ${reservation.status}`
+      );
     });
 
     onReservationCheckedIn((data) => {
@@ -314,36 +307,28 @@ export function ReservationManagementEnhanced({
           r.id === reservation.id ? { ...r, status: "checked_in" } : r
         )
       );
-      toast({
-        title: "Check-in thành công",
-        description: `Đặt bàn #${reservation.id} đã check-in`,
-        variant: "default",
-      });
+      toast.success(
+        `Check-in thành công: Đặt bàn #${reservation.id} đã check-in`
+      );
     });
 
     onDepositPaymentRequested((data) => {
       const { reservation, payment_url } = data;
-      toast({
-        title: "Yêu cầu thanh toán cọc",
-        description: `Đặt bàn #${reservation.id} cần thanh toán cọc`,
-        variant: "default",
-      });
+      toast.warning(
+        `Yêu cầu thanh toán cọc: Đặt bàn #${reservation.id} cần thanh toán cọc`
+      );
     });
 
     onDepositPaymentCompleted((reservation) => {
-      toast({
-        title: "Thanh toán cọc hoàn tất",
-        description: `Đặt bàn #${reservation.id} đã thanh toán cọc`,
-        variant: "default",
-      });
+      toast.success(
+        `Thanh toán cọc hoàn tất: Đặt bàn #${reservation.id} đã thanh toán cọc`
+      );
     });
 
     onDepositPaymentFailed((reservation) => {
-      toast({
-        title: "Thanh toán cọc thất bại",
-        description: `Đặt bàn #${reservation.id} thanh toán cọc thất bại`,
-        variant: "destructive",
-      });
+      toast.error(
+        `Thanh toán cọc thất bại: Đặt bàn #${reservation.id} thanh toán cọc thất bại`
+      );
     });
 
     onTableAssigned((data: any) => {
@@ -354,11 +339,9 @@ export function ReservationManagementEnhanced({
         setReservations((prev) =>
           prev.map((r) => (r.id === reservationId ? { ...r, table } : r))
         );
-        toast({
-          title: "Bàn đã được chỉ định",
-          description: `Đặt bàn #${reservationId} đã được chỉ định bàn`,
-          variant: "default",
-        });
+        toast.info(
+          `Bàn đã được chỉ định: Đặt bàn #${reservationId} đã được chỉ định bàn`
+        );
       }
     });
 
@@ -366,11 +349,9 @@ export function ReservationManagementEnhanced({
       const reservationId =
         data.reservationId || data.reservation_id || data.id;
       if (reservationId) {
-        toast({
-          title: "Ghi chú đã được thêm",
-          description: `Đã thêm ghi chú cho đặt bàn #${reservationId}`,
-          variant: "default",
-        });
+        toast.info(
+          `Ghi chú đã được thêm: Đã thêm ghi chú cho đặt bàn #${reservationId}`
+        );
       }
     });
 
@@ -391,26 +372,10 @@ export function ReservationManagementEnhanced({
     toast,
   ]);
 
-  // Filter reservations locally (for search only, other filters are handled by API)
+  // Filter reservations locally (only for display, search is now handled by API)
   useEffect(() => {
-    let filtered = reservations;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (reservation) =>
-          reservation.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          reservation.user?.username
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          reservation.user?.phone?.includes(searchTerm) ||
-          reservation.table?.table_number
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredReservations(filtered);
-  }, [reservations, searchTerm]);
+    setFilteredReservations(reservations);
+  }, [reservations]);
 
   const loadReservations = async () => {
     setIsLoading(true);
@@ -420,7 +385,7 @@ export function ReservationManagementEnhanced({
         limit: pageSize,
       };
 
-    if (statusFilter !== "all") {
+      if (statusFilter !== "all") {
         filters.status = statusFilter;
       }
 
@@ -428,8 +393,8 @@ export function ReservationManagementEnhanced({
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         filters.start_date = today.toISOString();
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
         filters.end_date = tomorrow.toISOString();
       } else if (dateFilter === "tomorrow") {
         const tomorrow = new Date();
@@ -448,6 +413,11 @@ export function ReservationManagementEnhanced({
         filters.end_date = weekLater.toISOString();
       }
 
+      // Add search parameter if provided
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        filters.search = debouncedSearchTerm.trim();
+      }
+
       const response = await api.reservations.getAll(filters);
       setReservations(Array.isArray(response.data) ? response.data : []);
 
@@ -457,11 +427,7 @@ export function ReservationManagementEnhanced({
       }
     } catch (error) {
       console.error("Failed to load reservations:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tải danh sách đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể tải danh sách đặt bàn");
     } finally {
       setIsLoading(false);
     }
@@ -499,41 +465,25 @@ export function ReservationManagementEnhanced({
             : reservation
         )
       );
-      toast({
-        title: "Thành công",
-        description: "Cập nhật trạng thái đặt bàn thành công",
-      });
+      toast.success("Cập nhật trạng thái đặt bàn thành công");
     } catch (error) {
       console.error("Failed to update reservation status:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể cập nhật trạng thái đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể cập nhật trạng thái đặt bàn");
     }
   };
 
   const checkInReservation = async (reservationId: string) => {
     try {
       await api.reservations.checkIn(reservationId);
-      setReservations((prev) =>
-        prev.map((reservation) =>
-          reservation.id === reservationId
-            ? { ...reservation, status: "checked_in" as any }
-            : reservation
-        )
-      );
-      toast({
-        title: "Thành công",
-        description: "Check-in đặt bàn thành công",
-      });
-    } catch (error) {
+      await loadReservations(); // Reload to get updated data
+      toast.success("Check-in đặt bàn thành công");
+    } catch (error: any) {
       console.error("Failed to check in reservation:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể check-in đặt bàn",
-        variant: "destructive",
-      });
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Không thể check-in đặt bàn";
+      toast.error(errorMessage);
     }
   };
 
@@ -549,17 +499,10 @@ export function ReservationManagementEnhanced({
       await api.reservations.delete(reservationToDelete.id);
       setShowDeleteDialog(false);
       setReservationToDelete(null);
-      toast({
-        title: "Thành công",
-        description: "Xóa đặt bàn thành công",
-      });
+      toast.success("Xóa đặt bàn thành công");
     } catch (error) {
       console.error("Failed to delete reservation:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể xóa đặt bàn",
-        variant: "destructive",
-      });
+      toast.error("Không thể xóa đặt bàn");
     }
   };
 
@@ -914,18 +857,18 @@ export function ReservationManagementEnhanced({
                   <WifiOff className="h-5 w-5 text-red-600" />
                 </div>
               )}
-            <div>
+              <div>
                 <p className="text-sm font-medium text-gray-600">
                   Trạng thái kết nối
-              </p>
+                </p>
                 <p className="text-base font-bold">
-                {isWebSocketConnected ? (
+                  {isWebSocketConnected ? (
                     <span className="text-emerald-600">Đang hoạt động</span>
-                ) : (
-                  <span className="text-red-600">Mất kết nối</span>
-                )}
-              </p>
-            </div>
+                  ) : (
+                    <span className="text-red-600">Mất kết nối</span>
+                  )}
+                </p>
+              </div>
             </div>
             {isWebSocketConnected && (
               <Badge className="bg-emerald-500 text-white px-3 py-1 text-xs">
@@ -1056,14 +999,28 @@ export function ReservationManagementEnhanced({
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Số đặt bàn</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Bàn</TableHead>
-                    <TableHead>Số người</TableHead>
-                    <TableHead>Ngày giờ</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Thao tác</TableHead>
+                  <TableRow className="bg-gradient-to-r from-amber-50/50 to-white border-b-2 border-amber-200">
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số đặt bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Khách hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số người
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Ngày giờ
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Trạng thái
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thao tác
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1076,14 +1033,14 @@ export function ReservationManagementEnhanced({
                     return (
                       <TableRow
                         key={reservation.id}
-                        className="hover:bg-amber-50/50 transition-colors border-b border-gray-100"
+                        className="hover:bg-gradient-to-r hover:from-amber-50/50 hover:to-white transition-all duration-200 border-b border-gray-100 group"
                       >
                         <TableCell className="font-medium py-4">
-                          <div>
-                            <p className="font-bold text-amber-900">
-                              #{reservation.id}
+                          <div className="space-y-1">
+                            <p className="font-bold text-base bg-gradient-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
+                              #{reservation.id.slice(0, 8).toUpperCase()}
                             </p>
-                            <p className="text-xs text-amber-600 font-medium mt-0.5">
+                            <p className="text-xs text-amber-600 font-medium">
                               {getRelativeTime(reservation.reservation_time)}
                             </p>
                           </div>
@@ -1091,26 +1048,28 @@ export function ReservationManagementEnhanced({
                         <TableCell className="py-4">
                           <div className="space-y-1.5">
                             <div className="flex items-center gap-2">
-                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
-                                <User className="h-4 w-4 text-amber-700" />
+                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md">
+                                <User className="h-4 w-4 text-white" />
                               </div>
                               <span className="font-semibold text-gray-900">
                                 {reservation.user?.username || "Khách vãng lai"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 ml-10">
-                              <Phone className="h-3 w-3 text-amber-500" />
-                              <span className="text-sm text-gray-600">
+                              <Phone className="h-3 w-3 text-amber-600" />
+                              <span className="text-sm text-gray-600 font-medium">
                                 {reservation.user?.phone || "N/A"}
                               </span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+                              <MapPin className="h-3.5 w-3.5 text-green-700" />
+                            </div>
                             <div>
-                              <p className="font-medium">
+                              <p className="font-semibold text-gray-700">
                                 {reservation.table?.table_number || "N/A"}
                               </p>
                               <p className="text-xs text-muted-foreground">
@@ -1120,33 +1079,37 @@ export function ReservationManagementEnhanced({
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {reservation.num_people}
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                              <Users className="h-3.5 w-3.5 text-purple-700" />
+                            </div>
+                            <span className="font-semibold text-gray-700">
+                              {reservation.num_people} người
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="font-medium">
+                        <TableCell className="py-4">
+                          <div className="text-sm space-y-0.5">
+                            <p className="font-semibold text-gray-700">
                               {formatDateTime(reservation.reservation_time)}
                             </p>
                             {isUpcomingReservation && (
-                              <p className="text-xs text-green-600">Sắp tới</p>
+                              <Badge className="bg-green-100 text-green-700 border-green-300 text-xs font-semibold px-2 py-0.5">
+                                Sắp tới
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
-                              <StatusIcon className="h-4 w-4 text-blue-700" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center">
+                              <StatusIcon className="h-3.5 w-3.5 text-indigo-700" />
                             </div>
                             <Badge
                               className={`status-badge ${getStatusColor(
                                 reservation.status
-                              )} font-medium px-3 py-1`}
+                              )} font-semibold px-3 py-1 shadow-sm`}
                             >
                               {getStatusLabel(reservation.status)}
                             </Badge>
@@ -1160,7 +1123,7 @@ export function ReservationManagementEnhanced({
                               onClick={() =>
                                 router.push(`/reservations/${reservation.id}`)
                               }
-                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm"
+                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm hover:shadow-md transition-all"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

@@ -161,12 +161,22 @@ export default function CustomerInfoStep() {
                 type="number"
                 min="1"
                 max="20"
-                value={draft.num_people}
-                onChange={(e) =>
-                  updateDraft({ num_people: parseInt(e.target.value) || 1 })
-                }
+                value={draft.num_people || ""}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (value > 0) {
+                    updateDraft({ num_people: value });
+                  } else if (e.target.value === "") {
+                    updateDraft({ num_people: 0 });
+                  }
+                }}
                 className="border-accent/20 focus:border-accent transition-all duration-200"
               />
+              {draft.num_people <= 0 && (
+                <p className="text-xs text-destructive mt-1">
+                  Số lượng khách phải lớn hơn 0
+                </p>
+              )}
             </motion.div>
 
             <motion.div

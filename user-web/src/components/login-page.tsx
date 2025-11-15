@@ -23,7 +23,7 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ redirectTo = "/" }: LoginPageProps) {
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, user, logout } = useAuth();
   const { navigate } = useRouter();
   const [formData, setFormData] = useState({
     email: "",
@@ -47,7 +47,7 @@ export default function LoginPage({ redirectTo = "/" }: LoginPageProps) {
         const target = redirectTo.startsWith("/") ? redirectTo : "/";
         window.location.href = target;
       } else {
-        setError("Email hoặc mật khẩu không đúng");
+        setError("Email hoặc mật khẩu không đúng. Nếu bạn là admin/nhân viên, vui lòng đăng nhập qua hệ thống quản lý.");
       }
     } catch (err: any) {
       const errorMsg =

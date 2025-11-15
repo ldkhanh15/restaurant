@@ -148,6 +148,18 @@ class ReservationService {
   }
 
   async createReservation(data: CreateReservationData) {
+    // Validate num_people
+    if (!data.num_people || data.num_people <= 0) {
+      throw new AppError("Số lượng khách phải lớn hơn 0", 400);
+    }
+
+    // Validate reservation time is not in the past
+    const now = new Date();
+    const reservationTime = new Date(data.reservation_time);
+    if (reservationTime < now) {
+      throw new AppError("Không thể đặt bàn trong quá khứ. Vui lòng chọn thời gian trong tương lai", 400);
+    }
+
     // Check table/table group availability
     if (data.table_id) {
       const table = await Table.findByPk(data.table_id);
@@ -155,7 +167,10 @@ class ReservationService {
         throw new AppError("Table not found", 404);
       }
       if (data.num_people > table.capacity) {
-        throw new AppError("Number of people exceeds table capacity", 400);
+        throw new AppError(
+          `Số lượng khách (${data.num_people}) vượt quá sức chứa của bàn (${table.capacity} người)`,
+          400
+        );
       }
 
       // Validate reservation time overlap - this will check for existing reservations
@@ -570,6 +585,44 @@ class ReservationService {
 
     if (reservation.status !== "confirmed") {
       throw new AppError("Reservation is not confirmed", 400);
+    }
+
+    // Validate check-in time: allow check-in from 5 minutes before to 10 minutes after reservation time
+    const reservationTime = new Date(reservation.reservation_time);
+    const now = new Date();
+    const minutesBefore = 5;
+    const minutesAfter = 10;
+
+    const earliestCheckIn = new Date(reservationTime);
+    earliestCheckIn.setMinutes(earliestCheckIn.getMinutes() - minutesBefore);
+
+    const latestCheckIn = new Date(reservationTime);
+    latestCheckIn.setMinutes(latestCheckIn.getMinutes() + minutesAfter);
+
+    if (now < earliestCheckIn) {
+      const minutesUntil = Math.ceil(
+        (earliestCheckIn.getTime() - now.getTime()) / (1000 * 60)
+      );
+      throw new AppError(
+        `Chưa đến giờ check-in. Vui lòng quay lại sau ${minutesUntil} phút nữa (từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )}).`,
+        400
+      );
+    }
+
+    if (now > latestCheckIn) {
+      throw new AppError(
+        `Đã quá thời gian check-in. Thời gian check-in hợp lệ là từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )} đến ${latestCheckIn.toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}.`,
+        400
+      );
     }
 
     const result = await reservationRepository.checkIn(id);

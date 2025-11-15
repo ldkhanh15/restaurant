@@ -69,28 +69,42 @@ class PaymentService extends BaseService<Payment> {
   }
 
   private buildVnpUrl(params: Record<string, any>, returnUrl: string) {
+    // Validate return URL - must not be empty
+    if (!returnUrl || returnUrl.trim() === "") {
+      throw new Error(
+        "VNPay return URL is required. Please set VNP_RETURN_URL_ORDER, VNP_RETURN_URL, or CLIENT_URL environment variable."
+      );
+    }
+
     const baseUrl = process.env.VNP_URL || (process.env as any).vnp_Url;
+    if (!baseUrl) {
+      throw new Error(
+        "VNPay base URL is required. Please set VNP_URL environment variable."
+      );
+    }
+
     params.vnp_Version = "2.1.0";
     params.vnp_Command = "pay";
     params.vnp_TmnCode =
       process.env.VNP_TMN_CODE || (process.env as any).vnp_TmnCode;
     params.vnp_CurrCode = "VND";
     params.vnp_Locale = "vn";
-    params.vnp_ReturnUrl = returnUrl;
+    params.vnp_ReturnUrl = returnUrl.trim();
     params.vnp_CreateDate = this.formatLocalDateYYYYMMDDHHmmss(new Date());
-
-  // VNPay expects vnp_SecureHashType to be present and equal to 'HMACSHA512'
-  // (see VNPay docs). Include it before signing so that the signing string
-  // excludes it but the final query contains it as required.
-  params.vnp_SecureHashType = 'HMACSHA512';
 
     if (params.vnp_IpAddr === "::1") params.vnp_IpAddr = "127.0.0.1";
 
-    // ⚠️ KHÔNG encode trước khi sign
-    const sortedParams = this.sortObject(params);
+    // ⚠️ VNPay: vnp_SecureHashType và vnp_SecureHash KHÔNG được include trong signing string
+    // Tạo copy của params để sign (loại bỏ vnp_SecureHashType)
+    const paramsForSign = { ...params };
+    delete (paramsForSign as any).vnp_SecureHashType;
+    delete (paramsForSign as any).vnp_SecureHash;
 
+    // Sort và encode params để sign
+    const sortedParams = this.sortObject(paramsForSign);
     const signData = qs.stringify(sortedParams, { encode: false });
 
+    // Tính hash
     const secureHash = crypto
       .createHmac(
         "sha512",
@@ -99,10 +113,13 @@ class PaymentService extends BaseService<Payment> {
       .update(signData, "utf-8")
       .digest("hex");
 
-    // ✅ Theo sample: không encode thêm khi build URL (đã encoded ở sortObject)
-    const queryString = qs.stringify(sortedParams, { encode: false });
+    // Build query string từ params gốc (bao gồm vnp_SecureHashType)
+    const paramsForQuery = { ...params };
+    paramsForQuery.vnp_SecureHashType = "HMACSHA512";
+    const sortedParamsForQuery = this.sortObject(paramsForQuery);
+    const queryString = qs.stringify(sortedParamsForQuery, { encode: false });
 
-    // Add hash type per VNPay recommendation
+    // Thêm hash vào cuối
     return `${baseUrl}?${queryString}&vnp_SecureHash=${secureHash}`;
   }
 
@@ -125,10 +142,25 @@ class PaymentService extends BaseService<Payment> {
 
     if (bankCode) params.vnp_BankCode = bankCode;
 
-    const url = this.buildVnpUrl(
-      params,
-      process.env.VNP_RETURN_URL_ORDER || ""
-    );
+    // Build return URL with fallback - ensure it's never empty
+    let returnUrl = process.env.VNP_RETURN_URL_ORDER || "";
+    if (!returnUrl || returnUrl.trim() === "") {
+      // Fallback: use VNP_RETURN_URL or construct from CLIENT_URL
+      returnUrl =
+        process.env.VNP_RETURN_URL ||
+        `${
+          process.env.CLIENT_URL || "http://localhost:3000"
+        }/api/payments/vnpay/return`;
+    }
+
+    // Final validation - ensure returnUrl is not empty
+    if (!returnUrl || returnUrl.trim() === "") {
+      throw new Error(
+        "VNPay return URL cannot be empty. Please set VNP_RETURN_URL_ORDER, VNP_RETURN_URL, or CLIENT_URL environment variable."
+      );
+    }
+
+    const url = this.buildVnpUrl(params, returnUrl.trim());
     return { url, txnRef };
   }
 

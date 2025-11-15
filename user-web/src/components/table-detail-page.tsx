@@ -162,7 +162,9 @@ export default function TableDetailPage() {
       kitchen: "Bếp",
     };
 
-    const base = labels[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const base =
+      labels[key] ??
+      key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
     return typeof value === "boolean"
       ? `${base}: ${value ? "Có" : "Không có"}`
@@ -192,7 +194,9 @@ export default function TableDetailPage() {
     if (iconMap[key]) return iconMap[key];
 
     const firstLetter = key.charAt(0).toUpperCase();
-    const displayName = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const displayName = key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
     return (
       <div
@@ -206,8 +210,18 @@ export default function TableDetailPage() {
 
   // fake time slots
   const timeSlots = [
-    "09:00", "10:00", "11:00", "12:00", "13:00",
-    "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"
+    "09:00",
+    "10:00",
+    "11:00",
+    "12:00",
+    "13:00",
+    "14:00",
+    "15:00",
+    "16:00",
+    "17:00",
+    "18:00",
+    "19:00",
+    "20:00",
   ].map((time) => ({
     time,
     available: Math.random() > 0.3,
@@ -258,20 +272,26 @@ export default function TableDetailPage() {
   const status = getStatusConfig(table.status);
 
   // Format location: Tầng X – Khu Y
-  const locationText = table.location?.floor && table.location?.area
-    ? `Tầng ${table.location.floor} – ${table.location.area}`
-    : table.location?.floor
-    ? `Tầng ${table.location.floor}`
-    : table.location?.area
-    ? table.location.area
-    : "Không xác định vị trí";
+  const locationText =
+    table.location?.floor && table.location?.area
+      ? `Tầng ${table.location.floor} – ${table.location.area}`
+      : table.location?.floor
+      ? `Tầng ${table.location.floor}`
+      : table.location?.area
+      ? table.location.area
+      : "Không xác định vị trí";
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header: Nút "Quay lại" ở góc trên trái */}
         <div className="mb-6">
-          <Button variant="ghost" size="sm" onClick={() => router.back()} className="text-sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="text-sm"
+          >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Quay lại
           </Button>
@@ -299,7 +319,9 @@ export default function TableDetailPage() {
                 <img
                   key={currentImageIndex}
                   src={images[currentImageIndex]}
-                  alt={`Bàn ${table.table_number} - ảnh ${currentImageIndex + 1}`}
+                  alt={`Bàn ${table.table_number} - ảnh ${
+                    currentImageIndex + 1
+                  }`}
                   className="w-full h-full object-cover transition-opacity duration-500"
                 />
               </div>
@@ -310,7 +332,10 @@ export default function TableDetailPage() {
                   {status.icon}
                   <span className="ml-1">{status.text}</span>
                 </Badge>
-                <Badge variant="secondary" className="bg-background/80 text-foreground">
+                <Badge
+                  variant="secondary"
+                  className="bg-background/80 text-foreground"
+                >
                   <Users className="w-4 h-4 mr-2" />
                   {table.capacity} khách
                 </Badge>
@@ -324,7 +349,8 @@ export default function TableDetailPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground leading-relaxed mb-6">
-                  {table.description ?? "Bàn ăn thoải mái, phù hợp cho mọi dịp."}
+                  {table.description ??
+                    "Bàn ăn thoải mái, phù hợp cho mọi dịp."}
                 </p>
 
                 {/* Amenities */}
@@ -344,7 +370,9 @@ export default function TableDetailPage() {
                           }`}
                         >
                           {getAmenityIcon(key)}
-                          <span className="font-medium">{getAmenityLabel(key, value)}</span>
+                          <span className="font-medium">
+                            {getAmenityLabel(key, value)}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -364,14 +392,18 @@ export default function TableDetailPage() {
                     <DollarSign className="w-4 h-4 text-primary" />
                     Tiền đặt cọc
                   </span>
-                  <span className="font-semibold">{formatVND(table.deposit)}</span>
+                  <span className="font-semibold">
+                    {formatVND(table.deposit)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-primary" />
                     Hủy miễn phí
                   </span>
-                  <span className="font-semibold">Trước {table.cancel_minutes} phút</span>
+                  <span className="font-semibold">
+                    Trước {table.cancel_minutes} phút
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -383,7 +415,9 @@ export default function TableDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   Đặt bàn
-                  <span className="text-sm font-normal text-muted-foreground">1 giờ</span>
+                  <span className="text-sm font-normal text-muted-foreground">
+                    1 giờ
+                  </span>
                 </CardTitle>
                 <CardDescription>Chọn khung giờ phù hợp</CardDescription>
               </CardHeader>
@@ -396,7 +430,9 @@ export default function TableDetailPage() {
                     {timeSlots.map((slot) => (
                       <Button
                         key={slot.time}
-                        variant={selectedTime === slot.time ? "default" : "outline"}
+                        variant={
+                          selectedTime === slot.time ? "default" : "outline"
+                        }
                         size="sm"
                         disabled={!slot.available}
                         onClick={() => setSelectedTime(slot.time)}
@@ -434,7 +470,18 @@ export default function TableDetailPage() {
                     disabled={!selectedTime || table.status !== "available"}
                   >
                     <Calendar className="w-4 h-4 mr-2" />
-                    {table.status === "available" ? "Đặt ngay" : "Không khả dụng"}
+                    {table.status === "available"
+                      ? "Đặt ngay"
+                      : "Không khả dụng"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-0"
+                    size="lg"
+                    onClick={() => router.push(`/tables/${tableId}/order`)}
+                  >
+                    <Utensils className="w-4 h-4 mr-2" />
+                    Sử dụng bàn này (Khách vãng lai)
                   </Button>
                   <Button variant="outline" className="w-full" size="lg">
                     <Phone className="w-4 h-4 mr-2" />

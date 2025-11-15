@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +82,10 @@ const statusConfig: Record<
 
 export default function OrdersPage() {
   const router = useRouter();
-  const { user, isLoading: authLoading } = useEnsureAuthenticated();
+  // Allow guest access for walk-in customers
+  const { user, isLoading: authLoading } = useEnsureAuthenticated({
+    optional: true,
+  });
   const orderSocket = useOrderSocket();
   const {
     orders,
@@ -94,11 +98,12 @@ export default function OrdersPage() {
   } = useOrderStore();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  // Load orders on mount
+  // Load orders on mount and when filters change - support both authenticated and guest users
   useEffect(() => {
-    if (authLoading || !user?.id) {
+    if (authLoading) {
       return;
     }
 
@@ -106,20 +111,57 @@ export default function OrdersPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await orderService.getMyOrders({
-          page: 1,
-          limit: 50,
-        });
 
-        if (response.status === "success") {
-          // Handle paginated response
-          const ordersData = Array.isArray(response.data.data)
-            ? response.data.data
-            : Array.isArray(response.data)
-            ? response.data
-            : [];
-          setOrders(ordersData);
+        let ordersData: any[] = [];
+
+        if (user?.id) {
+          // Load orders for authenticated user
+          const params: any = {
+            page: 1,
+            limit: 50,
+          };
+
+          // Add search parameter if provided
+          if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+            params.search = debouncedSearchQuery.trim();
+          }
+
+          // Add status filter if provided
+          if (statusFilter !== "all") {
+            params.status = statusFilter;
+          }
+
+          const response = await orderService.getMyOrders(params);
+
+          if (response.status === "success") {
+            ordersData = Array.isArray(response.data.data)
+              ? response.data.data
+              : Array.isArray(response.data)
+              ? response.data
+              : [];
+          }
+        } else {
+          // For guest users, load orders from localStorage (walk-in customers)
+          const savedOrderId = localStorage.getItem("current_order_id");
+          const savedTableId = localStorage.getItem("current_table_id");
+
+          if (savedOrderId) {
+            try {
+              const orderResponse = await orderService.getOrderById(
+                savedOrderId
+              );
+              if (orderResponse.status === "success" && orderResponse.data) {
+                ordersData = [orderResponse.data];
+              }
+            } catch (err) {
+              // Order might not exist or expired, clear localStorage
+              localStorage.removeItem("current_order_id");
+              localStorage.removeItem("current_table_id");
+            }
+          }
         }
+
+        setOrders(ordersData);
       } catch (err: any) {
         console.error("Failed to load orders:", err);
         setError(err.message || "Không thể tải danh sách đơn hàng");
@@ -134,7 +176,15 @@ export default function OrdersPage() {
     };
 
     loadOrders();
-  }, [user?.id, authLoading, setOrders, setLoading, setError]);
+  }, [
+    user?.id,
+    authLoading,
+    debouncedSearchQuery,
+    statusFilter,
+    setOrders,
+    setLoading,
+    setError,
+  ]);
 
   // Listen to real-time order updates
   useEffect(() => {
@@ -183,8 +233,13 @@ export default function OrdersPage() {
     // Listen to new orders
     const handleOrderCreated = (order: any) => {
       console.log("[Orders] New order created:", order);
-      // Only add if it belongs to current user
-      if (order.user_id === user?.id || order.customer_id === user?.id) {
+      // For authenticated users, check user_id. For guests, check if order matches saved order
+      const savedOrderId = localStorage.getItem("current_order_id");
+      const isMyOrder = user?.id
+        ? order.user_id === user.id || order.customer_id === user.id
+        : savedOrderId === order.id;
+
+      if (isMyOrder) {
         const totalAmount =
           typeof order.total_amount === "number"
             ? order.total_amount
@@ -212,7 +267,8 @@ export default function OrdersPage() {
         setOrders((prev: Order[]) => [newOrder, ...prev]);
         toast({
           title: "Đơn hàng mới",
-          description: `Đơn hàng ${order.id} đã được tạo`,
+          description: `Đơn hàng ${order.id.slice(0, 8)} đã được tạo`,
+          variant: "success",
         });
       }
     };
@@ -220,15 +276,23 @@ export default function OrdersPage() {
     // Listen to payment completion
     const handlePaymentCompleted = (order: any) => {
       console.log("[Orders] Payment completed:", order);
-      updateOrderInList(order.id, {
-        status: "paid" as any,
-        payment_status: "paid" as any,
-        updated_at: order.updated_at,
-      });
-      toast({
-        title: "Thanh toán thành công",
-        description: `Đơn hàng ${order.id} đã được thanh toán`,
-      });
+      const savedOrderId = localStorage.getItem("current_order_id");
+      const isMyOrder = user?.id
+        ? order.user_id === user.id || order.customer_id === user.id
+        : savedOrderId === order.id;
+
+      if (isMyOrder) {
+        updateOrderInList(order.id, {
+          status: "paid" as any,
+          payment_status: "paid" as any,
+          updated_at: order.updated_at,
+        });
+        toast({
+          title: "Thanh toán thành công",
+          description: `Đơn hàng ${order.id.slice(0, 8)} đã được thanh toán`,
+          variant: "success",
+        });
+      }
     };
 
     // Listen to order item events - update order totals
@@ -330,17 +394,21 @@ export default function OrdersPage() {
     setOrders,
   ]);
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.table?.table_number &&
-        order.table.table_number
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()));
-    const matchesStatus =
-      statusFilter === "all" || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Filter orders locally (only for guest users, authenticated users use API search)
+  const filteredOrders = user?.id
+    ? orders // For authenticated users, API already filters
+    : orders.filter((order) => {
+        const matchesSearch =
+          !debouncedSearchQuery ||
+          order.id.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          (order.table?.table_number &&
+            order.table.table_number
+              .toLowerCase()
+              .includes(debouncedSearchQuery.toLowerCase()));
+        const matchesStatus =
+          statusFilter === "all" || order.status === statusFilter;
+        return matchesSearch && matchesStatus;
+      });
 
   if (authLoading || isLoading) {
     return (
@@ -353,9 +421,8 @@ export default function OrdersPage() {
     );
   }
 
-  if (!user?.id) {
-    return null; // Will redirect
-  }
+  // Allow guest users to view their walk-in orders
+  // No need to redirect - they can see orders from localStorage
 
   return (
     <motion.div
@@ -501,21 +568,22 @@ export default function OrdersPage() {
                       layout
                     >
                       <Card
-                        className="cursor-pointer hover:shadow-xl transition-all border-2 hover:border-accent/50 shadow-md bg-card"
+                        className="cursor-pointer hover:shadow-2xl transition-all duration-300 border-2 hover:border-primary/50 shadow-lg bg-gradient-to-br from-white to-cream-50/50 overflow-hidden group"
                         onClick={() => router.push(`/orders/${order.id}`)}
                       >
-                        <CardContent className="p-6">
+                        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <CardContent className="p-6 relative">
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
+                              <div className="flex items-center gap-3 mb-3">
                                 <motion.h3
                                   whileHover={{ scale: 1.05 }}
-                                  className="font-semibold text-lg font-elegant"
+                                  className="font-bold text-xl font-elegant bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent"
                                 >
-                                  {order.id}
+                                  Đơn #{order.id.slice(0, 8).toUpperCase()}
                                 </motion.h3>
                                 <motion.div
-                                  whileHover={{ scale: 1.1 }}
+                                  whileHover={{ scale: 1.1, rotate: 5 }}
                                   transition={{
                                     type: "spring",
                                     stiffness: 400,
@@ -524,7 +592,7 @@ export default function OrdersPage() {
                                   <Badge
                                     className={`${
                                       status.bgColor || "bg-gray-500"
-                                    } text-white shadow-md`}
+                                    } text-white shadow-lg px-3 py-1 text-xs font-semibold border-2 border-white/20`}
                                   >
                                     {status.label}
                                   </Badge>
@@ -534,55 +602,74 @@ export default function OrdersPage() {
                                 variants={containerVariants}
                                 initial="hidden"
                                 animate="visible"
-                                className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground"
+                                className="flex flex-wrap items-center gap-4 text-sm"
                               >
                                 <motion.div
                                   variants={itemVariants}
-                                  className="flex items-center gap-1"
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-full border border-primary/20"
                                 >
-                                  <Calendar className="h-4 w-4 text-accent" />
-                                  {format(
-                                    new Date(order.created_at),
-                                    "dd/MM/yyyy HH:mm",
-                                    { locale: vi }
-                                  )}
+                                  <Calendar className="h-4 w-4 text-primary" />
+                                  <span className="font-medium text-gray-700">
+                                    {format(
+                                      new Date(order.created_at),
+                                      "dd/MM/yyyy HH:mm",
+                                      { locale: vi }
+                                    )}
+                                  </span>
                                 </motion.div>
                                 <motion.div
                                   variants={itemVariants}
-                                  className="flex items-center gap-1"
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-accent/5 rounded-full border border-accent/20"
                                 >
                                   <ShoppingCart className="h-4 w-4 text-accent" />
-                                  {order.items?.length || 0} món
+                                  <span className="font-medium text-gray-700">
+                                    {order.items?.length || 0} món
+                                  </span>
                                 </motion.div>
                                 {order.table?.table_number && (
-                                  <motion.div variants={itemVariants}>
-                                    Bàn {order.table.table_number}
+                                  <motion.div
+                                    variants={itemVariants}
+                                    className="px-3 py-1.5 bg-blue-50 rounded-full border border-blue-200"
+                                  >
+                                    <span className="font-medium text-blue-700">
+                                      Bàn {order.table.table_number}
+                                    </span>
                                   </motion.div>
                                 )}
                               </motion.div>
                             </div>
-                            <div className="text-right">
-                              <motion.p
+                            <div className="text-right ml-4">
+                              <motion.div
                                 key={order.final_amount}
-                                initial={{ scale: 1.1 }}
-                                animate={{ scale: 1 }}
-                                className="text-2xl font-bold text-primary mb-2"
+                                initial={{ scale: 1.1, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="mb-3"
                               >
-                                {order.final_amount.toLocaleString("vi-VN")}đ
-                              </motion.p>
+                                <p className="text-xs text-muted-foreground mb-1">
+                                  Tổng tiền
+                                </p>
+                                <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                                  {Number(
+                                    order.final_amount ||
+                                      order.total_amount ||
+                                      0
+                                  ).toLocaleString("vi-VN")}
+                                  <span className="text-lg ml-1">đ</span>
+                                </p>
+                              </motion.div>
                               <motion.div
                                 variants={buttonVariants}
                                 whileHover="hover"
                                 whileTap="tap"
                               >
                                 <Button
-                                  variant="ghost"
+                                  variant="default"
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     router.push(`/orders/${order.id}`);
                                   }}
-                                  className="mt-2 border-accent/20 hover:bg-accent/10"
+                                  className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-lg hover:shadow-xl transition-all"
                                 >
                                   Chi tiết
                                   <ArrowRight className="h-4 w-4 ml-2" />
@@ -601,24 +688,34 @@ export default function OrdersPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  <Card className="border-2 border-accent/20">
-                    <CardContent className="p-12 text-center">
+                  <Card className="border-2 border-dashed border-accent/30 bg-gradient-to-br from-cream-50/50 to-white">
+                    <CardContent className="p-16 text-center">
                       <motion.div
                         animate={{
                           scale: [1, 1.1, 1],
+                          rotate: [0, 5, -5, 0],
                         }}
                         transition={{
-                          duration: 2,
+                          duration: 3,
                           repeat: Infinity,
                           ease: "easeInOut",
                         }}
+                        className="mb-6"
                       >
-                        <ShoppingCart className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                        <div className="relative inline-block">
+                          <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
+                          <ShoppingCart className="h-20 w-20 mx-auto text-primary/60 relative z-10" />
+                        </div>
                       </motion.div>
-                      <p className="text-muted-foreground text-lg">
+                      <h3 className="text-2xl font-bold text-gray-700 mb-2">
                         {searchQuery || statusFilter !== "all"
-                          ? "Không tìm thấy đơn hàng nào phù hợp"
-                          : "Bạn chưa có đơn hàng nào"}
+                          ? "Không tìm thấy đơn hàng"
+                          : "Chưa có đơn hàng nào"}
+                      </h3>
+                      <p className="text-muted-foreground text-base">
+                        {searchQuery || statusFilter !== "all"
+                          ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm"
+                          : "Hãy đặt món để tạo đơn hàng đầu tiên của bạn"}
                       </p>
                     </CardContent>
                   </Card>

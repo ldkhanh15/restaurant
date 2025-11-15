@@ -133,6 +133,8 @@ export function useReservationWebSocket(): UseReservationWebSocketReturn {
   const onReservationCreated = useCallback(
     (callback: (reservation: any) => void) => {
       if (socket) {
+        socket.on("admin:reservation:created", callback);
+        // Legacy support
         socket.on("reservation:created", callback);
         socket.on("reservationCreated", callback);
       }

@@ -41,7 +41,7 @@ export default function NotificationBell() {
       try {
         setIsLoading(true);
         const [listRes, countRes] = await Promise.all([
-          notificationService.getAll({ limit: 20 }),
+          notificationService.getAll({ limit: 50 }),
           notificationService.getUnreadCount(),
         ]);
 
@@ -56,6 +56,17 @@ export default function NotificationBell() {
             ? responseData
             : [];
           setNotifications(notifs);
+
+          // Persist to localStorage
+          try {
+            localStorage.setItem("user_notifications", JSON.stringify(notifs));
+            localStorage.setItem(
+              "user_notifications_timestamp",
+              new Date().toISOString()
+            );
+          } catch (e) {
+            console.error("Failed to persist notifications:", e);
+          }
         }
 
         if (countRes.status === "success") {
@@ -63,15 +74,138 @@ export default function NotificationBell() {
         }
       } catch (error) {
         console.error("Failed to load notifications:", error);
+        // Try to load from localStorage on error
+        try {
+          const cached = localStorage.getItem("user_notifications");
+          if (cached) {
+            const cachedNotifs = JSON.parse(cached);
+            setNotifications(cachedNotifs);
+            setUnreadCount(
+              cachedNotifs.filter((n: NotificationType) => !n.is_read).length
+            );
+          }
+        } catch (e) {
+          console.error("Failed to load cached notifications:", e);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
+    // Try to load from localStorage first
+    try {
+      const cached = localStorage.getItem("user_notifications");
+      const cachedTimestamp = localStorage.getItem(
+        "user_notifications_timestamp"
+      );
+      if (cached && cachedTimestamp) {
+        const cachedNotifs = JSON.parse(cached);
+        const timestamp = new Date(cachedTimestamp);
+        const now = new Date();
+        if (now.getTime() - timestamp.getTime() < 5 * 60 * 1000) {
+          setNotifications(cachedNotifs);
+          setUnreadCount(
+            cachedNotifs.filter((n: NotificationType) => !n.is_read).length
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load cached notifications:", e);
+    }
+
     loadNotifications();
+
+    // Auto-refresh every 30 seconds
+    const refreshInterval = setInterval(() => {
+      loadNotifications();
+    }, 30000);
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
   }, [user?.id]);
 
-  // Listen to realtime notifications
+  // Play notification sound
+  const playNotificationSound = (type: string) => {
+    try {
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      let frequency = 800;
+      if (type.includes("order") || type.includes("payment")) {
+        frequency = 1000;
+      } else if (type.includes("support") || type.includes("urgent")) {
+        frequency = 1200;
+      }
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = frequency;
+      oscillator.type = "sine";
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.3
+      );
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.error("Failed to play notification sound:", error);
+    }
+  };
+
+  // Show browser notification
+  const showBrowserNotification = (notification: NotificationType) => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      const notificationOptions: NotificationOptions = {
+        body: notification.content || notification.title,
+        icon: "/favicon.ico",
+        badge: "/favicon.ico",
+        tag: notification.id,
+        requireInteraction:
+          notification.type?.includes("support") ||
+          notification.type?.includes("urgent"),
+        silent: false,
+        timestamp: notification.sent_at
+          ? new Date(notification.sent_at).getTime()
+          : Date.now(),
+        data: notification.data,
+      };
+
+      const browserNotification = new Notification(
+        notification.title || "Thông báo mới",
+        notificationOptions
+      );
+
+      if (!notificationOptions.requireInteraction) {
+        setTimeout(() => {
+          browserNotification.close();
+        }, 5000);
+      }
+
+      browserNotification.onclick = () => {
+        window.focus();
+        browserNotification.close();
+      };
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          showBrowserNotification(notification);
+        }
+      });
+    }
+  };
+
+  // Listen to realtime notifications with enhanced handling
   useEffect(() => {
     if (!notificationSocket.isConnected) return;
 
@@ -88,15 +222,52 @@ export default function NotificationBell() {
         sent_at: notification.created_at,
         status: "sent",
       };
-      setNotifications((prev) => [notif, ...prev]);
+
+      // Prevent duplicates
+      setNotifications((prev) => {
+        const exists = prev.find((n) => n.id === notif.id);
+        if (exists) return prev;
+        return [notif, ...prev];
+      });
+
       if (!notif.is_read) {
         setUnreadCount((prev) => prev + 1);
       }
+
+      // Play sound for important notifications
+      const importantTypes = [
+        "order_created",
+        "order_status_changed",
+        "payment_completed",
+        "payment_failed",
+        "reservation_created",
+      ];
+      if (importantTypes.includes(notif.type || "")) {
+        playNotificationSound(notif.type || "");
+      }
+
+      // Show browser notification
+      showBrowserNotification(notif);
+
+      // Show toast
       toast({
         title: notif.title || "Thông báo mới",
         description: notif.content,
+        variant:
+          notif.type?.includes("error") || notif.type?.includes("failed")
+            ? "destructive"
+            : "default",
       });
     });
+
+    // Request notification permission on mount
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
+      Notification.requestPermission();
+    }
 
     // Listen to updates (mark as read)
     notificationSocket.onNotificationUpdate((data) => {

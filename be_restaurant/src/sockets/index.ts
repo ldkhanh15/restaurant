@@ -5,6 +5,7 @@ import registerNotificationSocket from "./notificationSocket";
 import registerOrderSocket from "./orderSocket";
 import registerReservationSocket from "./reservationSocket";
 import registerChatSocket from "./chatSocket";
+import registerTableSocket from "./tableSocket";
 import { AppError } from "../middlewares/errorHandler";
 
 let ioInstance: Server | null = null;
@@ -303,6 +304,7 @@ export const initSocket = (server: HTTPServer) => {
   registerNotificationSocket(io);
   registerOrderSocket(io);
   registerReservationSocket(io);
+  registerTableSocket(io);
 
   ioInstance = io;
   return io;

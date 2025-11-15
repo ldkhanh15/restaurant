@@ -78,8 +78,8 @@ EXPOSE 3001
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOSTNAME="0.0.0.0"
-# Limit Node.js memory for production (96MB heap for frontend)
-ENV NODE_OPTIONS="--max-old-space-size=96"
+# Limit Node.js memory for production (80MB heap for frontend - optimized)
+ENV NODE_OPTIONS="--max-old-space-size=80"
 
 # Health check (accept 200 or 307 redirect)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

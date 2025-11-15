@@ -1,10 +1,47 @@
 import { Router } from "express";
 import * as orderController from "../controllers/orderController";
-import { authenticate, authorize } from "../middlewares/auth";
+import * as paymentController from "../controllers/paymentController";
+import {
+  authenticate,
+  authorize,
+  authenticateOptional,
+} from "../middlewares/auth";
 import { body, query, param } from "express-validator";
 import { validate } from "../middlewares/validator";
 
 const router = Router();
+
+// Create order from table (for guest customers - no auth required)
+router.post(
+  "/tables/:tableId/orders",
+  authenticateOptional,
+  [param("tableId").isUUID().withMessage("Invalid table ID"), validate],
+  orderController.createOrderFromTable
+);
+
+// Get order by table (for walk-in customers - optional auth)
+// MUST be before router.use(authenticate) to allow guest access
+router.get(
+  "/table/:tableId",
+  authenticateOptional,
+  [
+    param("tableId").isUUID().withMessage("Invalid table ID"),
+    query("status")
+      .optional()
+      .isIn([
+        "pending",
+        "dining",
+        "preparing",
+        "ready",
+        "delivered",
+        "paid",
+        "waiting_payment",
+        "cancelled",
+      ]),
+    validate,
+  ],
+  orderController.getOrderByTable
+);
 
 router.use(authenticate);
 
@@ -44,31 +81,30 @@ router.get(
   orderController.getAllOrders
 );
 
-// Get order by ID
+// Get order by ID (allow optional auth for walk-in customers)
 router.get(
   "/:id",
+  authenticateOptional,
   [param("id").isUUID().withMessage("Invalid order ID"), validate],
   orderController.getOrderById
 );
 
-// Get order by table
-router.get(
-  "/table/:tableId",
+// Add item to order for walk-in customers (by table) - must be before authenticate
+router.post(
+  "/tables/:tableId/items",
+  authenticateOptional,
   [
-    query("status")
-      .optional()
-      .isIn([
-        "pending",
-        "preparing",
-        "ready",
-        "delivered",
-        "paid",
-        "cancelled",
-      ]),
+    param("tableId").isUUID().withMessage("Invalid table ID"),
+    body("dish_id").isUUID().withMessage("Invalid dish ID"),
+    body("quantity")
+      .isInt({ min: 1 })
+      .withMessage("Quantity must be at least 1"),
     validate,
   ],
-  orderController.getOrderByTable
+  orderController.addItemToOrderByTable
 );
+
+router.use(authenticate);
 
 // Create new order
 router.post(
@@ -186,6 +222,20 @@ router.post(
   orderController.requestPayment
 );
 
+// Request payment retry (for failed payments)
+router.post(
+  "/:id/payment/retry",
+  [
+    param("id").isUUID().withMessage("Invalid order ID"),
+    body("method")
+      .isIn(["vnpay", "cash"])
+      .withMessage("Method must be vnpay or cash"),
+    body("bankCode").optional().isString(),
+    validate,
+  ],
+  paymentController.requestOrderPaymentRetry
+);
+
 // Request cash payment (notify admin)
 router.post(
   "/:id/payment/cash",
@@ -226,6 +276,63 @@ router.get(
   "/stats/today",
   authorize("admin", "employee"),
   orderController.getTodayStats
+);
+
+// Excel Export Routes
+router.get(
+  "/export/revenue",
+  authorize("admin", "employee"),
+  [
+    query("start_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid start_date format"),
+    query("end_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid end_date format"),
+    query("status")
+      .optional()
+      .isIn(["pending", "dining", "paid", "waiting_payment", "cancelled"]),
+    query("table_id").optional().isUUID(),
+    query("user_id").optional().isUUID(),
+    validate,
+  ],
+  orderController.exportOrderRevenue
+);
+
+router.get(
+  "/stats/popular-dishes",
+  authorize("admin", "employee"),
+  [
+    query("start_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid start_date format"),
+    query("end_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid end_date format"),
+    validate,
+  ],
+  orderController.exportPopularDishes
+);
+
+router.get(
+  "/stats/top-customers",
+  authorize("admin", "employee"),
+  [
+    query("start_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid start_date format"),
+    query("end_date")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid end_date format"),
+    validate,
+  ],
+  orderController.exportTopCustomers
 );
 
 export default router;

@@ -19,6 +19,7 @@ export interface OrderFilters {
   customer_id?: string;
   table_id?: string;
   table_group_id?: string;
+  search?: string; // Search by order ID, user name/email/phone, table number
   page?: number;
   limit?: number;
 }
@@ -101,17 +102,33 @@ class OrderRepository {
       where.table_group_id = whereFilters.table_group_id;
     }
 
+    // Handle search filter
+    const includeOptions: any[] = [
+      { model: User, as: "user" },
+      { model: Table, as: "table" },
+      { model: Reservation, as: "reservation" },
+      { model: Voucher, as: "voucher" },
+    ];
+
+    // If search is provided, add search conditions
+    if (whereFilters.search && whereFilters.search.trim()) {
+      const searchTerm = whereFilters.search.trim();
+      where[Op.or] = [
+        { id: { [Op.like]: `%${searchTerm}%` } },
+        { "$user.username$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.full_name$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.email$": { [Op.like]: `%${searchTerm}%` } },
+        { "$user.phone$": { [Op.like]: `%${searchTerm}%` } },
+        { "$table.table_number$": { [Op.like]: `%${searchTerm}%` } },
+      ];
+    }
+
     const { rows, count } = await Order.findAndCountAll({
       where,
       limit,
       offset,
       order: [["created_at", "DESC"]],
-      include: [
-        { model: User, as: "user" },
-        { model: Table, as: "table" },
-        { model: Reservation, as: "reservation" },
-        { model: Voucher, as: "voucher" },
-      ],
+      include: includeOptions,
     });
 
     return { rows, count, page, limit };
@@ -141,7 +158,14 @@ class OrderRepository {
   ): Promise<OrderWithDetails | null> {
     const where: any = { table_id: tableId };
     if (status) {
+      // If status is provided, use it as filter
       where.status = status;
+    } else {
+      // If no status provided, exclude "available", "paid", and "pending" statuses
+      // Get active orders that are not completed/paid and not pending
+      where.status = {
+        [Op.notIn]: ["available", "paid", "pending"],
+      };
     }
 
     const order = await Order.findOne({
@@ -149,7 +173,7 @@ class OrderRepository {
       include: [
         { model: User, as: "user" },
         { model: Table, as: "table" },
-        { model: TableGroup, as: "table_group" },
+        { model: TableGroup, as: "tableGroup" },
         { model: Reservation, as: "reservation" },
         { model: Voucher, as: "voucher" },
         {
@@ -178,7 +202,7 @@ class OrderRepository {
       include: [
         { model: User, as: "user" },
         { model: Table, as: "table" },
-        { model: TableGroup, as: "table_group" },
+        { model: TableGroup, as: "tableGroup" },
         { model: Reservation, as: "reservation" },
         { model: Voucher, as: "voucher" },
         {
@@ -240,25 +264,15 @@ class OrderRepository {
       throw new AppError("Order not found", 404);
     }
 
-    // Check if item already exists
-    const existingItem = await OrderItem.findOne({
-      where: { order_id: orderId, dish_id: dishId },
+    // Luôn tạo OrderItem mới mỗi lần order để track status riêng biệt
+    // Không merge quantity với item cũ để tránh mất thông tin status của từng lần order
+    return await OrderItem.create({
+      order_id: orderId,
+      dish_id: dishId,
+      quantity,
+      price,
+      status: "pending",
     });
-
-    if (existingItem) {
-      await existingItem.update({
-        quantity: Number(existingItem.quantity) + Number(quantity),
-      });
-      return existingItem;
-    } else {
-      return await OrderItem.create({
-        order_id: orderId,
-        dish_id: dishId,
-        quantity,
-        price,
-        status: "pending",
-      });
-    }
   }
 
   async updateItemQuantity(

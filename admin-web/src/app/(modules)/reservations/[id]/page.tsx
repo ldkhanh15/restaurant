@@ -203,21 +203,85 @@ export default function ReservationDetailPage() {
   const checkInReservation = async () => {
     try {
       await api.reservations.checkIn(reservationId);
-      setReservation((prev) =>
-        prev ? { ...prev, status: "checked_in" as any } : null
-      );
+      await loadReservation(); // Reload to get updated data
       toast({
         title: "Thành công",
         description: "Check-in đặt bàn thành công",
+        variant: "success",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to check in reservation:", error);
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Không thể check-in đặt bàn";
       toast({
         title: "Lỗi",
-        description: "Không thể check-in đặt bàn",
+        description: errorMessage,
         variant: "destructive",
       });
     }
+  };
+
+  // Check if check-in is allowed based on time
+  const canCheckIn = (
+    reservation: ReservationDetailResponse | null
+  ): {
+    allowed: boolean;
+    message?: string;
+    earliestTime?: Date;
+    latestTime?: Date;
+  } => {
+    if (!reservation || reservation.status !== "confirmed") {
+      return { allowed: false, message: "Đặt bàn chưa được xác nhận" };
+    }
+
+    const reservationTime = new Date(reservation.reservation_time);
+    const now = new Date();
+    const minutesBefore = 5;
+    const minutesAfter = 10;
+
+    const earliestCheckIn = new Date(reservationTime);
+    earliestCheckIn.setMinutes(earliestCheckIn.getMinutes() - minutesBefore);
+
+    const latestCheckIn = new Date(reservationTime);
+    latestCheckIn.setMinutes(latestCheckIn.getMinutes() + minutesAfter);
+
+    if (now < earliestCheckIn) {
+      const minutesUntil = Math.ceil(
+        (earliestCheckIn.getTime() - now.getTime()) / (1000 * 60)
+      );
+      return {
+        allowed: false,
+        message: `Chưa đến giờ check-in. Vui lòng quay lại sau ${minutesUntil} phút nữa (từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )}).`,
+        earliestTime: earliestCheckIn,
+        latestTime: latestCheckIn,
+      };
+    }
+
+    if (now > latestCheckIn) {
+      return {
+        allowed: false,
+        message: `Đã quá thời gian check-in. Thời gian check-in hợp lệ là từ ${earliestCheckIn.toLocaleTimeString(
+          "vi-VN",
+          { hour: "2-digit", minute: "2-digit" }
+        )} đến ${latestCheckIn.toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}.`,
+        earliestTime: earliestCheckIn,
+        latestTime: latestCheckIn,
+      };
+    }
+
+    return {
+      allowed: true,
+      earliestTime: earliestCheckIn,
+      latestTime: latestCheckIn,
+    };
   };
 
   const handleSave = async () => {
@@ -1123,15 +1187,44 @@ export default function ReservationDetailPage() {
               <CardTitle className="text-amber-900">Thao tác</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-6">
-              {reservation.status === "confirmed" && isUpcomingReservation && (
-                <Button
-                  onClick={checkInReservation}
-                  className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md"
-                >
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  Check-in
-                </Button>
-              )}
+              {reservation.status === "confirmed" &&
+                isUpcomingReservation &&
+                (() => {
+                  const checkInStatus = canCheckIn(reservation);
+                  return (
+                    <div className="space-y-2">
+                      <Button
+                        onClick={checkInReservation}
+                        disabled={!checkInStatus.allowed}
+                        className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <UserCheck className="h-4 w-4 mr-2" />
+                        Check-in
+                      </Button>
+                      {!checkInStatus.allowed && checkInStatus.message && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          {checkInStatus.message}
+                        </p>
+                      )}
+                      {checkInStatus.allowed &&
+                        checkInStatus.earliestTime &&
+                        checkInStatus.latestTime && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            Thời gian check-in:{" "}
+                            {checkInStatus.earliestTime.toLocaleTimeString(
+                              "vi-VN",
+                              { hour: "2-digit", minute: "2-digit" }
+                            )}{" "}
+                            -{" "}
+                            {checkInStatus.latestTime.toLocaleTimeString(
+                              "vi-VN",
+                              { hour: "2-digit", minute: "2-digit" }
+                            )}
+                          </p>
+                        )}
+                    </div>
+                  );
+                })()}
 
               {reservation.status !== "cancelled" &&
                 reservation.status !== "completed" && (

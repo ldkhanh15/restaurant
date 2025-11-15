@@ -15,13 +15,26 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseURL}/api${endpoint}`;
 
+    // Get token, but validate it exists and is not empty
+    // For walk-in customers, we should not send token at all
     const token = localStorage.getItem("auth_token");
+    const hasValidToken = token && token.trim().length > 0;
+
+    // Check if we're in a walk-in customer context (no user logged in)
+    // If there's no user in localStorage/auth context, don't send token
+    // Note: user is stored as "restaurant_user" in auth.tsx
+    const userStr = localStorage.getItem("restaurant_user");
+    const isWalkInCustomer =
+      !userStr || userStr === "null" || userStr === "undefined";
 
     const config: RequestInit = {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
+        // Only add Authorization header if token exists, is valid, and user is logged in
+        // Don't send token for walk-in customers
+        ...(hasValidToken &&
+          !isWalkInCustomer && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
     };
@@ -31,6 +44,26 @@ class ApiClient {
       const data = await response.json();
 
       if (!response.ok) {
+        // If 401 and we have a token, it might be expired or invalid
+        // For walk-in customers, we should not send token at all
+        // But if we get 401 with a token, it means the token is invalid
+        if (response.status === 401 && hasValidToken) {
+          // Check if this is a walk-in customer scenario (no user logged in)
+          // If the error message suggests invalid token, we might want to clear it
+          // But be careful - only clear if it's clearly an auth error
+          const errorMsg = data?.message || data?.error || "";
+          if (
+            errorMsg.includes("token") ||
+            errorMsg.includes("expired") ||
+            errorMsg.includes("Invalid")
+          ) {
+            // Token is invalid - but don't clear it automatically
+            // The auth system should handle token refresh/removal
+            console.warn(
+              "[apiClient] Received 401 with token - token may be invalid"
+            );
+          }
+        }
         const errorMessage =
           data?.message || data?.error || `HTTP ${response.status}`;
         const error: any = new Error(errorMessage);

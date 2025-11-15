@@ -6,12 +6,13 @@ import { useAuth } from "@/lib/auth";
 
 interface UseEnsureAuthenticatedOptions {
   redirectTo?: string;
+  optional?: boolean; // If true, don't redirect if not authenticated
 }
 
 export function useEnsureAuthenticated(
   options: UseEnsureAuthenticatedOptions = {}
 ) {
-  const { redirectTo = "/login" } = options;
+  const { redirectTo = "/login", optional = false } = options;
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -25,11 +26,11 @@ export function useEnsureAuthenticated(
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!optional && !isLoading && !user) {
       const encoded = encodeURIComponent(redirectTarget);
       router.replace(`${redirectTo}?redirect=${encoded}`);
     }
-  }, [isLoading, user, router, redirectTo, redirectTarget]);
+  }, [isLoading, user, router, redirectTo, redirectTarget, optional]);
 
   return { user, isLoading };
 }

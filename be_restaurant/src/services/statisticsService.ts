@@ -12,8 +12,8 @@ export interface RevenueStats {
   total_orders: number;
   total_reservations: number;
   total_payments: number;
-  average_order_value: number;
-  average_reservation_value: number;
+  total_order_revenue: number;
+  total_deposit_revenue: number;
 }
 
 export interface OrderStats {
@@ -114,8 +114,8 @@ class StatisticsService {
       total_orders: 0,
       total_reservations: 0,
       total_payments: totalPayments,
-      average_order_value: 0,
-      average_reservation_value: 0,
+      total_order_revenue: totalOrderRevenue,
+      total_deposit_revenue: totalDepositRevenue,
     };
   }
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,11 +50,22 @@ import {
   MapPin,
   TrendingUp,
   AlertCircle,
+  Download,
+  FileSpreadsheet,
+  UserX,
 } from "lucide-react";
 import { api, Order, OrderFilters } from "@/lib/api";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "react-toastify";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/providers/WebSocketProvider";
+import { exportService } from "@/services/exportService";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 const ORDER_STATUSES = [
   {
@@ -96,12 +108,12 @@ export function OrderManagementEnhanced({
   className,
 }: OrderManagementEnhancedProps) {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -123,6 +135,8 @@ export function OrderManagementEnhanced({
   const [availableTables, setAvailableTables] = useState<any[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>("");
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
 
   // WebSocket integration
   const { orderSocket } = useWebSocketContext();
@@ -138,6 +152,13 @@ export function OrderManagementEnhanced({
     onVoucherApplied,
     onVoucherRemoved,
     onOrderMerged,
+    onTableOrderCreated,
+    onTableOrderUpdated,
+    onTableGuestJoined,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
+    onOrderItemStatusChanged,
     removeListeners,
   } = orderSocket;
 
@@ -145,7 +166,13 @@ export function OrderManagementEnhanced({
   useEffect(() => {
     loadOrders();
     loadStats();
-  }, [currentPage, statusFilter, dateFilter, tableIdFilter]);
+  }, [
+    currentPage,
+    statusFilter,
+    dateFilter,
+    tableIdFilter,
+    debouncedSearchTerm,
+  ]);
 
   // Load tables when open create dialog
   useEffect(() => {
@@ -172,14 +199,10 @@ export function OrderManagementEnhanced({
       setShowCreateDialog(false);
       setSelectedTableId("");
       await loadOrders();
-      toast({ title: "Thành công", description: "Tạo đơn hàng thành công" });
+      toast.success("Tạo đơn hàng thành công");
     } catch (error) {
       console.error(error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể tạo đơn hàng",
-        variant: "destructive",
-      });
+      toast.error("Không thể tạo đơn hàng");
     } finally {
       setIsCreatingOrder(false);
     }
@@ -189,10 +212,7 @@ export function OrderManagementEnhanced({
   useEffect(() => {
     onOrderCreated((newOrder) => {
       setOrders((prev) => [newOrder, ...prev]);
-      toast({
-        title: "Đơn hàng mới",
-        description: `Đơn hàng #${newOrder.id.slice(0, 8)} đã được tạo`,
-      });
+      toast.info(`Đơn hàng mới: #${newOrder.id.slice(0, 8)} đã được tạo`);
     });
 
     onOrderUpdated((updatedOrder) => {
@@ -209,12 +229,11 @@ export function OrderManagementEnhanced({
           o.id === order.id ? { ...o, status: order.status } : o
         )
       );
-      toast({
-        title: "Trạng thái đơn hàng thay đổi",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã chuyển sang ${
+      toast.info(
+        `Trạng thái đơn hàng #${order.id.slice(0, 8)} đã chuyển sang ${
           order.status
-        }`,
-      });
+        }`
+      );
     });
 
     onPaymentRequested((order) => {
@@ -224,64 +243,117 @@ export function OrderManagementEnhanced({
         : "";
       const amount = order.final_amount || order.total_amount || 0;
 
-      toast({
-        title: "Yêu cầu thanh toán",
-        description: `Đơn hàng #${order.id.slice(0, 8)} yêu cầu thanh toán ${
+      toast.warning(
+        `Yêu cầu thanh toán: Đơn hàng #${order.id.slice(0, 8)} - ${
           paymentMethod === "cash" ? "tiền mặt" : "online"
-        }. Số tiền: ${Number(amount).toLocaleString("vi-VN")}đ${paymentNote}`,
-        variant: paymentMethod === "cash" ? "default" : "default",
-      });
+        } - ${Number(amount).toLocaleString("vi-VN")}đ${paymentNote}`
+      );
     });
 
     onPaymentCompleted((order) => {
-      toast({
-        title: "Thanh toán hoàn tất",
-        description: `Đơn hàng #${order.id.slice(
+      toast.success(
+        `Thanh toán hoàn tất: Đơn hàng #${order.id.slice(
           0,
           8
-        )} đã thanh toán thành công`,
-        variant: "default",
-      });
+        )} đã thanh toán thành công`
+      );
     });
 
     onSupportRequested((order) => {
-      toast({
-        title: "Yêu cầu hỗ trợ",
-        description: `Đơn hàng #${order.id.slice(0, 8)} cần hỗ trợ`,
-        variant: "destructive",
-      });
+      toast.warning(
+        `Yêu cầu hỗ trợ: Đơn hàng #${order.id.slice(0, 8)} cần hỗ trợ`
+      );
     });
 
     onPaymentFailed((order) => {
-      toast({
-        title: "Thanh toán thất bại",
-        description: `Đơn hàng #${order.id.slice(0, 8)} thanh toán thất bại`,
-        variant: "destructive",
-      });
+      toast.error(
+        `Thanh toán thất bại: Đơn hàng #${order.id.slice(
+          0,
+          8
+        )} thanh toán thất bại`
+      );
     });
 
     onVoucherApplied((order) => {
-      toast({
-        title: "Áp dụng voucher",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã áp dụng voucher`,
-        variant: "default",
-      });
+      toast.info(
+        `Áp dụng voucher: Đơn hàng #${order.id.slice(0, 8)} đã áp dụng voucher`
+      );
     });
 
     onVoucherRemoved((order) => {
-      toast({
-        title: "Hủy voucher",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã hủy voucher`,
-        variant: "default",
-      });
+      toast.info(
+        `Hủy voucher: Đơn hàng #${order.id.slice(0, 8)} đã hủy voucher`
+      );
     });
 
     onOrderMerged((order) => {
-      toast({
-        title: "Gộp đơn hàng",
-        description: `Đơn hàng #${order.id.slice(0, 8)} đã được gộp`,
-        variant: "default",
+      toast.info(`Gộp đơn hàng: Đơn hàng #${order.id.slice(0, 8)} đã được gộp`);
+    });
+
+    // Listen to order item events
+    onOrderItemCreated((data) => {
+      toast.info(
+        `Món mới: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+          data.item?.dish?.name || "Món mới"
+        }`
+      );
+    });
+
+    onOrderItemQuantityChanged((data) => {
+      toast.info(
+        `Số lượng món thay đổi: Đơn hàng #${
+          data.orderId?.slice(0, 8) || "N/A"
+        } - ${data.item?.dish?.name || "Món"}`
+      );
+    });
+
+    onOrderItemDeleted((data) => {
+      toast.warning(
+        `Món đã xóa: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"}`
+      );
+    });
+
+    onOrderItemStatusChanged((data) => {
+      const statusLabels: Record<string, string> = {
+        pending: "Chờ xác nhận",
+        preparing: "Đang chuẩn bị",
+        ready: "Sẵn sàng",
+        completed: "Hoàn thành",
+        cancelled: "Đã hủy",
+      };
+      toast.info(
+        `Trạng thái món: Đơn hàng #${data.orderId?.slice(0, 8) || "N/A"} - ${
+          data.item?.dish?.name || "Món"
+        } → ${statusLabels[data.item?.status] || data.item?.status}`
+      );
+    });
+
+    // Listen to table order events (for guest/walk-in customers)
+    onTableOrderCreated((data) => {
+      const order = data.order;
+      setOrders((prev) => {
+        // Check if order already exists
+        const exists = prev.find((o) => o.id === order.id);
+        if (exists) return prev;
+        return [order, ...prev];
       });
+      toast.info(
+        `Đơn hàng mới từ bàn: Bàn ${data.table_id} - Đơn hàng #${order.id.slice(
+          0,
+          8
+        )}`
+      );
+    });
+
+    onTableOrderUpdated((data) => {
+      const order = data.order || data;
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, ...order } : o))
+      );
+    });
+
+    onTableGuestJoined((data) => {
+      toast.info(`Khách vãng lai: Khách đã tham gia bàn ${data.table_id}`);
     });
 
     return () => {
@@ -298,32 +370,165 @@ export function OrderManagementEnhanced({
     onVoucherApplied,
     onVoucherRemoved,
     onOrderMerged,
+    onTableOrderCreated,
+    onTableOrderUpdated,
+    onTableGuestJoined,
+    onOrderItemCreated,
+    onOrderItemQuantityChanged,
+    onOrderItemDeleted,
+    onOrderItemStatusChanged,
     removeListeners,
     toast,
   ]);
 
-  // Filter orders locally (for search only, other filters are handled by API)
+  // Filter orders locally (only for display, search is now handled by API)
   useEffect(() => {
-    let filtered = orders;
+    setFilteredOrders(orders);
+  }, [orders]);
 
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (order) =>
-          order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.user?.username
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          order.user?.full_name
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          order.table?.table_number
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      );
+  // Export handlers
+  const handleExportRevenue = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      if (statusFilter !== "all") {
+        filters.status = statusFilter;
+      }
+
+      if (tableIdFilter) {
+        filters.table_id = tableIdFilter;
+      }
+
+      const result = await exportService.exportOrderRevenue(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
+  };
 
-    setFilteredOrders(filtered);
-  }, [orders, searchTerm]);
+  const handleExportPopularDishes = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      const result = await exportService.exportPopularDishes(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportTopCustomers = async () => {
+    setIsExporting(true);
+    try {
+      const filters: any = {};
+
+      if (dateFilter === "today") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filters.start_date = today.toISOString();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        filters.end_date = tomorrow.toISOString();
+      } else if (dateFilter === "yesterday") {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        filters.start_date = yesterday.toISOString();
+        const today = new Date(yesterday);
+        today.setDate(today.getDate() + 1);
+        filters.end_date = today.toISOString();
+      } else if (dateFilter === "this_week") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filters.start_date = weekAgo.toISOString();
+        filters.end_date = today.toISOString();
+      }
+
+      const result = await exportService.exportTopCustomers(filters);
+      toast({
+        title: "Thành công",
+        description: `Đã xuất file ${result.filename}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xuất file Excel",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const loadOrders = async () => {
     setIsLoading(true);
@@ -366,6 +571,11 @@ export function OrderManagementEnhanced({
 
       if (tableIdFilter) {
         filters.table_id = tableIdFilter;
+      }
+
+      // Add search parameter if provided
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        filters.search = debouncedSearchTerm.trim();
       }
 
       const response = await api.orders.getAll(filters);
@@ -672,6 +882,36 @@ export function OrderManagementEnhanced({
               />
               Làm mới
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  disabled={isExporting}
+                  className="border-green-300 hover:bg-green-50 hover:text-green-900 shadow-sm"
+                >
+                  <Download
+                    className={`h-4 w-4 mr-2 ${
+                      isExporting ? "animate-spin" : ""
+                    }`}
+                  />
+                  Xuất Excel
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={handleExportRevenue}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất doanh thu đơn hàng
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPopularDishes}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất món đặt nhiều
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportTopCustomers}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Xuất khách hàng thân thiết
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
@@ -722,72 +962,125 @@ export function OrderManagementEnhanced({
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Số đơn hàng</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Bàn</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Tổng tiền</TableHead>
-                    <TableHead>Thời gian</TableHead>
-                    <TableHead>Thao tác</TableHead>
+                  <TableRow className="bg-gradient-to-r from-amber-50/50 to-white border-b-2 border-amber-200">
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Số đơn hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Khách hàng
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Bàn
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Trạng thái
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Tổng tiền
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thời gian
+                    </TableHead>
+                    <TableHead className="font-bold text-amber-900 py-4">
+                      Thao tác
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => {
                     const StatusIcon = getStatusIcon(order.status);
                     return (
-                      <TableRow key={order.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">
-                          <div>
-                            <p className="font-semibold">#{order.id}</p>
-                            <p className="text-xs text-muted-foreground">
+                      <TableRow
+                        key={order.id}
+                        className="hover:bg-gradient-to-r hover:from-amber-50/50 hover:to-white transition-all duration-200 border-b border-gray-100 group"
+                      >
+                        <TableCell className="font-medium py-4">
+                          <div className="space-y-1">
+                            <p className="font-bold text-base bg-gradient-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">
+                              #{order.id.slice(0, 8).toUpperCase()}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-medium">
                               {getRelativeTime(order.created_at)}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              {order.user?.username || "Khách vãng lai"}
-                            </span>
+                            {order.user_id ? (
+                              <>
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md">
+                                  <Users className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="font-medium text-gray-700">
+                                  {order.user?.username ||
+                                    order.user?.full_name ||
+                                    "Khách hàng"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-md">
+                                  <UserX className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="font-semibold text-orange-700">
+                                  Khách vãng lai
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 border-orange-300 text-orange-700 bg-orange-50 text-xs font-semibold shadow-sm"
+                                >
+                                  Walk-in
+                                </Badge>
+                              </>
+                            )}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span>
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+                              <MapPin className="h-3.5 w-3.5 text-green-700" />
+                            </div>
+                            <span className="font-semibold text-gray-700">
                               {order.table?.table_number || "Chưa chọn bàn"}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
-                            <StatusIcon className="h-4 w-4" />
+                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                              <StatusIcon className="h-3.5 w-3.5 text-purple-700" />
+                            </div>
                             <Badge
                               className={`status-badge ${getStatusColor(
                                 order.status
-                              )}`}
+                              )} font-semibold px-3 py-1 shadow-sm`}
                             >
                               {getStatusLabel(order.status)}
                             </Badge>
                           </div>
                         </TableCell>
-                        <TableCell className="font-semibold gold-text">
-                          {formatCurrency(order.total_amount)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p>{formatDateTime(order.created_at)}</p>
+                        <TableCell className="py-4">
+                          <div className="font-bold text-lg bg-gradient-to-r from-emerald-600 to-emerald-800 bg-clip-text text-transparent">
+                            {formatCurrency(order.total_amount)}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
+                          <div className="text-sm space-y-0.5">
+                            <p className="font-medium text-gray-700">
+                              {formatDateTime(order.created_at)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {getRelativeTime(order.created_at)}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => router.push(`/orders/${order.id}`)}
-                              className="luxury-focus"
+                              className="border-amber-300 hover:bg-amber-50 hover:text-amber-900 shadow-sm hover:shadow-md transition-all"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

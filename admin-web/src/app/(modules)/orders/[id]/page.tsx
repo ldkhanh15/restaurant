@@ -52,11 +52,14 @@ import {
   Save,
   X,
   HelpCircle,
+  Receipt,
 } from "lucide-react";
 import { api, Order, OrderItem, Voucher } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 import { useOrderWebSocket } from "@/hooks/useOrderWebSocket";
+import { orderService } from "@/services/orderService";
+import InvoiceForm from "@/components/shared/InvoiceForm";
 
 const ORDER_STATUSES = [
   {
@@ -112,6 +115,7 @@ export default function OrderDetailPage() {
   const [voucherCode, setVoucherCode] = useState("");
   const [showVoucherDialog, setShowVoucherDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   // Add item dialog state
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
@@ -164,8 +168,26 @@ export default function OrderDetailPage() {
 
     const handleItemCreated = (data: any) => {
       console.log("[Admin OrderDetail] Order item created:", data);
-      if (data.orderId === orderId) {
-        loadOrder(); // Refresh to get updated items
+      if (data.orderId === orderId && data.item) {
+        // Thêm item mới vào danh sách (không merge với item cũ)
+        setOrder((prev) => {
+          if (!prev) return null;
+          // Kiểm tra xem item đã tồn tại chưa (theo id)
+          const itemExists = prev.items?.some(
+            (item) => item.id === data.item.id
+          );
+          if (!itemExists) {
+            return {
+              ...prev,
+              items: [...(prev.items || []), data.item], // Thêm item mới
+              total_amount: data.order.total_amount || prev.total_amount,
+              final_amount: data.order.final_amount || prev.final_amount,
+            };
+          }
+          // Nếu đã tồn tại, refresh toàn bộ để đảm bảo sync
+          loadOrder();
+          return prev;
+        });
       }
     };
 
@@ -436,35 +458,56 @@ export default function OrderDetailPage() {
 
     try {
       if (paymentMethod === "cash") {
-        // Thanh toán tiền mặt - gọi API complete payment
-        await api.orders.updateStatus(orderId, "paid");
-        toast({
-          title: "Thành công",
-          description: "Đã xác nhận thanh toán tiền mặt",
+        // Thanh toán tiền mặt - gọi API requestCashPayment (validation sẽ được xử lý ở backend)
+        const response = await api.orders.requestCashPayment(orderId, {
+          note: "",
         });
-        setShowPaymentDialog(false);
-        loadOrder();
+        if (response.status === "success") {
+          toast({
+            title: "Thành công",
+            description: "Đã xác nhận thanh toán tiền mặt",
+          });
+          setShowPaymentDialog(false);
+          loadOrder();
+        }
       } else if (paymentMethod === "vnpay") {
-        // Thanh toán VNPAY - gọi API để lấy redirect URL
-        const response = await api.orders.requestPayment(orderId, {
-          method: paymentMethod,
-          amount: order.final_amount,
-          client: "admin", // Admin-web
-        });
+        // Check if there's a failed payment - use retry API
+        const hasFailedPayment = order.payment_status === "failed";
+
+        let response: any;
+        if (hasFailedPayment) {
+          response = await orderService.requestPaymentRetry(orderId, "vnpay");
+        } else {
+          response = await api.orders.requestPayment(orderId, {
+            method: paymentMethod,
+            amount: order.final_amount,
+            client: "admin", // Admin-web
+          });
+        }
 
         // Redirect đến VNPay
         const redirectUrl =
+          response?.data?.redirect_url ||
           (response as any)?.data?.redirect_url ||
           (response as any)?.redirect_url;
         if (redirectUrl) {
           window.location.href = redirectUrl;
+        } else {
+          toast({
+            title: "Lỗi",
+            description: "Không thể tạo link thanh toán VNPay",
+            variant: "destructive",
+          });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to request payment:", error);
       toast({
         title: "Lỗi",
-        description: "Không thể xử lý thanh toán",
+        description:
+          error.response?.data?.message ||
+          error.message ||
+          "Không thể xử lý thanh toán",
         variant: "destructive",
       });
     }
@@ -819,6 +862,18 @@ export default function OrderDetailPage() {
                   </span>
                 </div>
               </div>
+
+              {/* View Invoice Button */}
+              <div className="pt-4 border-t mt-4">
+                <Button
+                  variant="outline"
+                  className="w-full border-emerald-300 hover:bg-emerald-50 hover:text-emerald-900 shadow-sm"
+                  onClick={() => setShowInvoiceDialog(true)}
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Xem Hóa Đơn
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -973,10 +1028,12 @@ export default function OrderDetailPage() {
                   <DialogTrigger asChild>
                     <Button className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-md">
                       <CreditCard className="h-4 w-4 mr-2" />
-                      Yêu cầu thanh toán
+                      {order?.payment_status === "failed"
+                        ? "Thanh toán lại"
+                        : "Yêu cầu thanh toán"}
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-md">
+                  <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="text-xl font-bold text-amber-900">
                         Hóa đơn thanh toán
@@ -986,102 +1043,50 @@ export default function OrderDetailPage() {
                       </DialogDescription>
                     </DialogHeader>
 
-                    {/* Invoice Details */}
-                    <div className="space-y-4 py-4">
-                      {/* Items Summary */}
-                      <div className="bg-amber-50 rounded-lg p-4 space-y-2">
-                        <h4 className="font-semibold text-sm text-amber-900 mb-3">
-                          Chi tiết đơn hàng
-                        </h4>
-                        {order.items?.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex justify-between text-sm"
-                          >
-                            <span className="text-gray-700">
-                              {(item as any).dish?.name || "Unknown"} x
-                              {item.quantity}
-                            </span>
-                            <span className="font-medium">
-                              {formatCurrency(item.price * item.quantity)}
-                            </span>
-                          </div>
-                        ))}
+                    {/* Professional Invoice Form */}
+                    {order && (
+                      <div className="max-h-[60vh] overflow-y-auto pr-2 mb-6">
+                        <InvoiceForm
+                          order={order}
+                          vatAmount={(order as any).vat_amount}
+                          pointsUsed={(order as any).points_used}
+                          finalPaymentAmount={
+                            (order as any).final_payment_amount
+                          }
+                        />
                       </div>
+                    )}
 
-                      {/* Price Breakdown */}
-                      <div className="space-y-2 border-t pt-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Tổng tiền món ăn:
-                          </span>
-                          <span className="font-medium">
-                            {formatCurrency(order.total_amount)}
-                          </span>
-                        </div>
-
-                        {(order.voucher_discount_amount ?? 0) > 0 && (
-                          <div className="flex justify-between text-sm text-emerald-600">
-                            <span>Giảm giá (Voucher):</span>
-                            <span className="font-medium">
-                              -
-                              {formatCurrency(
-                                order.voucher_discount_amount ?? 0
-                              )}
-                            </span>
-                          </div>
-                        )}
-
-                        {(order.event_fee ?? 0) > 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Phí sự kiện:</span>
-                            <span className="font-medium">
-                              {formatCurrency(order.event_fee ?? 0)}
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex justify-between text-base font-bold border-t pt-2 mt-2">
-                          <span className="text-gray-900">
-                            Tổng thanh toán:
-                          </span>
-                          <span className="text-emerald-600 text-lg">
-                            {formatCurrency(order.final_amount)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Payment Method Selection */}
-                      <div className="border-t pt-4">
-                        <Label
-                          htmlFor="payment-method"
-                          className="text-base font-semibold mb-3 block"
-                        >
-                          Phương thức thanh toán
-                        </Label>
-                        <Select
-                          value={paymentMethod}
-                          onValueChange={setPaymentMethod}
-                        >
-                          <SelectTrigger className="h-12">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">
-                              <div className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4" />
-                                Tiền mặt
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="vnpay">
-                              <div className="flex items-center gap-2">
-                                <CreditCard className="h-4 w-4" />
-                                VNPay
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    {/* Payment Method Selection */}
+                    <div className="border-t pt-4">
+                      <Label
+                        htmlFor="payment-method"
+                        className="text-base font-semibold mb-3 block"
+                      >
+                        Phương thức thanh toán
+                      </Label>
+                      <Select
+                        value={paymentMethod}
+                        onValueChange={setPaymentMethod}
+                      >
+                        <SelectTrigger className="h-12">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="h-4 w-4" />
+                              Tiền mặt
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="vnpay">
+                            <div className="flex items-center gap-2">
+                              <CreditCard className="h-4 w-4" />
+                              VNPay
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <DialogFooter className="gap-2">
@@ -1099,6 +1104,50 @@ export default function OrderDetailPage() {
                         {paymentMethod === "cash"
                           ? "Xác nhận thanh toán"
                           : "Thanh toán VNPay"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* View Invoice Dialog */}
+                <Dialog
+                  open={showInvoiceDialog}
+                  onOpenChange={setShowInvoiceDialog}
+                >
+                  <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Hóa Đơn Thanh Toán</DialogTitle>
+                      <DialogDescription>
+                        Chi tiết hóa đơn cho đơn hàng #
+                        {order?.id.slice(0, 8).toUpperCase()}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {order && (
+                      <div className="max-h-[80vh] overflow-y-auto pr-2">
+                        <InvoiceForm
+                          order={order}
+                          vatAmount={(order as any).vat_amount}
+                          pointsUsed={(order as any).points_used}
+                          finalPaymentAmount={
+                            (order as any).final_payment_amount
+                          }
+                        />
+                      </div>
+                    )}
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowInvoiceDialog(false)}
+                      >
+                        Đóng
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          window.print();
+                        }}
+                      >
+                        <Receipt className="h-4 w-4 mr-2" />
+                        In Hóa Đơn
                       </Button>
                     </DialogFooter>
                   </DialogContent>

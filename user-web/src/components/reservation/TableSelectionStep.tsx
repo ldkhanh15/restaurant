@@ -86,7 +86,25 @@ export default function TableSelectionStep() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await tableService.getAll({ all: true });
+      
+      // Use new API with filters if num_people and date are available
+      const numPeople = draft.num_people > 0 ? draft.num_people : undefined;
+      const date = draft.date ? draft.date.toISOString().split("T")[0] : undefined;
+      const durationMinutes = draft.duration_minutes || 60;
+
+      let response;
+      if (numPeople && date) {
+        // Use new API that filters by capacity and returns time slots
+        response = await tableService.getAvailableForReservation({
+          num_people: numPeople,
+          date,
+          duration_minutes: durationMinutes,
+        });
+      } else {
+        // Fallback to old API if filters not available
+        response = await tableService.getAll({ all: true });
+      }
+
       const payload = (response as any)?.data ?? response;
       const rawTables: Table[] = Array.isArray(payload)
         ? payload
@@ -122,10 +140,16 @@ export default function TableSelectionStep() {
           floorNumber,
           floorLabel,
           isVIP,
+          available_time_slots: table.available_time_slots || undefined,
         } as EnrichedTable;
       });
 
-      setTables(enriched);
+      // Filter by capacity if num_people is set but API didn't filter
+      const filtered = numPeople && !date
+        ? enriched.filter((table) => table.capacity >= numPeople)
+        : enriched;
+
+      setTables(filtered);
     } catch (err: any) {
       console.error("Failed to load tables:", err);
       setError(
@@ -141,11 +165,18 @@ export default function TableSelectionStep() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [draft.num_people, draft.date, draft.duration_minutes]);
 
   useEffect(() => {
     loadTables();
   }, [loadTables]);
+
+  // Reload tables when num_people or date changes
+  useEffect(() => {
+    if (draft.num_people > 0 || draft.date) {
+      loadTables();
+    }
+  }, [draft.num_people, draft.date, draft.duration_minutes]);
 
   const floors = useMemo(() => {
     const floorMap = new Map<

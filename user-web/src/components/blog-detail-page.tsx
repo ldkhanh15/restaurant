@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { BlogPost } from "@/types/BlogPost";
+import { BlogPost } from "@/type/BlogPost";
 import blogService from "@/services/blogService";
 
 interface BlogDetailPageProps {

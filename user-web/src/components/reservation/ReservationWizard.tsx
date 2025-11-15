@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -45,6 +45,34 @@ export default function ReservationWizard() {
     useReservationStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservationId, setReservationId] = useState<string | null>(null);
+
+  // Load temp reservation data from sessionStorage on mount
+  useEffect(() => {
+    const tempDataStr = sessionStorage.getItem("temp_reservation_data");
+    if (tempDataStr) {
+      try {
+        const tempData = JSON.parse(tempDataStr);
+        // Check if data is not too old (within 1 hour)
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        if (tempData.timestamp && tempData.timestamp > oneHourAgo) {
+          // Prefill reservation draft with temp data
+          updateDraft({
+            selected_table_id: tempData.table_id || null,
+            selected_table_name: tempData.table_number || null,
+            num_people: tempData.capacity || draft.num_people,
+          });
+          // Clear temp data after using
+          sessionStorage.removeItem("temp_reservation_data");
+        } else {
+          // Data is too old, remove it
+          sessionStorage.removeItem("temp_reservation_data");
+        }
+      } catch (error) {
+        console.error("Failed to parse temp reservation data:", error);
+        sessionStorage.removeItem("temp_reservation_data");
+      }
+    }
+  }, []);
 
   const canProceedToNext = () => {
     switch (currentStep) {
@@ -91,12 +119,32 @@ export default function ReservationWizard() {
       return;
     }
 
+    // Validate num_people
+    if (!draft.num_people || draft.num_people <= 0) {
+      toast({
+        title: "Lỗi",
+        description: "Số lượng khách phải lớn hơn 0",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate reservation time is not in the past
+    const reservationTime = new Date(draft.date);
+    const [hours, minutes] = draft.time.split(":").map(Number);
+    reservationTime.setHours(hours, minutes, 0, 0);
+    const now = new Date();
+    if (reservationTime < now) {
+      toast({
+        title: "Lỗi",
+        description: "Không thể đặt bàn trong quá khứ. Vui lòng chọn thời gian trong tương lai",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Combine date and time
-      const reservationTime = new Date(draft.date);
-      const [hours, minutes] = draft.time.split(":").map(Number);
-      reservationTime.setHours(hours, minutes, 0, 0);
 
       // Prepare pre_order_items
       const pre_order_items = draft.pre_orders.map((item) => ({
